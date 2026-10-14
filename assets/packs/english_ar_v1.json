@@ -1,0 +1,2174 @@
+{
+  "schemaVersion": 1,
+  "packId": "english_ar_v1",
+  "title": "English to Arabic",
+  "sourceLanguage": "en",
+  "targetLanguage": "ar",
+  "entries": [
+    {
+      "id": "ghost-clusters-4da03e",
+      "term": "ghost clusters",
+      "translations": [
+        "مجموعات الأشباح"
+      ]
+    },
+    {
+      "id": "multiplexer-94b9a8",
+      "term": "multiplexer",
+      "translations": [
+        "معدد"
+      ]
+    },
+    {
+      "id": "reattach-8da1f4",
+      "term": "reattach",
+      "translations": [
+        "أعد التوصيل"
+      ]
+    },
+    {
+      "id": "statistic-b482df",
+      "term": "statistic",
+      "translations": [
+        "إحصائية"
+      ]
+    },
+    {
+      "id": "weasly-46b051",
+      "term": "weasly",
+      "translations": [
+        "ضعيف"
+      ]
+    },
+    {
+      "id": "session-fcbdc4",
+      "term": "session",
+      "translations": [
+        "الجلسة",
+        "حصة"
+      ]
+    },
+    {
+      "id": "fever-e2f347",
+      "term": "fever",
+      "translations": [
+        "حمى - سخونةf"
+      ]
+    },
+    {
+      "id": "checkup-check-up-9b91b8",
+      "term": "checkup, check-up",
+      "translations": [
+        "الفحص الطبي(اسم)"
+      ]
+    },
+    {
+      "id": "check-up-5f3ab6",
+      "term": "check up",
+      "translations": [
+        "يفحص - يشيك"
+      ]
+    },
+    {
+      "id": "eye-chart-37c1a3",
+      "term": "Eye chart",
+      "translations": [
+        "لوحة قياس البصر"
+      ]
+    },
+    {
+      "id": "eyesight-af5ad3",
+      "term": "Eyesight",
+      "translations": [
+        "البصر - الابصار"
+      ]
+    },
+    {
+      "id": "tiger-mom-15b3bd",
+      "term": "Tiger mom",
+      "translations": [
+        "ام صارمة"
+      ]
+    },
+    {
+      "id": "buried-9c0baa",
+      "term": "Buried",
+      "translations": [
+        "دفن"
+      ]
+    },
+    {
+      "id": "bury-abe4b1",
+      "term": "Bury",
+      "translations": [
+        "يدفن"
+      ]
+    },
+    {
+      "id": "when-this-giant-beast-rips-us-limb-from-limb-08ea68",
+      "term": "When this giant beast rips us limb from limb",
+      "translations": [
+        "عندما بمزقنا هذا الوحش العملاق ارباً"
+      ]
+    },
+    {
+      "id": "and-we-shared-a-womb-71eaa1",
+      "term": "And we shared a womb",
+      "translations": [
+        "وقد تشاركنا رحماً"
+      ]
+    },
+    {
+      "id": "let-s-talk-outpost-ea353b",
+      "term": "Let's talk outpost",
+      "translations": [
+        "الآن دعونا نتكلم في أمر المقر"
+      ]
+    },
+    {
+      "id": "since-you-bouthg-it-up-d75e0d",
+      "term": "Since you bouthg it up",
+      "translations": [
+        "بما أنك طرحت الموضوع"
+      ]
+    },
+    {
+      "id": "we-ll-set-up-lookout-posts-with-interlocking-fields-of-fire-and-9b32f3",
+      "term": "We'll set up lookout posts with interlocking fields of fire and",
+      "translations": [
+        "سننصب أماكن حراسة مع حقول النار المتشابكة و..."
+      ]
+    },
+    {
+      "id": "meditation-6e77a6",
+      "term": "meditation",
+      "translations": [
+        "التأمل"
+      ]
+    },
+    {
+      "id": "circl-shaped-eec8be",
+      "term": "[circl]-shaped",
+      "translations": [
+        "شكل [دائرة]"
+      ]
+    },
+    {
+      "id": "boar-pit-5a5c2f",
+      "term": "Boar pit",
+      "translations": [
+        "حفرة خنازير"
+      ]
+    },
+    {
+      "id": "boar-30efd2",
+      "term": "Boar",
+      "translations": [
+        "خنزير"
+      ]
+    },
+    {
+      "id": "troops-622eec",
+      "term": "troops",
+      "translations": [
+        "جنود"
+      ]
+    },
+    {
+      "id": "it-gives-me-the-willies-d1580c",
+      "term": "It gives me the willies",
+      "translations": [
+        "هذا يشعرني بعدم الراحة"
+      ]
+    },
+    {
+      "id": "does-that-sound-fair-dc5fa8",
+      "term": "Does that sound fair?",
+      "translations": [
+        "لا يبدو هذا عادلاً"
+      ]
+    },
+    {
+      "id": "what-are-you-up-to-09da8f",
+      "term": "What are you up to?",
+      "translations": [
+        "ماذا تخطط"
+      ]
+    },
+    {
+      "id": "multiple-ledges-756c0f",
+      "term": "Multiple ledges",
+      "translations": [
+        "حافات متعددة"
+      ]
+    },
+    {
+      "id": "this-island-is-very-cliffy-b70ebe",
+      "term": "This island is very cliffy",
+      "translations": [
+        "هذه الجزيرة مليئة بالجروف"
+      ]
+    },
+    {
+      "id": "and-there-s-your-architectural-marvel-e2e1ec",
+      "term": "And there's your architectural marvel",
+      "translations": [
+        "وهاك أعجوبتك الهندسية العبقرية."
+      ]
+    },
+    {
+      "id": "hey-hiccup-i-m-ready-for-a-dry-run-25a701",
+      "term": "Hey, Hiccup,I'm ready for a dry run",
+      "translations": [
+        "أنا مستعدة للتجربة"
+      ]
+    },
+    {
+      "id": "back-stabber-a6d979",
+      "term": "back-stabber",
+      "translations": [
+        "خائن"
+      ]
+    },
+    {
+      "id": "stakes-e73619",
+      "term": "stakes",
+      "translations": [
+        "رهان"
+      ]
+    },
+    {
+      "id": "terrible-terror-4d535d",
+      "term": "Terrible Terror",
+      "translations": [
+        "لرعب المرعب"
+      ]
+    },
+    {
+      "id": "terror-799316",
+      "term": "Terror",
+      "translations": [
+        "مفزع",
+        "مرعب"
+      ]
+    },
+    {
+      "id": "meaner-4237ba",
+      "term": "meaner",
+      "translations": [
+        "لئيم"
+      ]
+    },
+    {
+      "id": "and-it-seems-like-they-re-nocturnal-dfc6a6",
+      "term": "And it seems like they're nocturnal",
+      "translations": [
+        "ويبدو أنها مخلوقات ليلية"
+      ]
+    },
+    {
+      "id": "no-bullies-on-our-island-4ad5c4",
+      "term": "No bullies on our island",
+      "translations": [
+        "ممنوع وجود المتنمرين على جزيرتنا"
+      ]
+    },
+    {
+      "id": "auspices-2dd9e1",
+      "term": "auspices",
+      "translations": [
+        "رعاية"
+      ]
+    },
+    {
+      "id": "i-ll-come-along-bf15b6",
+      "term": "I'll come along",
+      "translations": [
+        "I'll come with you"
+      ]
+    },
+    {
+      "id": "endeavor-2c84ef",
+      "term": "endeavor",
+      "translations": [
+        "يسعى",
+        "حاول",
+        "مهمة"
+      ]
+    },
+    {
+      "id": "for-failing-you-on-this-endeavor-5f3ae9",
+      "term": "for failing you on this endeavor",
+      "translations": [
+        "لفشلي في هذا المهمة"
+      ]
+    },
+    {
+      "id": "procure-2fa7e1",
+      "term": "procure",
+      "translations": [
+        "to be available",
+        "have",
+        "اقتناء",
+        "َتوَفير"
+      ]
+    },
+    {
+      "id": "i-wasn-t-able-to-procure-your-oil-on-this-recent-trip-2d03b0",
+      "term": "I wasn't able to procure your oil on this recent trip",
+      "translations": [
+        "لم أتمكن من توفير زيتك في هذه الرحلة الأخيرة"
+      ]
+    },
+    {
+      "id": "as-i-was-otherwise-engaged-with-a-northern-native-f2e550",
+      "term": "as I was otherwise engaged with a Northern Native...",
+      "translations": [
+        "وأنا كنت مشغولا بشؤون أخرى مع سكان الشمال الأصلي"
+      ]
+    },
+    {
+      "id": "otherwise-804275",
+      "term": "otherwise",
+      "translations": [
+        "من ناحية أخرى"
+      ]
+    },
+    {
+      "id": "underestimated-daae2c",
+      "term": "underestimated",
+      "translations": [
+        "تم التقليل من شأنه"
+      ]
+    },
+    {
+      "id": "compete-755268",
+      "term": "compete",
+      "translations": [
+        "تنافس"
+      ]
+    },
+    {
+      "id": "banished-ecc610",
+      "term": "banished",
+      "translations": [
+        "منفي"
+      ]
+    },
+    {
+      "id": "allies-c19ff2",
+      "term": "allies",
+      "translations": [
+        "حلفاء"
+      ]
+    },
+    {
+      "id": "disgrace-1e9580",
+      "term": "disgrace",
+      "translations": [
+        "عار"
+      ]
+    },
+    {
+      "id": "disgraceful-ab4b0f",
+      "term": "disgraceful",
+      "translations": [
+        "مخزي"
+      ]
+    },
+    {
+      "id": "scar-542c25",
+      "term": "scar",
+      "translations": [
+        "ندبة"
+      ]
+    },
+    {
+      "id": "humiliate-4074cd",
+      "term": "humiliate",
+      "translations": [
+        "أذل"
+      ]
+    },
+    {
+      "id": "triggered-5e6fd2",
+      "term": "triggered",
+      "translations": [
+        "تم تشغيله"
+      ]
+    },
+    {
+      "id": "taint-d51bbc",
+      "term": "taint",
+      "translations": [
+        "وصمة عار"
+      ]
+    },
+    {
+      "id": "arrested-5973f4",
+      "term": "arrested",
+      "translations": [
+        "اعتقل"
+      ]
+    },
+    {
+      "id": "vandalism-ec93d8",
+      "term": "vandalism",
+      "translations": [
+        "التخريب"
+      ]
+    },
+    {
+      "id": "feast-f37a74",
+      "term": "feast",
+      "translations": [
+        "وليمة"
+      ]
+    },
+    {
+      "id": "cooperate-afbd04",
+      "term": "cooperate",
+      "translations": [
+        "تعاون"
+      ]
+    },
+    {
+      "id": "forbidden-5854a8",
+      "term": "forbidden",
+      "translations": [
+        "مُحرَّم",
+        "banned"
+      ]
+    },
+    {
+      "id": "misery-f40b6f",
+      "term": "misery",
+      "translations": [
+        "البؤس"
+      ]
+    },
+    {
+      "id": "tent-899343",
+      "term": "tent",
+      "translations": [
+        "خيمة"
+      ]
+    },
+    {
+      "id": "ordinarily-0ab51b",
+      "term": "ordinarily",
+      "translations": [
+        "عادة"
+      ]
+    },
+    {
+      "id": "infuriating-d66dae",
+      "term": "infuriating",
+      "translations": [
+        "مثير للغضب"
+      ]
+    },
+    {
+      "id": "settling-feude-7a3b9d",
+      "term": "settling feude",
+      "translations": [
+        "تسوية الخلاف"
+      ]
+    },
+    {
+      "id": "refugee-250d8c",
+      "term": "refugee",
+      "translations": [
+        "لاجئ"
+      ]
+    },
+    {
+      "id": "sacrifices-c3131e",
+      "term": "sacrifices",
+      "translations": [
+        "التضحيات"
+      ]
+    },
+    {
+      "id": "blanket-607919",
+      "term": "blanket",
+      "translations": [
+        "بطانية"
+      ]
+    },
+    {
+      "id": "redemption-303061",
+      "term": "redemption",
+      "translations": [
+        "الخلاص"
+      ]
+    },
+    {
+      "id": "approached-a3b298",
+      "term": "approached",
+      "translations": [
+        "اقترب"
+      ]
+    },
+    {
+      "id": "approaching-59879e",
+      "term": "approaching",
+      "translations": [
+        "يقترب"
+      ]
+    },
+    {
+      "id": "ambushed-47205e",
+      "term": "ambushed",
+      "translations": [
+        "كمين"
+      ]
+    },
+    {
+      "id": "trail-81a85c",
+      "term": "trail",
+      "translations": [
+        "أثر"
+      ]
+    },
+    {
+      "id": "traitor-be9419",
+      "term": "traitor",
+      "translations": [
+        "خائن"
+      ]
+    },
+    {
+      "id": "treachery-1ae3f1",
+      "term": "treachery",
+      "translations": [
+        "خيانة"
+      ]
+    },
+    {
+      "id": "fleet-f35f94",
+      "term": "fleet",
+      "translations": [
+        "أسطول"
+      ]
+    },
+    {
+      "id": "toxin-0b6bd4",
+      "term": "toxin",
+      "translations": [
+        "السم"
+      ]
+    },
+    {
+      "id": "there-are-no-stowaway-in-my-ship-cd1ef2",
+      "term": "there are no stowaway in my ship",
+      "translations": [
+        "لا يوجد مسافرين خلسة في سفينتي"
+      ]
+    },
+    {
+      "id": "cozy-709098",
+      "term": "cozy",
+      "translations": [
+        "مريح"
+      ]
+    },
+    {
+      "id": "hippo-663710",
+      "term": "hippo",
+      "translations": [
+        "فرس النهر"
+      ]
+    },
+    {
+      "id": "dragged-e6544b",
+      "term": "dragged",
+      "translations": [
+        "جر",
+        "سحب"
+      ]
+    },
+    {
+      "id": "hilarious-981a7d",
+      "term": "hilarious",
+      "translations": [
+        "مرح"
+      ]
+    },
+    {
+      "id": "hindsight-f73d2c",
+      "term": "hindsight",
+      "translations": [
+        "بعد فوات الأوان",
+        "الإدراك المتأخر"
+      ]
+    },
+    {
+      "id": "fragile-41a12a",
+      "term": "fragile",
+      "translations": [
+        "قابل للكسر",
+        "هش"
+      ]
+    },
+    {
+      "id": "offense-540319",
+      "term": "offense",
+      "translations": [
+        "crime"
+      ]
+    },
+    {
+      "id": "destiny-e70390",
+      "term": "destiny",
+      "translations": [
+        "قدر"
+      ]
+    },
+    {
+      "id": "savage-e432c2",
+      "term": "savage",
+      "translations": [
+        "متوحش",
+        "همجي"
+      ]
+    },
+    {
+      "id": "torch-e7de9e",
+      "term": "torch",
+      "translations": [
+        "الشعلة"
+      ]
+    },
+    {
+      "id": "prodigy-cdb5ac",
+      "term": "prodigy",
+      "translations": [
+        "معجزة"
+      ]
+    },
+    {
+      "id": "unleash-232ec0",
+      "term": "unleash",
+      "translations": [
+        "أطلق العنان",
+        "فعل",
+        "حرر"
+      ]
+    },
+    {
+      "id": "labyrinth-357de8",
+      "term": "labyrinth",
+      "translations": [
+        "متاهة"
+      ]
+    },
+    {
+      "id": "contagious-440df3",
+      "term": "contagious",
+      "translations": [
+        "معدي"
+      ]
+    },
+    {
+      "id": "agile-8ecf32",
+      "term": "agile",
+      "translations": [
+        "رشيق"
+      ]
+    },
+    {
+      "id": "nimble-8977b8",
+      "term": "nimble",
+      "translations": [
+        "حاذق",
+        "نبيه"
+      ]
+    },
+    {
+      "id": "fathoming-0c09fd",
+      "term": "fathoming",
+      "translations": [
+        "فهم"
+      ]
+    },
+    {
+      "id": "unbearably-7ff3d1",
+      "term": "unbearably",
+      "translations": [
+        "بشكل لا يطاق"
+      ]
+    },
+    {
+      "id": "bleak-4aedb3",
+      "term": "bleak",
+      "translations": [
+        "كئيب"
+      ]
+    },
+    {
+      "id": "proposition-39c2a0",
+      "term": "proposition",
+      "translations": [
+        "suggestion",
+        "اقتراح"
+      ]
+    },
+    {
+      "id": "invasion-d6dc13",
+      "term": "invasion",
+      "translations": [
+        "غزو"
+      ]
+    },
+    {
+      "id": "plague-b349a4",
+      "term": "Plague",
+      "translations": [
+        "وباء"
+      ]
+    },
+    {
+      "id": "boast-42c485",
+      "term": "boast",
+      "translations": [
+        "تفتخر",
+        "تباهى"
+      ]
+    },
+    {
+      "id": "exotic-5d5244",
+      "term": "exotic",
+      "translations": [
+        "strange",
+        "غَرِيب"
+      ]
+    },
+    {
+      "id": "assortment-fe0563",
+      "term": "assortment",
+      "translations": [
+        "variety",
+        "تشكيلة",
+        "مجموعة منوعة"
+      ]
+    },
+    {
+      "id": "hints-27c501",
+      "term": "hints",
+      "translations": [
+        "تلميحات"
+      ]
+    },
+    {
+      "id": "neutra-3de3bf",
+      "term": "neutra",
+      "translations": [
+        "محايد"
+      ]
+    },
+    {
+      "id": "props-aa6096",
+      "term": "props",
+      "translations": [
+        "الدعائم"
+      ]
+    },
+    {
+      "id": "emerged-e8ac31",
+      "term": "emerged",
+      "translations": [
+        "ظهرت"
+      ]
+    },
+    {
+      "id": "tragic-ab61a6",
+      "term": "tragic",
+      "translations": [
+        "مأساوي"
+      ]
+    },
+    {
+      "id": "statue-0561c0",
+      "term": "statue",
+      "translations": [
+        "تمثال"
+      ]
+    },
+    {
+      "id": "immortalize-0724e3",
+      "term": "immortalize",
+      "translations": [
+        "خلد"
+      ]
+    },
+    {
+      "id": "exquisite-c7fbcd",
+      "term": "exquisite",
+      "translations": [
+        "رائعة"
+      ]
+    },
+    {
+      "id": "abusing-ff69dc",
+      "term": "abusing",
+      "translations": [
+        "إساءة",
+        "ظلم"
+      ]
+    },
+    {
+      "id": "insult-9e5182",
+      "term": "insult",
+      "translations": [
+        "يسُبّ",
+        "شتيمة",
+        "إهانة"
+      ]
+    },
+    {
+      "id": "avalanche-dd99c2",
+      "term": "avalanche",
+      "translations": [
+        "انهيار جليدي"
+      ]
+    },
+    {
+      "id": "bundles-35e827",
+      "term": "bundles",
+      "translations": [
+        "حزم"
+      ]
+    },
+    {
+      "id": "fascinating-f9c839",
+      "term": "fascinating",
+      "translations": [
+        "مبهر"
+      ]
+    },
+    {
+      "id": "turmoil-66db06",
+      "term": "turmoil",
+      "translations": [
+        "الاضطراب"
+      ]
+    },
+    {
+      "id": "pride-ac1cea",
+      "term": "pride",
+      "translations": [
+        "فخر",
+        "كبرياء"
+      ]
+    },
+    {
+      "id": "persistent-112ade",
+      "term": "persistent",
+      "translations": [
+        "مثابر"
+      ]
+    },
+    {
+      "id": "enduring-976229",
+      "term": "enduring",
+      "translations": [
+        "دائم"
+      ]
+    },
+    {
+      "id": "humor-f6f30f",
+      "term": "humor",
+      "translations": [
+        "مزاح"
+      ]
+    },
+    {
+      "id": "delicate-a5cbba",
+      "term": "delicate",
+      "translations": [
+        "حساس",
+        "مرهف"
+      ]
+    },
+    {
+      "id": "betrayed-0b404c",
+      "term": "betrayed",
+      "translations": [
+        "خان",
+        "خدع"
+      ]
+    },
+    {
+      "id": "belongings-162414",
+      "term": "belongings",
+      "translations": [
+        "متاع"
+      ]
+    },
+    {
+      "id": "aband-on-6f58d6",
+      "term": "aband on",
+      "translations": [
+        "يتخلى عن"
+      ]
+    },
+    {
+      "id": "jinx-8d5bbe",
+      "term": "jinx",
+      "translations": [
+        "نحس( don't jinx it.)"
+      ]
+    },
+    {
+      "id": "submerged-ec6c37",
+      "term": "submerged",
+      "translations": [
+        "مغمورة",
+        "غارق"
+      ]
+    },
+    {
+      "id": "cactus-c3ee75",
+      "term": "cactus",
+      "translations": [
+        "صبار"
+      ]
+    },
+    {
+      "id": "authority-66f5c8",
+      "term": "authority",
+      "translations": [
+        "سلطة",
+        "نفوذ"
+      ]
+    },
+    {
+      "id": "folk-2d02ec",
+      "term": "folk",
+      "translations": [
+        "قوم"
+      ]
+    },
+    {
+      "id": "behaviour-bf78d7",
+      "term": "behaviour",
+      "translations": [
+        "سلوك",
+        "تصرف"
+      ]
+    },
+    {
+      "id": "proper-862e3c",
+      "term": "proper",
+      "translations": [
+        "مناسب",
+        "ملائم",
+        "أصولي"
+      ]
+    },
+    {
+      "id": "frankly-5ad65e",
+      "term": "frankly",
+      "translations": [
+        "to be honest",
+        "بصراحة"
+      ]
+    },
+    {
+      "id": "compliment-b4b873",
+      "term": "compliment",
+      "translations": [
+        "إطراء"
+      ]
+    },
+    {
+      "id": "picnic-8cb7f0",
+      "term": "picnic",
+      "translations": [
+        "نزهه",
+        "تفسح"
+      ]
+    },
+    {
+      "id": "occasion-84eeb8",
+      "term": "occasion",
+      "translations": [
+        "مناسبة"
+      ]
+    },
+    {
+      "id": "nasty-f7a917",
+      "term": "nasty",
+      "translations": [
+        "مقرف"
+      ]
+    },
+    {
+      "id": "prairie-c4fe8b",
+      "term": "prairie",
+      "translations": [
+        "مرج"
+      ]
+    },
+    {
+      "id": "hooligans-cd4024",
+      "term": "hooligans",
+      "translations": [
+        "مثيري الشغب"
+      ]
+    },
+    {
+      "id": "anarchist-c178cb",
+      "term": "anarchist",
+      "translations": [
+        "فوضوي"
+      ]
+    },
+    {
+      "id": "beneath-09c4ac",
+      "term": "beneath",
+      "translations": [
+        "أسفل"
+      ]
+    },
+    {
+      "id": "conflict-ae2145",
+      "term": "conflict",
+      "translations": [
+        "صراع",
+        "تضارب",
+        "تعارض"
+      ]
+    },
+    {
+      "id": "messy-fd278a",
+      "term": "messy",
+      "translations": [
+        "فوضوي"
+      ]
+    },
+    {
+      "id": "tangle-d0e86c",
+      "term": "tangle",
+      "translations": [
+        "تشابك"
+      ]
+    },
+    {
+      "id": "destructive-f58c83",
+      "term": "Destructive",
+      "translations": [
+        "مدمر"
+      ]
+    },
+    {
+      "id": "deny-1d16dc",
+      "term": "deny",
+      "translations": [
+        "ينكر",
+        "رفض"
+      ]
+    },
+    {
+      "id": "grief-ef3d62",
+      "term": "grief",
+      "translations": [
+        "حزن"
+      ]
+    },
+    {
+      "id": "conducive-652a40",
+      "term": "conducive",
+      "translations": [
+        "مواتية"
+      ]
+    },
+    {
+      "id": "rigid-3b502d",
+      "term": "rigid",
+      "translations": [
+        "جامد",
+        "صارم"
+      ]
+    },
+    {
+      "id": "discipline-2d1f7b",
+      "term": "discipline",
+      "translations": [
+        "تأديب"
+      ]
+    },
+    {
+      "id": "slightest-a47451",
+      "term": "slightest",
+      "translations": [
+        "أدنى",
+        "طفيف"
+      ]
+    },
+    {
+      "id": "hesitation-126be0",
+      "term": "hesitation",
+      "translations": [
+        "تردد"
+      ]
+    },
+    {
+      "id": "intimidated-45b9c3",
+      "term": "intimidated",
+      "translations": [
+        "أرعب",
+        "تخويف"
+      ]
+    },
+    {
+      "id": "aura-dingy-3387fe",
+      "term": "aura dingy",
+      "translations": [
+        "هالة قذرة"
+      ]
+    },
+    {
+      "id": "confession-7acc00",
+      "term": "confession",
+      "translations": [
+        "اعتراف"
+      ]
+    },
+    {
+      "id": "reveal-658c82",
+      "term": "reveal",
+      "translations": [
+        "يكشف"
+      ]
+    },
+    {
+      "id": "dimming-086118",
+      "term": "dimming",
+      "translations": [
+        "يعتم"
+      ]
+    },
+    {
+      "id": "unraveling-bf6fd9",
+      "term": "unraveling",
+      "translations": [
+        "الانهيار"
+      ]
+    },
+    {
+      "id": "bruising-ac44c7",
+      "term": "bruising",
+      "translations": [
+        "كدم",
+        "كدمات"
+      ]
+    },
+    {
+      "id": "bearable-417512",
+      "term": "bearable",
+      "translations": [
+        "ممكن إحتماله",
+        "محتمل"
+      ]
+    },
+    {
+      "id": "obey-a65b8e",
+      "term": "obey",
+      "translations": [
+        "يطيع"
+      ]
+    },
+    {
+      "id": "demonstration-801453",
+      "term": "demonstration",
+      "translations": [
+        "توضيح"
+      ]
+    },
+    {
+      "id": "rage-4712b0",
+      "term": "rage",
+      "translations": [
+        "غضب"
+      ]
+    },
+    {
+      "id": "spikes-c4fb03",
+      "term": "spikes",
+      "translations": [
+        "المسامير"
+      ]
+    },
+    {
+      "id": "suspicious-920738",
+      "term": "suspicious",
+      "translations": [
+        "مثير للشك",
+        "مشبوه"
+      ]
+    },
+    {
+      "id": "glowing-39d3ac",
+      "term": "glowing",
+      "translations": [
+        "متوهجة"
+      ]
+    },
+    {
+      "id": "ancestry-81a9a4",
+      "term": "ancestry",
+      "translations": [
+        "النسب",
+        "سلالة",
+        "أصل"
+      ]
+    },
+    {
+      "id": "deem-801f97",
+      "term": "deem",
+      "translations": [
+        "اعتبر",
+        "حسب(if he deem you worthy he will teach you.)"
+      ]
+    },
+    {
+      "id": "eternal-2162c6",
+      "term": "eternal",
+      "translations": [
+        "الأبدية",
+        "أبدي"
+      ]
+    },
+    {
+      "id": "proposal-426144",
+      "term": "proposal",
+      "translations": [
+        "عرض",
+        "اقتراح"
+      ]
+    },
+    {
+      "id": "privilege-475470",
+      "term": "privilege",
+      "translations": [
+        "امتياز",
+        "شرف"
+      ]
+    },
+    {
+      "id": "oppressors-41d789",
+      "term": "oppressors",
+      "translations": [
+        "الظالمين"
+      ]
+    },
+    {
+      "id": "quash-db6685",
+      "term": "quash",
+      "translations": [
+        "سحق"
+      ]
+    },
+    {
+      "id": "revoiution-e55f1d",
+      "term": "revoIution",
+      "translations": [
+        "ثورة"
+      ]
+    },
+    {
+      "id": "precocious-5b2279",
+      "term": "precocious",
+      "translations": [
+        "مبكر النضوج"
+      ]
+    },
+    {
+      "id": "flattery-2548c2",
+      "term": "flattery",
+      "translations": [
+        "الإطراء",
+        "تملق"
+      ]
+    },
+    {
+      "id": "bragging-f9bf1a",
+      "term": "bragging",
+      "translations": [
+        "التفاخر"
+      ]
+    },
+    {
+      "id": "passionately-2e445a",
+      "term": "passionately",
+      "translations": [
+        "بحماس"
+      ]
+    },
+    {
+      "id": "stumbling-698871",
+      "term": "stumbling",
+      "translations": [
+        "تعثر"
+      ]
+    },
+    {
+      "id": "extravagant-6c30ec",
+      "term": "extravagant",
+      "translations": [
+        "باهظ",
+        "مفرط"
+      ]
+    },
+    {
+      "id": "terrific-6c80e6",
+      "term": "terrific",
+      "translations": [
+        "رائع",
+        "عظيم"
+      ]
+    },
+    {
+      "id": "inevitable-c991d2",
+      "term": "inevitable",
+      "translations": [
+        "حتمي",
+        "لا مفر منه"
+      ]
+    },
+    {
+      "id": "ambush-e12c96",
+      "term": "ambush",
+      "translations": [
+        "كمين"
+      ]
+    },
+    {
+      "id": "priorities-317d35",
+      "term": "priorities",
+      "translations": [
+        "الأولويات"
+      ]
+    },
+    {
+      "id": "prissy-ea8ca1",
+      "term": "prissy",
+      "translations": [
+        "متعفف"
+      ]
+    },
+    {
+      "id": "elegant-732d59",
+      "term": "elegant",
+      "translations": [
+        "رائع",
+        "أنيق"
+      ]
+    },
+    {
+      "id": "sprout-3fc74f",
+      "term": "sprout",
+      "translations": [
+        "برعم"
+      ]
+    },
+    {
+      "id": "abrasive-98ac39",
+      "term": "abrasive",
+      "translations": [
+        "وقح",
+        "كاشط"
+      ]
+    },
+    {
+      "id": "reincarnated-3b9a70",
+      "term": "reincarnated",
+      "translations": [
+        "تجسد من جديد"
+      ]
+    },
+    {
+      "id": "investigation-b6af76",
+      "term": "investigation",
+      "translations": [
+        "تحقيق"
+      ]
+    },
+    {
+      "id": "cooperative-78e5cf",
+      "term": "cooperative",
+      "translations": [
+        "متعاون"
+      ]
+    },
+    {
+      "id": "mansion-9bf235",
+      "term": "mansion",
+      "translations": [
+        "قصر"
+      ]
+    },
+    {
+      "id": "conspiracy-616562",
+      "term": "conspiracy",
+      "translations": [
+        "مؤامرة"
+      ]
+    },
+    {
+      "id": "theorist-38046d",
+      "term": "theorist",
+      "translations": [
+        "واضع النظرية"
+      ]
+    },
+    {
+      "id": "vanity-3c2339",
+      "term": "vanity",
+      "translations": [
+        "غرور"
+      ]
+    },
+    {
+      "id": "willingness-55a9aa",
+      "term": "willingness",
+      "translations": [
+        "الرغبة"
+      ]
+    },
+    {
+      "id": "manipulate-85c860",
+      "term": "manipulate",
+      "translations": [
+        "يتلَاعب ب"
+      ]
+    },
+    {
+      "id": "emboldened-36e24b",
+      "term": "emboldened",
+      "translations": [
+        "شجع",
+        "جرأ"
+      ]
+    },
+    {
+      "id": "simultaneous-55a572",
+      "term": "simultaneous",
+      "translations": [
+        "متزامن"
+      ]
+    },
+    {
+      "id": "desperate-25fe33",
+      "term": "desperate",
+      "translations": [
+        "يائس"
+      ]
+    },
+    {
+      "id": "annihilate-f23052",
+      "term": "Annihilate",
+      "translations": [
+        "إبادة"
+      ]
+    },
+    {
+      "id": "refurbished-481da0",
+      "term": "refurbished",
+      "translations": [
+        "تم تجديده",
+        "رمم"
+      ]
+    },
+    {
+      "id": "hindrance-8587f4",
+      "term": "hindrance",
+      "translations": [
+        "عائق"
+      ]
+    },
+    {
+      "id": "interfere-790c7e",
+      "term": "interfere",
+      "translations": [
+        "يتدخل"
+      ]
+    },
+    {
+      "id": "doubt-d69cbc",
+      "term": "doubt",
+      "translations": [
+        "شك"
+      ]
+    },
+    {
+      "id": "rebels-d029ff",
+      "term": "rebels",
+      "translations": [
+        "المتمردين"
+      ]
+    },
+    {
+      "id": "bribery-7f91b0",
+      "term": "Bribery",
+      "translations": [
+        "الرشوة"
+      ]
+    },
+    {
+      "id": "trial-069fd3",
+      "term": "trial",
+      "translations": [
+        "محاكمة"
+      ]
+    },
+    {
+      "id": "dipity-5ddcf5",
+      "term": "dipity",
+      "translations": [
+        "غموض"
+      ]
+    },
+    {
+      "id": "ploy-705b77",
+      "term": "ploy",
+      "translations": [
+        "حيلة"
+      ]
+    },
+    {
+      "id": "resemblance-715f9e",
+      "term": "resemblance",
+      "translations": [
+        "تشابه"
+      ]
+    },
+    {
+      "id": "uncanny-bc8253",
+      "term": "uncanny",
+      "translations": [
+        "غريب"
+      ]
+    },
+    {
+      "id": "carving-4cf2ae",
+      "term": "carving",
+      "translations": [
+        "نحت"
+      ]
+    },
+    {
+      "id": "perish-48fe60",
+      "term": "perish",
+      "translations": [
+        "يهلك"
+      ]
+    },
+    {
+      "id": "evasive-9faaff",
+      "term": "evasive",
+      "translations": [
+        "مراوغ"
+      ]
+    },
+    {
+      "id": "generous-638d74",
+      "term": "Generous",
+      "translations": [
+        "كريم"
+      ]
+    },
+    {
+      "id": "conscience-91ef79",
+      "term": "conscience",
+      "translations": [
+        "الضمير"
+      ]
+    },
+    {
+      "id": "contribute-d97edb",
+      "term": "contribute",
+      "translations": [
+        "يساهم"
+      ]
+    },
+    {
+      "id": "distribute-d9457a",
+      "term": "distribute",
+      "translations": [
+        "توزيع"
+      ]
+    },
+    {
+      "id": "allegedly-a47d01",
+      "term": "allegedly",
+      "translations": [
+        "مزعوم"
+      ]
+    },
+    {
+      "id": "prophecies-a076b0",
+      "term": "prophecies",
+      "translations": [
+        "نبوءات"
+      ]
+    },
+    {
+      "id": "human-trafficking-a6e62a",
+      "term": "human trafficking",
+      "translations": [
+        "الاتجار بالبشر"
+      ]
+    },
+    {
+      "id": "trafficking-73905f",
+      "term": "trafficking",
+      "translations": [
+        "الاتجار",
+        "هرب",
+        "إشتغل بتجارة غير مشروعة"
+      ]
+    },
+    {
+      "id": "initiative-700d14",
+      "term": "initiative",
+      "translations": [
+        "مبادرة",
+        "روح المبادرة"
+      ]
+    },
+    {
+      "id": "appointment-d93e8e",
+      "term": "appointment",
+      "translations": [
+        "ميعاد ex; Interview appointment"
+      ]
+    },
+    {
+      "id": "probation-24c551",
+      "term": "probation",
+      "translations": [
+        "تحت المراقبة",
+        "فترة التجربة",
+        "فترة التدريب"
+      ]
+    },
+    {
+      "id": "possessed-c68b90",
+      "term": "possessed",
+      "translations": [
+        "ممسوس"
+      ]
+    },
+    {
+      "id": "yearn-for-43ee70",
+      "term": "yearn for",
+      "translations": [
+        "يتوق ل"
+      ]
+    },
+    {
+      "id": "editorial-980a8c",
+      "term": "editorial",
+      "translations": [
+        "افتتاحية"
+      ]
+    },
+    {
+      "id": "office-chores-ed81d7",
+      "term": "office chores",
+      "translations": [
+        "الأعمال المكتبية"
+      ]
+    },
+    {
+      "id": "chores-cbcf59",
+      "term": "chores",
+      "translations": [
+        "واجبات منزلية",
+        "عمل روتيني",
+        "العمل النظامي"
+      ]
+    },
+    {
+      "id": "transcribing-09de9b",
+      "term": "transcribing",
+      "translations": [
+        "copy"
+      ]
+    },
+    {
+      "id": "predicts-68ab11",
+      "term": "predicts",
+      "translations": [
+        "يتنبأ"
+      ]
+    },
+    {
+      "id": "forecast-018c49",
+      "term": "forecast",
+      "translations": [
+        "تنبؤ بالمناخ (ex:forecast predicts.)"
+      ]
+    },
+    {
+      "id": "uncharted-f500ef",
+      "term": "uncharted",
+      "translations": [
+        "unknown : مجهول"
+      ]
+    },
+    {
+      "id": "ecosystem-a07d95",
+      "term": "ecosystem",
+      "translations": [
+        "النظام البيئي"
+      ]
+    },
+    {
+      "id": "impression-5c00aa",
+      "term": "impression",
+      "translations": [
+        "انطباع"
+      ]
+    },
+    {
+      "id": "exploitation-0714e3",
+      "term": "exploitation",
+      "translations": [
+        "استغلال"
+      ]
+    },
+    {
+      "id": "ambivalent-ea585e",
+      "term": "ambivalent",
+      "translations": [
+        "متناقض",
+        "متردد"
+      ]
+    },
+    {
+      "id": "ambiguous-f47610",
+      "term": "ambiguous",
+      "translations": [
+        "غامض",
+        "مبهم"
+      ]
+    },
+    {
+      "id": "expired-45a6f9",
+      "term": "expired",
+      "translations": [
+        "منتهي الصلاحية"
+      ]
+    },
+    {
+      "id": "custody-bb610c",
+      "term": "custody",
+      "translations": [
+        "كفالة",
+        "رعاية"
+      ]
+    },
+    {
+      "id": "disguise-79cc1b",
+      "term": "disguise",
+      "translations": [
+        "تنكر"
+      ]
+    },
+    {
+      "id": "suspect-358bf3",
+      "term": "suspect",
+      "translations": [
+        "يشتبه",
+        "مشتبه فيه"
+      ]
+    },
+    {
+      "id": "stranded-f81f2c",
+      "term": "stranded",
+      "translations": [
+        "الذين تقطعت بهم السبل"
+      ]
+    },
+    {
+      "id": "unprecedented-afbeed",
+      "term": "unprecedented",
+      "translations": [
+        "غير مسبوق"
+      ]
+    },
+    {
+      "id": "lame-cf5562",
+      "term": "lame",
+      "translations": [
+        "عاجِز"
+      ]
+    },
+    {
+      "id": "victim-540f54",
+      "term": "victim",
+      "translations": [
+        "ضحية"
+      ]
+    },
+    {
+      "id": "uptight-127466",
+      "term": "uptight",
+      "translations": [
+        "متوتر"
+      ]
+    },
+    {
+      "id": "siblings-e29101",
+      "term": "siblings",
+      "translations": [
+        "إخوة"
+      ]
+    },
+    {
+      "id": "spacious-29715c",
+      "term": "spacious",
+      "translations": [
+        "فسيحة"
+      ]
+    },
+    {
+      "id": "appraisal-ebd4f5",
+      "term": "appraisal",
+      "translations": [
+        "تقييم"
+      ]
+    },
+    {
+      "id": "handy-99b878",
+      "term": "handy",
+      "translations": [
+        "مفيد"
+      ]
+    },
+    {
+      "id": "revealed-489074",
+      "term": "revealed",
+      "translations": [
+        "ظهر",
+        "كشف"
+      ]
+    },
+    {
+      "id": "incantation-5a8579",
+      "term": "incantation",
+      "translations": [
+        "تعويذة"
+      ]
+    },
+    {
+      "id": "proficiency-fbd747",
+      "term": "proficiency",
+      "translations": [
+        "الكفاءة"
+      ]
+    },
+    {
+      "id": "prey-952054",
+      "term": "prey",
+      "translations": [
+        "ضحية",
+        "فريسة",
+        "victim"
+      ]
+    },
+    {
+      "id": "revises-2ffe9f",
+      "term": "revises",
+      "translations": [
+        "يراجع"
+      ]
+    },
+    {
+      "id": "oppose-35a522",
+      "term": "oppose",
+      "translations": [
+        "يعارض",
+        "يقاوم"
+      ]
+    },
+    {
+      "id": "settle-down-314f5d",
+      "term": "settle down",
+      "translations": [
+        "يستقر"
+      ]
+    },
+    {
+      "id": "phantasm-db097b",
+      "term": "Phantasm",
+      "translations": [
+        "الوهم"
+      ]
+    },
+    {
+      "id": "pursue-7c47bc",
+      "term": "pursue",
+      "translations": [
+        "يتحرى",
+        "تعقب"
+      ]
+    },
+    {
+      "id": "beefed-up-583c1e",
+      "term": "beefed up",
+      "translations": [
+        "عززت"
+      ]
+    },
+    {
+      "id": "debris-6aa5cd",
+      "term": "debris",
+      "translations": [
+        "حطام"
+      ]
+    },
+    {
+      "id": "intended-003353",
+      "term": "intended",
+      "translations": [
+        "قصد",
+        "مقصود"
+      ]
+    },
+    {
+      "id": "sloth-756b5a",
+      "term": "sloth",
+      "translations": [
+        "كسل",
+        "تراخ"
+      ]
+    },
+    {
+      "id": "ropes-87cdb5",
+      "term": "ropes",
+      "translations": [
+        "الحبال"
+      ]
+    },
+    {
+      "id": "arachnid-b4b46e",
+      "term": "arachnid",
+      "translations": [
+        "عنكبوتي"
+      ]
+    },
+    {
+      "id": "traumatized-dd88ff",
+      "term": "traumatized",
+      "translations": [
+        "مصدوم",
+        "صدم"
+      ]
+    },
+    {
+      "id": "dietary-options-464590",
+      "term": "dietary options",
+      "translations": [
+        "الخيارات الغذائية"
+      ]
+    },
+    {
+      "id": "descendants-ad8c84",
+      "term": "descendants",
+      "translations": [
+        "أحفاد"
+      ]
+    },
+    {
+      "id": "ascension-8781fb",
+      "term": "ascension",
+      "translations": [
+        "الصعود",
+        "معراج"
+      ]
+    },
+    {
+      "id": "associate-adb833",
+      "term": "associate",
+      "translations": [
+        "مساعد",
+        "شريك"
+      ]
+    },
+    {
+      "id": "affable-163cf9",
+      "term": "affable",
+      "translations": [
+        "ودود"
+      ]
+    },
+    {
+      "id": "fodder-605bdf",
+      "term": "fodder",
+      "translations": [
+        "علف"
+      ]
+    },
+    {
+      "id": "machinations-df4d63",
+      "term": "machinations",
+      "translations": [
+        "مكائد"
+      ]
+    },
+    {
+      "id": "onslaught-e40d08",
+      "term": "onslaught",
+      "translations": [
+        "هجمة",
+        "انقضاض"
+      ]
+    },
+    {
+      "id": "exterminate-b744ed",
+      "term": "exterminate",
+      "translations": [
+        "إبادة"
+      ]
+    },
+    {
+      "id": "misled-by-35800d",
+      "term": "misled by",
+      "translations": [
+        "تضليل من قبل"
+      ]
+    },
+    {
+      "id": "rumors-ec66ce",
+      "term": "rumors",
+      "translations": [
+        "شائعات"
+      ]
+    },
+    {
+      "id": "reputation-26b2a6",
+      "term": "reputation",
+      "translations": [
+        "سمعة"
+      ]
+    },
+    {
+      "id": "apex-d6ec8b",
+      "term": "apex",
+      "translations": [
+        "قمة",
+        "أوج"
+      ]
+    },
+    {
+      "id": "abundance-of-3054e8",
+      "term": "abundance of",
+      "translations": [
+        "وفرة من"
+      ]
+    },
+    {
+      "id": "stripped-9cdcc3",
+      "term": "stripped",
+      "translations": [
+        "جردت",
+        "خلع"
+      ]
+    },
+    {
+      "id": "bounty-08d457",
+      "term": "bounty",
+      "translations": [
+        "مكافأة"
+      ]
+    },
+    {
+      "id": "contemplating-03e8c4",
+      "term": "contemplating",
+      "translations": [
+        "يتأمل"
+      ]
+    },
+    {
+      "id": "botches-86cc27",
+      "term": "botches",
+      "translations": [
+        "عمل بطريقة خرقاء"
+      ]
+    },
+    {
+      "id": "beseech-dc65a9",
+      "term": "beseech",
+      "translations": [
+        "توسل",
+        "تضرع"
+      ]
+    },
+    {
+      "id": "demonstrates-48c170",
+      "term": "demonstrates",
+      "translations": [
+        "يوضح",
+        "شرح"
+      ]
+    },
+    {
+      "id": "remorse-16bd8b",
+      "term": "remorse",
+      "translations": [
+        "الندم",
+        "تأنيب الضمير"
+      ]
+    },
+    {
+      "id": "hypothetically-06ebff",
+      "term": "hypothetically",
+      "translations": [
+        "افتراضيا"
+      ]
+    },
+    {
+      "id": "sincere-9556ec",
+      "term": "sincere",
+      "translations": [
+        "مخلص",
+        "صادق"
+      ]
+    },
+    {
+      "id": "fess-up-e04aea",
+      "term": "fess up",
+      "translations": [
+        "اعترف"
+      ]
+    },
+    {
+      "id": "confess-62d2b1",
+      "term": "confess",
+      "translations": [
+        "اعترف"
+      ]
+    },
+    {
+      "id": "vast-6a7ebf",
+      "term": "vast",
+      "translations": [
+        "واسع",
+        "شاسع"
+      ]
+    },
+    {
+      "id": "devoured-e586b6",
+      "term": "devoured",
+      "translations": [
+        "التهمت",
+        "افترس"
+      ]
+    }
+  ]
+}
