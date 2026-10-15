@@ -108,11 +108,25 @@ class VocabRepository {
       totalCorrect: progressRows.fold<int>(0, (sum, row) => sum + row.correct),
       wordsPracticed: progressRows.length,
       wordsMastered: progressRows.where((row) => row.isMastered).length,
-      recentSessions: await _sessions.recent(),
+      // Scoped to this pack like every other field here. Returning every
+      // pack's sessions would put a foreign session under tiles that are all
+      // counting this pack's words.
+      recentSessions: await _sessions.recent(packKey: packKey),
     );
   }
 
-  Future<int> resetProgress(String packKey) => _progress.reset(packKey);
+  /// Clears a pack's progress AND its session history.
+  ///
+  /// Both halves are in one transaction so a failure mid-reset cannot leave a
+  /// pack with zeroed word counts and a full "Recent sessions" list — which
+  /// reads, to the user, exactly like Reset did nothing.
+  Future<int> resetProgress(String packKey) async {
+    return _db.transaction<int>((txn) async {
+      final cleared = await _progress.reset(packKey, executor: txn);
+      await _sessions.deleteForPack(packKey, executor: txn);
+      return cleared;
+    });
+  }
 
   /// Lowercase, strip invisible marks, collapse whitespace. Arabic queries and
   /// Arabic-containing text must compare consistently in both directions.

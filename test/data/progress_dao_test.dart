@@ -66,6 +66,19 @@ void main() {
     expect(await progress.allForPack('p2'), hasLength(1));
   });
 
+  test('concurrent records never lose an attempt', () async {
+    // Guards the atomicity claim on `ProgressDao.record`. Rewritten as
+    // get-then-write, these twenty interleaved calls leave `attempts` short of
+    // 20 — silently, and with every other test in the suite still green.
+    await Future.wait(<Future<void>>[
+      for (var i = 0; i < 20; i++)
+        progress.record(packKey: 'p', entryId: 'a', wasCorrect: i.isEven, at: first),
+    ]);
+    final stored = (await progress.get(packKey: 'p', entryId: 'a'))!;
+    expect(stored.attempts, 20);
+    expect(stored.correct, 10);
+  });
+
   test('sessions are stored newest first and limited', () async {
     for (var i = 0; i < 15; i++) {
       await sessions.insert(QuizSessionResult(
@@ -80,5 +93,25 @@ void main() {
     expect(recent, hasLength(5));
     expect(recent.first.correctCount, 14);
     expect(recent.last.correctCount, 10);
+  });
+
+  test('recent with no limit argument caps at ten and spans every pack',
+      () async {
+    // A bare `recent()` is the backup's call: a backup legitimately carries
+    // every session, so no `packKey` must mean "do not filter".
+    for (var i = 0; i < 12; i++) {
+      await sessions.insert(QuizSessionResult(
+        packKey: i.isEven ? 'p1' : 'p2',
+        startedAt: first.add(Duration(minutes: i)),
+        totalQuestions: 10,
+        correctCount: i,
+      ));
+    }
+
+    final byDefault = await sessions.recent();
+    expect(byDefault, hasLength(10));
+    expect(byDefault.first.correctCount, 11);
+    expect(byDefault.last.correctCount, 2);
+    expect(byDefault.map((s) => s.packKey).toSet(), <String>{'p1', 'p2'});
   });
 }

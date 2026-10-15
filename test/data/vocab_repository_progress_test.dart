@@ -150,4 +150,57 @@ void main() {
     expect((await harness.repository.stats('en_ar')).isEmpty, isTrue);
     expect((await harness.repository.stats('other')).totalAttempts, 1);
   });
+
+  test('stats for one pack never lists another pack\'s sessions', () async {
+    // Every counter in StatsSummary is pack-scoped; the session list has to be
+    // too, or the Stats screen shows a user a session they played elsewhere.
+    final started = DateTime.utc(2026, 10, 14, 9);
+    await harness.repository.finishSession(
+      packKey: 'en_ar',
+      startedAt: started,
+      totalQuestions: 10,
+      correctCount: 7,
+    );
+    await harness.repository.finishSession(
+      packKey: 'other',
+      startedAt: started,
+      totalQuestions: 10,
+      correctCount: 4,
+    );
+
+    final scoped = await harness.repository.stats('en_ar');
+    expect(scoped.recentSessions, hasLength(1));
+    expect(scoped.recentSessions.single.packKey, 'en_ar');
+    expect(scoped.recentSessions.single.correctCount, 7);
+  });
+
+  test('resetProgress clears the pack\'s sessions as well as its progress',
+      () async {
+    // Otherwise Reset is a lie: the tiles go to zero, the screen says "no
+    // answers yet", and the list underneath still shows every old session.
+    final started = DateTime.utc(2026, 10, 14, 9);
+    await harness.repository
+        .recordAnswer(packKey: 'en_ar', entryId: 'shared', wasCorrect: true);
+    await harness.repository.finishSession(
+      packKey: 'en_ar',
+      startedAt: started,
+      totalQuestions: 10,
+      correctCount: 7,
+    );
+    await harness.repository.finishSession(
+      packKey: 'other',
+      startedAt: started,
+      totalQuestions: 10,
+      correctCount: 4,
+    );
+
+    expect(await harness.repository.resetProgress('en_ar'), 1);
+
+    final stats = await harness.repository.stats('en_ar');
+    expect(stats.isEmpty, isTrue);
+    expect(stats.recentSessions, isEmpty);
+    // The other pack's history is untouched.
+    expect((await harness.repository.stats('other')).recentSessions,
+        hasLength(1));
+  });
 }

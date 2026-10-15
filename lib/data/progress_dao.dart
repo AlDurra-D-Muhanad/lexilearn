@@ -8,6 +8,11 @@ class ProgressDao {
 
   /// Upsert in a single statement so a killed app can never leave attempts and
   /// correct counts out of step with each other.
+  ///
+  /// Pinned by `progress_dao_test.dart :: concurrent records never lose an
+  /// attempt`. Rewritten as read-then-write, twenty concurrent calls leave
+  /// `attempts` at 1 instead of 20 while every other test still passes — so
+  /// this is a claim worth keeping and worth a test.
   Future<void> record({
     required String packKey,
     required String entryId,
@@ -49,7 +54,13 @@ class ProgressDao {
     return rows.map(_fromRow).toList();
   }
 
-  Future<int> reset(String packKey) => _db.delete(
+  /// Deletes one pack's progress, returning how many rows went.
+  ///
+  /// [executor] exists so a caller that must delete atomically alongside
+  /// another table can pass its `Transaction`. Left unset it runs on this
+  /// DAO's own connection, which is what every ordinary call wants.
+  Future<int> reset(String packKey, {DatabaseExecutor? executor}) =>
+      (executor ?? _db).delete(
         'word_progress',
         where: 'pack_key = ?',
         whereArgs: <Object?>[packKey],

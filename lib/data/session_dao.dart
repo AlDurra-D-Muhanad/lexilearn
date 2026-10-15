@@ -13,9 +13,22 @@ class SessionDao {
         'correct_count': result.correctCount,
       });
 
-  Future<List<QuizSessionResult>> recent({int limit = 10}) async {
-    final rows = await _db.query('quiz_sessions',
-        orderBy: 'started_at DESC, id DESC', limit: limit);
+  /// Most recent sessions, newest first.
+  ///
+  /// [packKey] filters to one pack. It is optional and `null` means "every
+  /// pack": a backup legitimately carries the whole session history, while the
+  /// Stats screen must only ever show sessions from the pack it is displaying.
+  Future<List<QuizSessionResult>> recent({
+    int limit = 10,
+    String? packKey,
+  }) async {
+    final rows = await _db.query(
+      'quiz_sessions',
+      where: packKey == null ? null : 'pack_key = ?',
+      whereArgs: packKey == null ? null : <Object?>[packKey],
+      orderBy: 'started_at DESC, id DESC',
+      limit: limit,
+    );
     return rows
         .map((row) => QuizSessionResult(
               packKey: row['pack_key']! as String,
@@ -25,4 +38,17 @@ class SessionDao {
             ))
         .toList();
   }
+
+  /// Removes one pack's session history, returning how many rows went. Used by
+  /// a progress reset, and by a pack deletion.
+  ///
+  /// [executor] exists so a caller that must delete atomically alongside
+  /// another table can pass its `Transaction`. Left unset it runs on this
+  /// DAO's own connection, which is what every ordinary call wants.
+  Future<int> deleteForPack(String packKey, {DatabaseExecutor? executor}) =>
+      (executor ?? _db).delete(
+        'quiz_sessions',
+        where: 'pack_key = ?',
+        whereArgs: <Object?>[packKey],
+      );
 }
