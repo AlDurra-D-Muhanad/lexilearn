@@ -41,10 +41,13 @@ A word being *asked about* is the largest text on its screen; its translation is
 one step smaller and set RTL.
 
 The app binds `fontFamily: 'Tajawal'` globally because every Arabic string
-renders through it. Tajawal has no usable Latin coverage, so a Latin run that
-does not explicitly ask for Inter falls back to the system font and stops
-matching the brand. Latin runs therefore always set `AppText.latin` or
-`AppText.latinDisplay`, which is where `Inter` is named.
+renders through it. Latin runs therefore always set `AppText.latin` or
+`AppText.latinDisplay`, which is where `Inter` is named. Tajawal is not
+*missing* Latin glyphs — its `cmap` maps 95 printable ASCII codepoints, including
+`A`, `a`, `0` and `e` — but those glyphs are not the brand's Latin. Letting an
+English term inherit the ambient family would set it in Tajawal's own Latin at
+Tajawal's weights, which reads as an accident rather than a decision. Naming
+Inter keeps every English word on one face and one type scale.
 
 ## Component style
 Surfaces are rounded and separated by a **soft shadow** in light mode, and by a
@@ -54,6 +57,24 @@ light shadow is exactly `0 4px 12px rgba(0,0,0,0.05)`, exposed as
 used for tags, synonyms, and the search field; 16px radii (`AppRadii.md`) for
 cards and inputs.
 
+A surface is built with **`AppSurface`**, not a bare `Card`. Buttons are built
+with `elevation: 0` for the same reason (Amendment 5): Material's elevation
+shadow is the single largest source of phantom black in a rasterised screen.
+
+Because the golden is the template every screen task copies from, its PNG is
+verified by **pixel census, not by eye**. A thumbnail hides a 3px keyline
+perfectly. The check that caught this task's two defects:
+
+```powershell
+Add-Type -AssemblyName System.Drawing
+$bmp = [System.Drawing.Bitmap]::FromFile("$PWD\test\goldens\goldens\home_shell_user_shot.png")
+$bmp.GetPixel(48, 1400).ToString("X2")   # outside a card border  -> F8F7F5, never 000000
+$bmp.Dispose()
+```
+
+Two exact-colour counts are the pass condition: `#000000` must be **0** pixels,
+and `#1D1B20` must be **0** pixels while `#1F2937` is present.
+
 ## Navigation
 **Four** bottom destinations, matching the artwork: الرئيسية (Home),
 بطاقات (Flashcards), الاختبارات (Quizzes), المزيد (More). The active
@@ -62,7 +83,7 @@ deliberately *not* a tab — the artwork reaches it from the heart action on the
 word card, and that is where it stays.
 
 ## Fonts on disk
-`assets/fonts/` carries the four static instances the app actually uses:
+`assets/fonts/` carries the five static instances the app actually uses:
 
 | Family | File | Declared weight |
 |---|---|---|
@@ -80,6 +101,16 @@ Both families are under the SIL Open Font License; both notices are carried in
 `assets/fonts/OFL.txt`. `google_fonts` is deliberately not a dependency: it would
 make the app phone home on first run and break the offline guarantee this project
 depends on.
+
+## Motion
+Two durations, both from `AppDurations`: `fast` 150 ms and `standard` 250 ms.
+`standard` is used by `AppSurface`, which cross-fades a surface's fill, hairline
+and shadow when the app switches between light and dark, so a theme change reads
+as one movement instead of a snap. `fast` is **reserved for the screen tasks**
+that follow: the flashcard flip and answer reveal (Task 11), quiz option and
+result transitions (Task 12), the favourite heart toggle and stat counter
+(Tasks 13 and 14), and bottom-navigation tab changes (Task 9). Motion is never
+decorative here — if a screen has nothing to reveal, it does not animate.
 
 ## Explicitly excluded, by user decision
 - **No text-to-speech.** The artwork's speaker icon and the `/səˈrenəti/`
@@ -101,10 +132,40 @@ brand's favour:
    `elevation: 0` and a 1px border side. The brand says both: "حدود ناعمة وظل
    خفيف" — soft borders *and* a light shadow. The theme keeps the hairline (it
    is what carries separation in dark mode, and the pinned test asserts it) and
-   turns light-mode elevation on so the brand's soft shadow actually renders.
+   composes the brand shadow where the surface is built — see
+   `AppSurface` in `lib/ui/theme/app_surface.dart`.
 3. **Inter packaging.** The plan's pubspec snippet named
    `Inter-Regular.ttf` / `Inter-SemiBold.ttf` while the file staged in the repo
    was the *variable* `Inter-Variable.ttf`. A variable font ignores
    `fontWeight` in Flutter, so the plan's declaration would have rendered
    English at one weight forever while claiming two. Static instances were
    fetched instead; see the commit for this task.
+4. **The colour scheme is not the brand palette.** The plan built both themes
+   from `ColorScheme.fromSeed(seedColor: …)` and took the result as the brand's
+   colours. It is not one: seeding with `#885CF6` produces a `primary` of
+   `#65558F`, a dusty plum, and an `onSurface` of `#1D1B20` against the brand's
+   `#1F2937`. Every screen that reads `colorScheme.primary` or
+   `textTheme.bodyMedium` was rendering Material's tonal guess. The seed is now
+   kept only for the roles it gets right, and every brand-pinned role is written
+   over it in `AppTheme._schemeFor`.
+5. **Where the shadow lives.** The plan wanted the theme to carry the shadow.
+   `CardThemeData` has no shadow field — only `clipBehavior`, `color`,
+   `shadowColor`, `surfaceTintColor`, `elevation`, `margin` and `shape` — so no
+   theme can. `CardTheme.elevation` therefore stays at `0`, and `AppSurface`
+   composes the brand shadow where surfaces are actually drawn. Material's own
+   elevation shadow is not a stand-in: it is roughly four times the brand's
+   umbra alpha, geometrically unrelated, and the test rasteriser strokes it as
+   an opaque black keyline rather than a falloff.
+
+   `surfaceTintColor` is listed there only to show what the type *has*. It is
+   not a shadow control: it tints the **surface** by the primary colour at
+   elevated elevation. It has nothing to do with shadow colour, which is what
+   `shadowColor` and `modelShadowColor` set — and `material.dart` hardwires
+   `modelShadowColor` to `colorScheme.shadow`.
+6. **Buttons have the same defect, and the golden had it.** Fixing
+   `cardTheme.elevation` removed **29,111** black pixels but left **2,363** of
+   them — a 3px opaque `#000000` ring around the amber "معرفة المعنى" button,
+   because `elevatedButtonTheme` still defaults to M3 elevation 1. The button
+   now sets `elevation: 0` and the census is zero. The golden preview's grid
+   tiles were switched from `Card` to `AppSurface` at the same time, so the
+   file the screen tasks copy shows the pattern that actually works.

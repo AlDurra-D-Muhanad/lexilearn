@@ -63,7 +63,9 @@ void main() {
     expect(AppDurations.standard.inMilliseconds, lessThanOrEqualTo(250));
   });
 
-  test('Latin terms use Inter, because Tajawal has no Latin glyphs', () {
+  test('Latin terms name Inter explicitly rather than the ambient family', () {
+    // Tajawal does have Latin glyphs; the rule is that English terms are set on
+    // the brand's Latin face on purpose, not inherited by accident.
     expect(AppText.latin.fontFamily, 'Inter');
     expect(AppText.arabic.fontFamily, 'Tajawal');
   });

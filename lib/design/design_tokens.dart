@@ -70,9 +70,13 @@ class AppDurations {
   static const Duration standard = Duration(milliseconds: 250);
 }
 
-/// Tajawal has no Latin glyphs. English vocabulary terms render in Inter,
-/// always left-to-right, or they fall back to the system font and stop
-/// matching the brand.
+/// Latin runs name the brand's Latin face explicitly.
+///
+/// Tajawal does carry Latin glyphs — its `cmap` maps 95 printable ASCII
+/// codepoints — but they are not the brand's Latin. Leaving an English term to
+/// the ambient family would render it in Tajawal's own Latin at Tajawal's
+/// weights, which reads as an accident rather than a decision. Naming Inter
+/// keeps every English word on the same face and the same type scale.
 class AppText {
   const AppText._();
 

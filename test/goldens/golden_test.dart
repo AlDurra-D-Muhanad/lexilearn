@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lexilearn/design/design_tokens.dart';
+import 'package:lexilearn/ui/theme/app_surface.dart';
 import 'package:lexilearn/ui/theme/app_theme.dart';
 
 void main() {
@@ -170,7 +171,11 @@ class _WordOfTheDayCard extends StatelessWidget {
           children: <Widget>[
             Text(
               'Word of the Day',
-              style: theme.textTheme.labelLarge?.copyWith(color: Colors.white),
+              // `AppColors.surfaceLight`, not `Colors.white`: the same token the
+              // theme uses for `onPrimary`. A screen task that copies this file
+              // should copy the token, not the literal.
+              style: theme.textTheme.labelLarge
+                  ?.copyWith(color: AppColors.surfaceLight),
             ),
             const SizedBox(height: AppSpacing.s),
             Row(
@@ -180,7 +185,7 @@ class _WordOfTheDayCard extends StatelessWidget {
                   textDirection: TextDirection.ltr,
                   style: AppText.latinDisplay.copyWith(
                     fontSize: 28,
-                    color: Colors.white,
+                    color: AppColors.surfaceLight,
                   ),
                 ),
                 const SizedBox(width: AppSpacing.s),
@@ -190,7 +195,8 @@ class _WordOfTheDayCard extends StatelessWidget {
             Text(
               'الهدوء والسكينة',
               textDirection: TextDirection.rtl,
-              style: theme.textTheme.titleMedium?.copyWith(color: Colors.white),
+              style: theme.textTheme.titleMedium
+                  ?.copyWith(color: AppColors.surfaceLight),
             ),
             const SizedBox(height: AppSpacing.m),
             Align(
@@ -201,6 +207,13 @@ class _WordOfTheDayCard extends StatelessWidget {
                   backgroundColor: AppColors.accent,
                   foregroundColor: AppColors.textLight,
                   shape: const StadiumBorder(),
+                  // `elevatedButtonTheme` still defaults to Material 3's
+                  // elevation 1, and that is the same `canvas.drawShadow`
+                  // defect the cards used to have: the test rasteriser strokes
+                  // it as a 3px opaque `#000000` keyline around the pill. It
+                  // measured 2,363 black pixels in this PNG. The amber fill
+                  // carries the button on its own.
+                  elevation: 0,
                 ),
                 child: const Text('معرفة المعنى'),
               ),
@@ -221,17 +234,19 @@ class _GridTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.m),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Icon(icon, color: AppColors.accent),
-            const SizedBox(height: AppSpacing.s),
-            Text(label, style: theme.textTheme.titleSmall, textAlign: TextAlign.center),
-          ],
-        ),
+    // `AppSurface`, not a bare `Card`. `CardThemeData` has no shadow field, so
+    // this is the only way a surface carries the brand's soft shadow — and this
+    // file is the copy-paste template for the screen tasks, so what it shows is
+    // what they will reach for.
+    return AppSurface(
+      padding: const EdgeInsets.all(AppSpacing.m),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          Icon(icon, color: AppColors.accent),
+          const SizedBox(height: AppSpacing.s),
+          Text(label, style: theme.textTheme.titleSmall, textAlign: TextAlign.center),
+        ],
       ),
     );
   }
