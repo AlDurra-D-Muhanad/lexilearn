@@ -3,14 +3,28 @@ import 'package:sqflite/sqflite.dart';
 /// v1. Every future migration adds a branch to [_onUpgrade] and bumps this.
 const int databaseSchemaVersion = 1;
 
+/// Opens the app database, creating or migrating the schema as needed.
+///
+/// [singleInstance] defaults to `true`, which is right for the app: it opens one
+/// database, once, and holds it for the process lifetime.
+///
+/// It must be `false` for any caller that wants two genuinely independent
+/// databases at the same path. sqflite caches its open-database helper by path
+/// whenever single-instance is on, so a second `openDatabase` of the same path
+/// returns the *first* connection rather than a new one — including for
+/// `:memory:`, where two callers would silently share one database. The test
+/// harness needs an independent database per `TestHarness`, so it passes
+/// `false`; nothing in `lib/` does.
 Future<Database> openAppDatabase({
   required DatabaseFactory factory,
   String path = 'lexilearn.db',
+  bool singleInstance = true,
 }) {
   return factory.openDatabase(
     path,
     options: OpenDatabaseOptions(
       version: databaseSchemaVersion,
+      singleInstance: singleInstance,
       onConfigure: _onConfigure,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,

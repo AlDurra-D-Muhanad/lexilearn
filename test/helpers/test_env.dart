@@ -1,22 +1,17 @@
-import 'dart:io';
-
 import 'package:lexilearn/data/database.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/domain/pack_codec.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
-import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-/// A throwaway database plus a repository, for widget and DAO tests.
+/// An in-memory database plus a repository, for widget and DAO tests.
 class TestHarness {
-  TestHarness._(this.database, this.repository, this._directory);
+  TestHarness._(this.database, this.repository);
 
   final Database database;
   final VocabRepository repository;
-  final Directory _directory;
 
   static bool _initialised = false;
-  static int _counter = 0;
 
   static Future<TestHarness> create({
     List<VocabPack> packs = const <VocabPack>[],
@@ -31,19 +26,14 @@ class TestHarness {
       _initialised = true;
     }
 
-    // A unique temp FILE, deliberately not `inMemoryDatabasePath`.
-    //
-    // `openAppDatabase` does not set `singleInstance: false`, and sqflite keys
-    // its open-database helper by path with single-instance on by default
-    // (sqflite_common/lib/src/factory_mixin.dart: `if (options?.singleInstance
-    // != false)`). Two harnesses opened on `:memory:` in the same isolate
-    // therefore share ONE database, and the second silently sees the first's
-    // packs. That is invisible at creation time and corrupts any test needing
-    // two independent states. Unique paths give real isolation.
-    final directory = Directory.systemTemp.createTempSync('lexilearn_test_');
+    // `singleInstance: false` is what makes this a real `:memory:` database.
+    // Left at the default, sqflite caches its open-database helper by path and
+    // would hand every harness in this isolate the SAME database — the second
+    // harness would be created successfully and silently wrong.
     final db = await openAppDatabase(
       factory: databaseFactoryFfi,
-      path: p.join(directory.path, 'harness_${_counter++}.db'),
+      path: inMemoryDatabasePath,
+      singleInstance: false,
     );
 
     final repository = VocabRepository(
@@ -53,13 +43,8 @@ class TestHarness {
     for (final pack in packs) {
       await repository.importPack(PackCodec.encodePack(pack));
     }
-    return TestHarness._(db, repository, directory);
+    return TestHarness._(db, repository);
   }
 
-  Future<void> dispose() async {
-    await repository.close();
-    if (_directory.existsSync()) {
-      _directory.deleteSync(recursive: true);
-    }
-  }
+  Future<void> dispose() => repository.close();
 }

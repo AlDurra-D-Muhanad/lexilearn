@@ -5,7 +5,6 @@ import 'package:lexilearn/domain/vocab_pack.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'pack_dao.dart';
-import 'pack_seeder.dart';
 
 /// The only class the UI layer is allowed to know about.
 class VocabRepository {
@@ -52,20 +51,46 @@ class VocabRepository {
 
   Future<void> deletePack(String packKey) => _packs.deletePack(packKey);
 
-  Future<bool> seedBundledPack(String assetJson) =>
-      PackSeeder(_db).seedIfMissing(assetJson);
+  /// Installs the bundled asset on first launch, and after the user deletes it.
+  /// Returns false when the pack is already present, so it is safe to call on
+  /// every start.
+  ///
+  /// Deliberately does the work here rather than delegating to `PackSeeder`:
+  /// `PackSeeder.seedIfMissing` stamps `DateTime.now()` internally and cannot be
+  /// given this repository's [Clock], so seeding wrote a wall-clock timestamp
+  /// while every other write honoured the injected one.
+  Future<bool> seedBundledPack(String assetJson) async {
+    // Decode first, same rule as [importPack]: a corrupt asset must never
+    // reach the database.
+    final pack = PackCodec.decodePack(assetJson);
+    final existing = await _packs.listPacks();
+    if (existing.any((summary) => summary.packKey == pack.packId)) return false;
+    await _packs.insertPack(pack, isBundled: true, importedAt: _clock());
+    return true;
+  }
 
   Future<void> close() => _db.close();
 
-  /// Lowercase, strip bidi marks, collapse whitespace. Arabic queries and
+  /// Lowercase, strip invisible marks, collapse whitespace. Arabic queries and
   /// Arabic-containing text must compare consistently in both directions.
+  ///
+  /// The stripped classes are the bidi embedding/override/marking controls
+  /// (U+200E-U+200F, U+202A-U+202E, U+2066-U+2069) that the source dataset
+  /// really does contain, plus U+061C ARABIC LETTER MARK and the zero-width
+  /// family U+200B-U+200D and U+FEFF, which arrive when text is pasted out of
+  /// a rich-text editor. None of them are visible, so none should stop a match.
   ///
   /// NOTE: Task 10 extracts this into `lib/domain/search_matcher.dart` as
   /// `SearchMatcher`, which the UI calls directly. It stays here, private, until
-  /// then — Task 5 does not own that file.
+  /// then. Task 5 does not own that file.
   static String _normalise(String value) => value
-      .replaceAll(RegExp('[\u200e\u200f\u202a-\u202e\u2066-\u2069]'), '')
+      .replaceAll(_invisibleMarks, '')
       .trim()
       .toLowerCase()
-      .replaceAll(RegExp(r'\s+'), ' ');
+      .replaceAll(_whitespaceRun, ' ');
+
+  static final RegExp _invisibleMarks = RegExp(
+      '[\u200e\u200f\u202a-\u202e\u2066-\u2069\u061c\u200b-\u200d\ufeff]');
+
+  static final RegExp _whitespaceRun = RegExp(r'\s+');
 }
