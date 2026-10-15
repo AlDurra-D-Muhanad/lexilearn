@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lexilearn/app.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
 import 'package:lexilearn/ui/flashcards/flashcards_screen.dart';
-import 'package:lexilearn/ui/favorites/favorites_screen.dart';
 import 'package:lexilearn/ui/home/home_screen.dart';
 import 'package:lexilearn/ui/more/more_screen.dart';
 import 'package:lexilearn/ui/quiz/quiz_setup_screen.dart';
@@ -28,34 +26,30 @@ class _Destination {
   final IconData icon;
 }
 
-/// The brand's five destinations, in bar order.
+/// The brand's four destinations, in bar order — exactly the four the artwork
+/// draws, with no `المفضلة`.
 ///
-/// Count pinned by `hasLength(5)` below, not by this list's own length, so
+/// Favourites is a shipped feature, not a tab: it is pushed from the `المفضلة`
+/// tile in Home's 2×2 grid and from the heart on the word detail screen, which
+/// is the artwork's own way in. `test/helpers/test_env.dart` and
+/// `docs/design/style-direction.md` → Navigation record the same.
+///
+/// Count pinned by `hasLength(4)` below, not by this list's own length, so
 /// dropping a destination cannot quietly make the length assertions pass.
 const _destinations = <_Destination>[
   _Destination(screen: HomeScreen, label: 'الرئيسية', icon: Icons.home_outlined),
   _Destination(screen: FlashcardsScreen, label: 'البطاقات', icon: Icons.style_outlined),
-  _Destination(screen: QuizSetupScreen, label: 'الاختبارات', icon: Icons.checklist_rtl),
-  _Destination(screen: FavoritesScreen, label: 'المفضلة', icon: Icons.favorite_border),
-  _Destination(screen: MoreScreen, label: 'المزيد', icon: Icons.more_horiz),
+  _Destination(screen: QuizSetupScreen, label: 'الاختبارات', icon: Icons.check_box_outlined),
+  _Destination(screen: MoreScreen, label: 'المزيد', icon: Icons.apps),
 ];
 
 /// Mounts the app and lets the shell's start-up database read actually answer.
 ///
-/// `HomeShell` resolves the active pack from SQLite in `initState`. That is
-/// real asynchronous work, and a `testWidgets` body runs inside a fake-async
-/// zone where a real future never completes on its own — the shell would sit
-/// there rendering an empty pack key and every assertion below would fail for
-/// a reason that has nothing to do with the shell. `runAsync` hands the real
-/// event loop a turn so the repository's answer lands, and the second
-/// `pumpAndSettle` builds the frame it triggers.
-Future<void> _pumpShell(WidgetTester tester, TestHarness harness) async {
-  await tester.pumpWidget(LexiLearnApp(repository: harness.repository));
-  await tester.runAsync(
-    () => Future<void>.delayed(const Duration(milliseconds: 50)),
-  );
-  await tester.pumpAndSettle();
-}
+/// The pumping itself is shared — see `pumpShell` in
+/// `test/helpers/test_env.dart`, and the one-line reason `runAsync` is required
+/// there. This wrapper exists only to hand it the harness under test.
+Future<void> _pumpShell(WidgetTester tester, TestHarness harness) =>
+    pumpShell(tester, harness.repository);
 
 void main() {
   late TestHarness harness;
@@ -80,7 +74,7 @@ void main() {
 
     // The shell resolves the active pack once at start-up and hands the key to
     // every destination. Asserting that key on every screen is what proves the
-    // shell threads state around rather than merely swapping five widgets.
+    // shell threads state around rather than merely swapping four widgets.
     expect(find.byType(HomeScreen), findsOneWidget);
     expect(find.text('الرئيسية'), findsWidgets);
     expect(find.text('en_ar'), findsOneWidget);
@@ -108,15 +102,16 @@ void main() {
 
     // The bottom bar indexes straight into the screen list. If these lengths
     // ever diverge, tapping the last destination throws a range error at
-    // runtime and nothing catches it until someone holds the phone.
-    expect(_destinations, hasLength(5));
+    // runtime and nothing catches it until someone holds the phone. Four, per
+    // the artwork — never five.
+    expect(_destinations, hasLength(4));
 
     final bar = tester.widget<NavigationBar>(find.byType(NavigationBar));
     // `NavigationBar.destinations` is typed `List<Widget>`; the cast is what
     // makes the label and icon assertions below compile, and it fails loudly
     // if something other than a `NavigationDestination` ever lands in the bar.
     final destinations = bar.destinations.cast<NavigationDestination>();
-    expect(destinations, hasLength(5));
+    expect(destinations, hasLength(4));
     expect(
       destinations.map((destination) => destination.label).toList(),
       _destinations.map((destination) => destination.label).toList(),

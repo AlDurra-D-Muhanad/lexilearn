@@ -77,10 +77,29 @@ and `#1D1B20` must be **0** pixels while `#1F2937` is present.
 
 ## Navigation
 **Four** bottom destinations, matching the artwork: الرئيسية (Home),
-بطاقات (Flashcards), الاختبارات (Quizzes), المزيد (More). The active
+البطاقات (Flashcards), الاختبارات (Quizzes), المزيد (More). The active
 destination is primary purple; inactive ones are secondary grey. Favourites is
 deliberately *not* a tab — the artwork reaches it from the heart action on the
 word card, and that is where it stays.
+
+### Where المفضلة is reached from
+**Favourites was not cut.** It is a shipped feature and has exactly the two
+doors the artwork draws:
+
+1. **A tile in Home's 2×2 quick-launch grid**, labelled `المفضلة`, beside
+   `بطاقات التعلم` / `الاختبارات` / `إحصائياتك`. This grid is on the Home
+   phone in the artwork, directly under the word-of-the-day card. Task 10
+   builds it and Task 14 fills in `FavoritesScreen`, pushed with
+   `Navigator.push` from that tile.
+2. **The heart action on the word card / word detail screen.** Task 14 adds
+   `WordDetailScreen` and pushes `FavoritesScreen` from its heart button.
+
+`FavoritesScreen` exists at `lib/ui/favorites/favorites_screen.dart`. It is
+simply not a `NavigationDestination`, which is why
+`lib/ui/home_shell.dart` does not import it. **Reading the four tabs above as
+"favourites was cut" is a misreading** — see Amendment 1, which records the
+five-destination draft being corrected back to four, and Amendment 7 for the
+icons these four carry.
 
 ## Fonts on disk
 `assets/fonts/` carries the five static instances the app actually uses:
@@ -169,3 +188,27 @@ brand's favour:
    now sets `elevation: 0` and the census is zero. The golden preview's grid
    tiles were switched from `Card` to `AppSurface` at the same time, so the
    file the screen tasks copy shows the pattern that actually works.
+7. **The bar's icons are the artwork's, verified against the PNG.** The
+   artwork's own bottom bar draws `الرئيسية` as a house (filled while active),
+   `البطاقات` as two overlapping rounded cards, `الاختبارات` as a rounded
+   square with a checkmark breaking out through its top-right corner, and
+   `المزيد` as a *cluster* of marks on a 3×3 lattice. Measured by rasterising
+   the Material glyphs out of `materialicons-regular.otf` and comparing mask
+   overlap with the artwork, per destination:
+
+   | Destination | Icon | Evidence |
+   |---|---|---|
+   | `الرئيسية` | `home_outlined` / `home` | Filled-while-active house is exactly this pair. |
+   | `البطاقات` | `style_outlined` / `style` | Two overlapping rounded cards, back one offset up-right. |
+   | `الاختبارات` | `check_box_outlined` / `check_box` | 25.1% mean pixel IoU, against 20.6% for the `checklist_rtl` family and 11.6% for `checklist_rtl` itself. The artwork has no text lines and no second row, which is what the checklist glyph is made of. |
+   | `المزيد` | `apps` | `apps` is the only candidate that places a mark at **every** position either phone draws — 5 of 5 on the light phone, 7 of 7 on the dark one — on the same 3×3 lattice at the same relative pitch. `more_horiz` reaches 3 of 5 and 3 of 7; `blur_on`, the only other dot-shaped candidate, is a 24-dot bokeh cluster at five times the density; `grid_view` is 2×2. |
+
+   The one residual difference is that `apps` draws each mark as a small filled
+   square where the artwork's is round. At the artwork's own bar-icon render
+   size — the marks are about two source pixels across — the two are not
+   distinguishable, so the lattice and pitch were treated as the thing that
+   actually identifies the glyph. `apps_outlined` ties `apps` on mark
+   positions and loses on fill: the artwork's marks are solid, not rings.
+
+   `test/ui/home_shell_test.dart` pins all four, so a later icon change is a
+   test failure rather than silent drift.

@@ -1,3 +1,5 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:lexilearn/app.dart';
 import 'package:lexilearn/data/database.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/domain/pack_codec.dart';
@@ -47,4 +49,28 @@ class TestHarness {
   }
 
   Future<void> dispose() => repository.close();
+}
+
+/// How long the shell's start-up query is given on the real event loop.
+///
+/// Long enough for an in-memory `sqflite` FFI round trip on any machine this
+/// runs on, short enough not to slow the suite down. Deliberately a delay
+/// rather than a spin: there is no future to await, because the query's
+/// completion is driven by the FFI isolate rather than by this isolate.
+const Duration shellDatabaseSettle = Duration(milliseconds: 50);
+
+/// Mounts `LexiLearnApp` on [repository] and waits for its start-up read to land.
+///
+/// `runAsync` is **required**, not a nicety: a `testWidgets` body runs inside a
+/// fake-async zone in which a real `Future` never completes on its own, and
+/// `HomeShell` resolves the active pack from SQLite in `initState`. Without this
+/// turn the shell sits there with an empty pack key and every assertion about
+/// it fails for a reason that has nothing to do with the shell.
+///
+/// Shared rather than copied: Tasks 10, 13, 14 and 15 all reach their screens
+/// through `HomeShell` and all hit this same trap.
+Future<void> pumpShell(WidgetTester tester, VocabRepository repository) async {
+  await tester.pumpWidget(LexiLearnApp(repository: repository));
+  await tester.runAsync(() => Future<void>.delayed(shellDatabaseSettle));
+  await tester.pumpAndSettle();
 }
