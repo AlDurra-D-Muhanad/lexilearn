@@ -74,6 +74,27 @@ flutter:
   assets:
     - assets/packs/
 
+  # Tajawal renders every Arabic string; Inter renders every English vocabulary
+  # term and numeral. Both are bundled, never fetched, so the app never touches
+  # the network to look like itself. See assets/fonts/OFL.txt for the licences.
+  # Every asset path below is a static instance with no `fvar` table, which is
+  # why `fontWeight` really does change the rendered weight.
+  fonts:
+    - family: Tajawal
+      fonts:
+        - asset: assets/fonts/Tajawal-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Tajawal-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Tajawal-Bold.ttf
+          weight: 700
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

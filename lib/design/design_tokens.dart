@@ -1,0 +1,83 @@
+import 'package:flutter/material.dart';
+
+/// The single source of truth for visual values. Screens import these; they do
+/// not invent their own. See docs/design/style-direction.md for the reasoning.
+class AppSpacing {
+  const AppSpacing._();
+
+  static const double xs = 4;
+  static const double s = 8;
+  static const double m = 16;
+  static const double l = 24;
+  static const double xl = 32;
+}
+
+class AppRadii {
+  const AppRadii._();
+
+  static const double sm = 8;
+  static const double md = 16;
+  static const double lg = 24;
+  static const double pill = 999;
+}
+
+class AppColors {
+  const AppColors._();
+
+  // Light mode
+  static const Color primaryLight = Color(0xFF885CF6);
+  static const Color backgroundLight = Color(0xFFF8F7F5);
+  static const Color surfaceLight = Color(0xFFFFFFFF);
+  static const Color textLight = Color(0xFF1F2937);
+  static const Color textSecondaryLight = Color(0xFF6B7280);
+  static const Color borderLight = Color(0xFFE5E7EB);
+
+  // Dark mode
+  static const Color primaryDark = Color(0xFFA78BFA);
+  static const Color backgroundDark = Color(0xFF0F172A);
+  static const Color surfaceDark = Color(0xFF1E293B);
+  static const Color textDark = Color(0xFFF9FAFB);
+  static const Color textSecondaryDark = Color(0xFF94A3B8);
+  static const Color borderDark = Color(0xFF334155);
+
+  // Shared across both modes
+  /// The book mark and achievement accent. Icons and fills only — its contrast
+  /// against a near-white background is too low for body text.
+  static const Color accent = Color(0xFFF59E0B);
+
+  static const Color successLight = Color(0xFF16A34A);
+  static const Color successDark = Color(0xFF4ADE80);
+  static const Color errorLight = Color(0xFFDC2626);
+  static const Color errorDark = Color(0xFFF87171);
+}
+
+class AppShadows {
+  const AppShadows._();
+
+  /// The brand spec: 0 4px 12px rgba(0, 0, 0, 0.05).
+  static const List<BoxShadow> light = <BoxShadow>[
+    BoxShadow(color: Color(0x0D000000), offset: Offset(0, 4), blurRadius: 12),
+  ];
+
+  /// Dark mode has no visible shadow; separation comes from a 1px border there.
+  static const List<BoxShadow> none = <BoxShadow>[];
+}
+
+class AppDurations {
+  const AppDurations._();
+
+  static const Duration fast = Duration(milliseconds: 150);
+  static const Duration standard = Duration(milliseconds: 250);
+}
+
+/// Tajawal has no Latin glyphs. English vocabulary terms render in Inter,
+/// always left-to-right, or they fall back to the system font and stop
+/// matching the brand.
+class AppText {
+  const AppText._();
+
+  static const TextStyle latin = TextStyle(fontFamily: 'Inter');
+  static const TextStyle latinDisplay =
+      TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w600);
+  static const TextStyle arabic = TextStyle(fontFamily: 'Tajawal');
+}
