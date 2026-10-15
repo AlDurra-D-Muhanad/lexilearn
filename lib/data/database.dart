@@ -45,6 +45,10 @@ Future<void> _onCreate(Database db, int version) async {
       term         TEXT NOT NULL,
       translations TEXT NOT NULL,
       note         TEXT NOT NULL DEFAULT '',
+      phonetic     TEXT NOT NULL DEFAULT '',
+      part_of_speech TEXT NOT NULL DEFAULT '',
+      synonyms     TEXT NOT NULL DEFAULT '[]',
+      examples     TEXT NOT NULL DEFAULT '[]',
       sort_index   INTEGER NOT NULL,
       PRIMARY KEY (pack_key, entry_id),
       FOREIGN KEY (pack_key) REFERENCES packs (pack_key) ON DELETE CASCADE

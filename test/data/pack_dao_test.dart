@@ -43,9 +43,15 @@ void main() {
 
     final stored = await dao.getPack('p1');
     expect(stored, isNotNull);
-    expect(stored!.entryCount, 2);
+    expect(stored!.packId, 'p1');
+    expect(stored.title, 'p1');
+    expect(stored.sourceLanguage, 'en');
+    expect(stored.targetLanguage, 'ar');
+    expect(stored.entryCount, 2);
+    expect(stored.entries.map((e) => e.id), <String>['p1-alpha', 'p1-beta']);
     expect(stored.entries.first.term, 'alpha');
     expect(stored.entries.first.translations, <String>['t-alpha']);
+    expect(stored.entries.map((e) => e.note), <String>['', '']);
   });
 
   test('re-inserting the same pack replaces entries without duplicating them',
@@ -60,16 +66,92 @@ void main() {
   });
 
   test('listPacks reports entry counts and the bundled flag', () async {
-    await dao.insertPack(packNamed('p1', <String>['a', 'b']),
-        isBundled: true, importedAt: when);
-    await dao.insertPack(packNamed('p2', <String>['a']),
-        isBundled: false, importedAt: when);
+    // Key order and bundled order deliberately disagree, and the two imported
+    // packs disagree on imported_at, so no wrong ORDER BY can pass by luck.
+    final older = DateTime.utc(2026, 10, 14, 12);
+    final middle = DateTime.utc(2026, 10, 14, 14);
+    final newer = DateTime.utc(2026, 10, 14, 18);
+    await dao.insertPack(packNamed('zzz_bundled', <String>['a', 'b']),
+        isBundled: true, importedAt: older);
+    await dao.insertPack(packNamed('aaa_imported', <String>['a']),
+        isBundled: false, importedAt: newer);
+    await dao.insertPack(packNamed('mmm_imported', <String>['a', 'b', 'c']),
+        isBundled: false, importedAt: middle);
 
     final packs = await dao.listPacks();
-    expect(packs.map((p) => p.packKey), <String>['p1', 'p2']);
+    expect(packs.map((p) => p.packKey),
+        <String>['zzz_bundled', 'aaa_imported', 'mmm_imported']);
     expect(packs.first.entryCount, 2);
     expect(packs.first.isBundled, isTrue);
     expect(packs.last.isBundled, isFalse);
+  });
+
+  test('a rich entry round-trips through the database with every field intact',
+      () async {
+    final rich = VocabEntry(
+      id: 'serenity-9f2b1c',
+      term: 'serenity',
+      translations: <String>['hudaa', 'sukoon'],
+      note: 'noun; state of being calm',
+      phonetic: '/səˈrenɪti/',
+      partOfSpeech: 'noun',
+      synonyms: <String>['calm', 'tranquillity'],
+      examples: <String>['a moment of serenity', 'the serenity of the lake'],
+    );
+    await dao.insertPack(
+      VocabPack(
+        schemaVersion: 1,
+        packId: 'rich_pack',
+        title: 'Rich Pack',
+        sourceLanguage: 'en',
+        targetLanguage: 'ar',
+        entries: <VocabEntry>[rich],
+      ),
+      isBundled: false,
+      importedAt: when,
+    );
+
+    final readBacks = <String, VocabEntry>{
+      'getPack': (await dao.getPack('rich_pack'))!.entries.single,
+      'entriesOf': (await dao.entriesOf('rich_pack')).single,
+    };
+
+    for (final path in readBacks.keys) {
+      final entry = readBacks[path]!;
+      expect(entry.id, 'serenity-9f2b1c', reason: '$path lost id');
+      expect(entry.term, 'serenity', reason: '$path lost term');
+      expect(entry.translations, <String>['hudaa', 'sukoon'],
+          reason: '$path lost translations');
+      expect(entry.note, 'noun; state of being calm', reason: '$path lost note');
+      expect(entry.phonetic, '/səˈrenɪti/', reason: '$path lost phonetic');
+      expect(entry.partOfSpeech, 'noun', reason: '$path lost partOfSpeech');
+      expect(entry.synonyms, <String>['calm', 'tranquillity'],
+          reason: '$path lost synonyms');
+      expect(entry.examples,
+          <String>['a moment of serenity', 'the serenity of the lake'],
+          reason: '$path lost examples');
+    }
+  });
+
+  test('an entry with no extra fields reads back with empty defaults',
+      () async {
+    await dao.insertPack(packNamed('p1', <String>['a']),
+        isBundled: true, importedAt: when);
+
+    final entry = (await dao.entriesOf('p1')).single;
+    expect(entry.phonetic, isEmpty);
+    expect(entry.partOfSpeech, isEmpty);
+    expect(entry.synonyms, isEmpty);
+    expect(entry.examples, isEmpty);
+
+    // The columns themselves are never null: absent lists are stored as "[]".
+    final row = (await db.query('entries',
+            where: 'pack_key = ?', whereArgs: <Object?>['p1']))
+        .single;
+    expect(row['phonetic'], '');
+    expect(row['part_of_speech'], '');
+    expect(row['synonyms'], '[]');
+    expect(row['examples'], '[]');
   });
 
   test('getPack returns null for an unknown key', () async {

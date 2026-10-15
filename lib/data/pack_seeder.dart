@@ -1,7 +1,6 @@
+import 'package:lexilearn/data/pack_dao.dart';
 import 'package:lexilearn/domain/pack_codec.dart';
 import 'package:sqflite/sqflite.dart';
-
-import 'pack_dao.dart';
 
 /// Copies the bundled asset into the database on first launch, and restores it
 /// if the user deleted it. Never overwrites a user-imported pack that happens

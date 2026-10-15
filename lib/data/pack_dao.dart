@@ -63,6 +63,12 @@ class PackDao {
             'term': entry.term,
             'translations': jsonEncode(entry.translations),
             'note': entry.note,
+            'phonetic': entry.phonetic,
+            'part_of_speech': entry.partOfSpeech,
+            // jsonEncode of an empty list is "[]", so these columns are never
+            // null and the read side never has to special-case a missing list.
+            'synonyms': jsonEncode(entry.synonyms),
+            'examples': jsonEncode(entry.examples),
             'sort_index': index,
           },
           conflictAlgorithm: ConflictAlgorithm.replace,
@@ -126,6 +132,10 @@ class PackDao {
               translations: (jsonDecode(row['translations']! as String) as List<dynamic>)
                   .cast<String>(),
               note: (row['note'] as String?) ?? '',
+              phonetic: (row['phonetic'] as String?) ?? '',
+              partOfSpeech: (row['part_of_speech'] as String?) ?? '',
+              synonyms: _decodeStringList(row['synonyms']),
+              examples: _decodeStringList(row['examples']),
             ))
         .toList();
   }
@@ -138,3 +148,10 @@ class PackDao {
     return (rows.first['c']! as num).toInt();
   }
 }
+
+/// Reads a JSON-encoded string column. `"[]"` decodes to an empty list, and a
+/// null or malformed column degrades to empty rather than crashing the read
+/// path, which is the same tolerance `VocabEntry.fromJson` applies.
+List<String> _decodeStringList(Object? column) => column is String
+    ? (jsonDecode(column) as List<dynamic>).cast<String>()
+    : const <String>[];
