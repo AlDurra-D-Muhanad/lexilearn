@@ -48,10 +48,12 @@ class QuizGenerator {
     return chosen;
   }
 
-  /// Excludes the answer itself and any entry whose display text matches the
-  /// answer's, so two English words sharing one Arabic translation can never
-  /// produce an ambiguous question. Returns whatever survives, even when that
-  /// is fewer than `count`: a short question beats a duplicated option text.
+  /// Excludes the answer itself, any entry whose display text matches the
+  /// answer's, and any entry whose text a distractor already claimed, so two
+  /// English words sharing one Arabic translation can never produce an
+  /// ambiguous question and no question can render the same option twice.
+  /// Returns whatever survives, even when that is fewer than `count`: a short
+  /// question beats a duplicated option text.
   List<VocabEntry> _pickDistractors(VocabEntry answer, int count) {
     if (count <= 0) return const <VocabEntry>[];
     final answerText = answer.displayText.toLowerCase();
@@ -60,6 +62,15 @@ class QuizGenerator {
         .where((entry) => entry.displayText.toLowerCase() != answerText)
         .toList();
     final shuffled = List<VocabEntry>.of(candidates)..shuffle(_random);
-    return shuffled.take(count).toList();
+
+    final taken = <String>{answerText};
+    final picked = <VocabEntry>[];
+    for (final candidate in shuffled) {
+      if (taken.add(candidate.displayText.toLowerCase())) {
+        picked.add(candidate);
+        if (picked.length == count) break;
+      }
+    }
+    return picked;
   }
 }

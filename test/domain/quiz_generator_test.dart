@@ -1,7 +1,11 @@
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lexilearn/domain/pack_codec.dart';
 import 'package:lexilearn/domain/quiz_generator.dart';
+import 'package:lexilearn/domain/quiz_option.dart';
+import 'package:lexilearn/domain/quiz_question.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
 
 VocabEntry entry(String id, String term, String translation) =>
@@ -10,6 +14,15 @@ VocabEntry entry(String id, String term, String translation) =>
 List<VocabEntry> poolOf(int n) => <VocabEntry>[
       for (var i = 0; i < n; i++) entry('id-$i', 'term $i', 'translation $i'),
     ];
+
+/// No two options may render the same string, in any casing. Two identical
+/// options are both graded wrong, which is what made the original look broken.
+void expectOptionTextsAreDistinct(QuizQuestion question, {String? context}) {
+  final texts = question.options.map((option) => option.text).toList();
+  final folded = texts.map((text) => text.toLowerCase()).toList();
+  expect(folded.toSet(), hasLength(folded.length),
+      reason: '${context ?? 'question'} rendered duplicate option text in $texts');
+}
 
 void main() {
   group('QuizGenerator', () {
@@ -84,7 +97,46 @@ void main() {
         final texts = question.options.map((o) => o.text).toList();
         expect(texts.where((t) => t == correctText), hasLength(1),
             reason: 'duplicate option text in $texts');
+        expectOptionTextsAreDistinct(question);
       }
+    });
+
+    test('never offers two distractors that render the same text', () {
+      // The bundled data holds translations that differ only by case as well
+      // as exact duplicates, and filtering candidates against the answer alone
+      // let both members of such a pair through as distractors.
+      final entries = <VocabEntry>[
+        entry('a', 'alpha', 'M_u'),
+        entry('b', 'beta', 'm_u'),
+        entry('c', 'gamma', 'G'),
+        entry('d', 'delta', 'D'),
+      ];
+      final generator = QuizGenerator(entries: entries, random: Random(3));
+
+      for (var i = 0; i < 40; i++) {
+        expectOptionTextsAreDistinct(generator.next()!,
+            context: 'seed 3 draw $i');
+      }
+    });
+
+    test('the bundled pack never renders two options with the same text', () {
+      final pack = PackCodec.decodePack(
+          File('assets/packs/english_ar_v1.json').readAsStringSync());
+      expect(pack.entries.length, greaterThan(1));
+
+      // Seven display texts in the bundled data are shared by two entries
+      // each, so a duplicate pair is reachable, not theoretical.
+      var questionsChecked = 0;
+      for (var seed = 0; seed < 20; seed++) {
+        final generator =
+            QuizGenerator(entries: pack.entries, random: Random(seed));
+        for (var i = 0; i < 200; i++) {
+          expectOptionTextsAreDistinct(generator.next()!,
+              context: 'bundled pack seed $seed draw $i');
+          questionsChecked++;
+        }
+      }
+      expect(questionsChecked, 4000);
     });
 
     test('cycles through every entry before repeating one', () {
@@ -114,6 +166,17 @@ void main() {
     });
 
     test('falls back to the term when an entry has no translation', () {
+      const orphan = VocabEntry(id: 'a', term: 'orphan', translations: <String>[]);
+      const question = QuizQuestion(
+        answer: orphan,
+        options: <QuizOption>[QuizOption(entryId: 'a', text: 'orphan')],
+      );
+
+      expect(question.options[question.correctIndex].text, 'orphan');
+      expect(question.isCorrect(0), isTrue);
+    });
+
+    test('asks the entry with no translation instead of skipping it', () {
       final generator = QuizGenerator(
         entries: <VocabEntry>[
           const VocabEntry(id: 'a', term: 'orphan', translations: <String>[]),
@@ -121,10 +184,20 @@ void main() {
         ],
         random: Random(1),
       );
-      final question = generator.next()!;
-      if (question.answer.id == 'a') {
-        expect(question.options[question.correctIndex].text, 'orphan');
+
+      // Search for the orphan across the session rather than conditioning the
+      // assertion on one lucky seed: a silent skip is a green test that
+      // asserts nothing.
+      QuizQuestion? orphanQuestion;
+      for (var i = 0; i < 20 && orphanQuestion == null; i++) {
+        final question = generator.next()!;
+        if (question.answer.id == 'a') orphanQuestion = question;
       }
+
+      expect(orphanQuestion, isNotNull,
+          reason: 'the entry with no translation was never asked in 20 questions');
+      expect(orphanQuestion!.options[orphanQuestion.correctIndex].text,
+          'orphan');
     });
   });
 }
