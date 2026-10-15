@@ -1,6 +1,8 @@
+// ignore: depend_on_referenced_packages
+import 'package:meta/meta.dart';
+
 /// One vocabulary pair: an English term and its Arabic translations.
-///
-/// Immutable: every field is final and set in the constructor.
+@immutable
 class VocabEntry {
   const VocabEntry({
     required this.id,

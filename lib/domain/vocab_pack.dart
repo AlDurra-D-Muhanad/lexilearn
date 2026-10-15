@@ -1,9 +1,11 @@
+// ignore: depend_on_referenced_packages
+import 'package:meta/meta.dart';
+
 import 'vocab_entry.dart';
 
 /// A named, self-contained collection of entries plus enough metadata to render
 /// it without any other context.
-///
-/// Immutable: every field is final and set in the constructor.
+@immutable
 class VocabPack {
   const VocabPack({
     required this.schemaVersion,

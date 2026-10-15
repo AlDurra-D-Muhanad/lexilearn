@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lexilearn/domain/vocab_pack.dart';
+
 // `tool/legacy_line_parser.dart` deliberately sits outside `lib/` so it is not
 // compiled into the app binary, which means it has no `package:` URI and must
 // be imported by relative path. Same file the converter runs.
@@ -69,12 +71,27 @@ void main() {
       final second = LegacyLineParser.parse('Buried : a');
       expect(first.entries.single.id, second.entries.single.id);
       expect(first.entries.single.id, matches(RegExp(r'^buried-[0-9a-f]{6}$')));
+      // Pinned to a known digest of the RAW term. Without this the suite would
+      // still pass if entryId hashed term.toLowerCase(), term.trim(), or the
+      // slug -- the exact change that orphans every already-persisted progress
+      // row while leaving this file green.
+      //
+      // `fever` alone is not enough: it is already lowercase and its slug is
+      // itself, so both mutations are no-ops for it. `Terror` is pinned too
+      // because digesting its lowercase form or its slug would both yield
+      // sha1("terror") != sha1("Terror"), so that one really does bite.
+      expect(LegacyLineParser.entryId('fever'), 'fever-e2f347');
+      expect(LegacyLineParser.entryId('Terror'), 'terror-799316');
     });
 
     test('gives different ids to two terms with the same slug', () {
       final report = LegacyLineParser.parse('check up : a\ncheck-up : b');
       final ids = report.entries.map((e) => e.id).toSet();
       expect(ids, hasLength(2));
+    });
+
+    test('parser schema version tracks the pack schema version', () {
+      expect(LegacyLineParser.supportedSchemaVersion, VocabPack.currentSchemaVersion);
     });
   });
 }
