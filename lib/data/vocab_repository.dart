@@ -1,20 +1,28 @@
 import 'package:lexilearn/core/clock.dart';
 import 'package:lexilearn/domain/pack_codec.dart';
+import 'package:lexilearn/domain/quiz_session_result.dart';
+import 'package:lexilearn/domain/stats_summary.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'pack_dao.dart';
+import 'progress_dao.dart';
+import 'session_dao.dart';
 
 /// The only class the UI layer is allowed to know about.
 class VocabRepository {
   VocabRepository({required Database database, Clock? clock})
       : _db = database,
         _packs = PackDao(database),
+        _progress = ProgressDao(database),
+        _sessions = SessionDao(database),
         _clock = clock ?? DateTime.now;
 
   final Database _db;
   final PackDao _packs;
+  final ProgressDao _progress;
+  final SessionDao _sessions;
   final Clock _clock;
 
   Future<List<PackSummary>> packs() => _packs.listPacks();
@@ -70,6 +78,41 @@ class VocabRepository {
   }
 
   Future<void> close() => _db.close();
+
+  Future<void> recordAnswer({
+    required String packKey,
+    required String entryId,
+    required bool wasCorrect,
+  }) =>
+      _progress.record(
+          packKey: packKey, entryId: entryId, wasCorrect: wasCorrect, at: _clock());
+
+  Future<int> finishSession({
+    required String packKey,
+    required DateTime startedAt,
+    required int totalQuestions,
+    required int correctCount,
+  }) =>
+      _sessions.insert(QuizSessionResult(
+        packKey: packKey,
+        startedAt: startedAt,
+        totalQuestions: totalQuestions,
+        correctCount: correctCount,
+      ));
+
+  Future<StatsSummary> stats(String packKey) async {
+    final progressRows = await _progress.allForPack(packKey);
+    return StatsSummary(
+      totalAttempts:
+          progressRows.fold<int>(0, (sum, row) => sum + row.attempts),
+      totalCorrect: progressRows.fold<int>(0, (sum, row) => sum + row.correct),
+      wordsPracticed: progressRows.length,
+      wordsMastered: progressRows.where((row) => row.isMastered).length,
+      recentSessions: await _sessions.recent(),
+    );
+  }
+
+  Future<int> resetProgress(String packKey) => _progress.reset(packKey);
 
   /// Lowercase, strip invisible marks, collapse whitespace. Arabic queries and
   /// Arabic-containing text must compare consistently in both directions.
