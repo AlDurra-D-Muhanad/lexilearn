@@ -1,122 +1,96 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:lexilearn/app.dart';
+import 'package:lexilearn/data/database.dart';
+import 'package:lexilearn/data/vocab_repository.dart';
+import 'package:lexilearn/design/design_tokens.dart';
+import 'package:lexilearn/domain/pack_codec.dart';
+import 'package:lexilearn/ui/theme/app_surface.dart';
+import 'package:lexilearn/ui/theme/app_theme.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart' show databaseFactory;
 
-void main() {
-  runApp(const MyApp());
-}
+/// The composition root. The only place that knows about the asset bundle, the
+/// documents directory, and SQLite all at once.
+///
+/// `LexiLearnApp` takes a ready repository so this stays testable; the wiring
+/// that a widget test cannot exercise — opening the database at the app's
+/// documents path and seeding the bundled pack — lives here and nowhere else.
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  // This widget is the root of your application.
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+  const bundledPackAsset = 'assets/packs/english_ar_v1.json';
+  try {
+    final documents = await getApplicationDocumentsDirectory();
+    final database = await openAppDatabase(
+      factory: databaseFactory,
+      path: p.join(documents.path, 'lexilearn.db'),
     );
+    final repository = VocabRepository(database: database);
+    // Safe on every start: seeding decodes first and returns false when the
+    // pack is already installed, so a corrupt asset cannot overwrite anything
+    // and a good one cannot duplicate anything.
+    await repository.seedBundledPack(await rootBundle.loadString(bundledPackAsset));
+    runApp(LexiLearnApp(repository: repository));
+  } on PackDecodeException catch (error) {
+    _fatal('The bundled vocabulary file is broken: ${error.message}');
+  } on FileSystemException catch (error) {
+    _fatal('Could not open local storage: ${error.message}');
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
-          children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+/// The screen shown when the app cannot start.
+///
+/// A person reads this, so it is a sentence and not a stack trace, inside the
+/// brand's own surface rather than Flutter's red error page — the app is
+/// already themed, and a launch failure should not read as a crash.
+void _fatal(String message) {
+  // The theme is built here rather than read from a `BuildContext` because this
+  // subtree is handed straight to `runApp` — there is no ancestor to read from.
+  final theme = AppTheme.light();
+  runApp(
+    MaterialApp(
+      title: 'LexiLearn',
+      debugShowCheckedModeBanner: false,
+      theme: theme,
+      home: Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(AppSpacing.l),
+              child: AppSurface(
+                padding: const EdgeInsets.all(AppSpacing.l),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    const Icon(
+                      Icons.error_outline,
+                      size: 40,
+                      color: AppColors.errorLight,
+                    ),
+                    const SizedBox(height: AppSpacing.m),
+                    Text(
+                      'تعذّر بدء التطبيق',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: AppSpacing.s),
+                    Text(
+                      message,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium
+                          ?.copyWith(color: AppColors.textSecondaryLight),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ],
+          ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ),
-    );
-  }
+    ),
+  );
 }
