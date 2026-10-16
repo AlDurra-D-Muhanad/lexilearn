@@ -76,6 +76,12 @@ Finder statTile(String label) =>
 Finder statValue(String label, String value) =>
     find.descendant(of: statTile(label), matching: find.text(value));
 
+/// The one card that holds the session history, heading and rows together.
+Finder sessionsCard() => find.ancestor(
+      of: inStats(_recentHeading),
+      matching: find.byType(AppSurface),
+    );
+
 /// A ring drawn in [colour], found by its decoration rather than by its type.
 ///
 /// The badge is a private widget, and a test that could name it would be coupled
@@ -158,21 +164,13 @@ Future<void> _seed(
 
 /// Sizes the surface like the phone the artwork is drawn on.
 ///
-/// The default test surface is 800×600, which is tall enough for Home's header,
-/// its search field and the *first* row of the quick-launch grid and no further.
-/// `إحصائياتك` is in the second row, and tapping a widget outside the root
-/// throws rather than scrolling to it: measured, the tile's centre lands at
-/// `Offset(204.0, 865.4)` on an 800×600 surface, and `tap` reports "would not
-/// hit test on the specified widget … outside the bounds of the root of the
-/// render tree, Size(800.0, 600.0)".
-///
-/// 360×780 is the golden's own logical size, and it is what
-/// `test/ui/home_screen_test.dart` uses for the same reason.
-void _useAPhone(WidgetTester tester) {
-  tester.view.physicalSize = const Size(1080, 2340);
-  tester.view.devicePixelRatio = 3.0;
-  addTearDown(tester.view.reset);
-}
+/// A thin alias for the shared `useAPhone`, kept only so this file's intent is
+/// readable at the call site. The helper itself lives in
+/// `test/helpers/test_env.dart` because `test/ui/home_screen_test.dart` needs
+/// the identical thing — `إحصائياتك` is in the grid's second row, and on the
+/// default 800×600 surface its centre resolves to `Offset(204.0, 865.4)`,
+/// outside the root, where `tap` throws rather than scrolling.
+void _useAPhone(WidgetTester tester) => useAPhone(tester);
 
 /// The timestamp the screen renders for a session, built here rather than read
 /// from the screen's own formatter — a test that reused the implementation would
@@ -518,11 +516,38 @@ void main() {
         totalQuestions: 4,
         correctCount: 4,
       );
+      // A third session, half right. **The dark case used to be unverified:**
+      // with only the perfect session above, the one `borderDark` ring in this
+      // tree was the accuracy *track*, not a badge — so "neither verdict, so the
+      // hairline" was asserted in light mode only. Measured: mutating
+      // `_ScoreBadge`'s `neutral` from `borderDark` to `successDark` left all 17
+      // tests green. This session is what makes the badge's dark colour
+      // load-bearing, and the scoped assertion below is what catches it.
+      await session(
+        tester,
+        packKey: 'p',
+        startedAt: DateTime.utc(2026, 10, 13, 12),
+        totalQuestions: 4,
+        correctCount: 2,
+      );
 
       await _pumpStats(tester, harness.repository, brightness: Brightness.dark);
 
-      expect(badgeRing(AppColors.successDark), findsOneWidget);
-      expect(badgeRing(AppColors.borderDark), findsOneWidget);
+      expect(badgeRing(AppColors.successDark), findsOneWidget,
+          reason: 'the one perfect session');
+      // Unscoped: two hairline rings, the accuracy track and the half-right
+      // badge. Before the third session this read 1, and that 1 was the track —
+      // which is exactly why the mutation below left everything green.
+      expect(badgeRing(AppColors.borderDark), findsNWidgets(2),
+          reason: 'the accuracy track and the one session that is neither');
+      // Scoped to the history card, so it can only be the badge.
+      expect(
+        find.descendant(
+            of: sessionsCard(), matching: badgeRing(AppColors.borderDark)),
+        findsOneWidget,
+        reason: 'a session that is neither perfect nor scoreless wears the dark '
+            'hairline too, and that is the case light mode already covered',
+      );
       expect(tester.takeException(), isNull);
     });
 
@@ -615,6 +640,65 @@ void main() {
 
       expect(inStats(_resetTitle), findsNothing);
       expect(inStats(_emptyHeadline), findsNothing);
+      expect(statValue(_attemptsLabel, '2'), findsOneWidget);
+    });
+
+    testWidgets(
+        'the system back cancels the confirmation rather than leaving the '
+        'screen', (tester) async {
+      // This pins the behaviour `_ConfirmLayer`'s doc used to claim and the
+      // code did not have. Measured before the `PopScope` was added, with the
+      // confirmation open on a pushed `StatsScreen`:
+      // `tester.binding.handlePopRoute()` returned `true`, the `StatsScreen`
+      // count went to 0 and the host route came back. Back left the screen
+      // mid-confirmation.
+      //
+      // It is mounted through `pumpShell` rather than `_StatsApp` on purpose:
+      // `handlePopRoute` is about the *navigator*, and `_StatsApp` mounts
+      // `StatsScreen` as `MaterialApp.home`, which has no route underneath to
+      // come back to — the measurement above was taken on the pushed one.
+      await answer(tester, packKey: 'p', entryId: 'a', attempts: 2);
+      _useAPhone(tester);
+      await pumpShell(tester, harness.repository);
+
+      await tester.tap(find.descendant(
+        of: find.byType(HomeScreen),
+        matching: find.text(_tileStats),
+      ));
+      await tester.pumpAndSettle();
+      await settleDatabase(tester);
+      expect(find.byType(StatsScreen), findsOneWidget);
+
+      // Open the confirmation, so the assertion below is about a pop *while a
+      // destructive confirmation is up* and not about popping the screen.
+      await _tap(tester, find.text(_reset));
+      expect(inStats(_resetTitle), findsOneWidget);
+
+      // Blocked, so the route stays and the screen is still there.
+      //
+      // **The return value does not say the route popped, and is not asserted
+      // as if it did.** `NavigatorState.maybePop` returns `true` for
+      // `RoutePopDisposition.doNotPop` as well as for a real pop — it means
+      // "the pop was handled", and being blocked on purpose counts as handled.
+      // Asserting `isFalse` here fails on correct code; the measurement that
+      // actually distinguishes the two behaviours is whether `StatsScreen` is
+      // still in the tree, which is the first assertion below. Verified: with
+      // this `PopScope` in place `handlePopRoute()` returns `true` and the
+      // screen survives; without it, it also returns `true` and the screen is
+      // gone.
+      final handled = await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(handled, isTrue,
+          reason: 'the pop was handled — by being blocked, not by navigating');
+      expect(find.byType(StatsScreen), findsOneWidget,
+          reason: 'the route did not pop; back did not navigate away');
+      // Cancelled, not ignored: a back button that does nothing at all is its
+      // own defect, and this is the behaviour the `PopScope` callback exists
+      // for.
+      expect(inStats(_resetTitle), findsNothing,
+          reason: 'back dismissed the confirmation rather than being swallowed');
+      // And it reset nothing.
       expect(statValue(_attemptsLabel, '2'), findsOneWidget);
     });
 

@@ -56,15 +56,12 @@ Finder textWidget(String text) =>
 
 /// Sizes the surface like the phone the artwork is drawn on.
 ///
-/// The default test surface is 800×600 and tall enough for the header, the field
-/// and one row of the grid. The second row lands at y≈668, outside the root, and
-/// `tap` on an off-screen widget throws — so every test that taps a tile sizes
-/// the surface first. 360×780 is the golden's own logical size.
-void _useAPhone(WidgetTester tester) {
-  tester.view.physicalSize = const Size(1080, 2340);
-  tester.view.devicePixelRatio = 3.0;
-  addTearDown(tester.view.reset);
-}
+/// A thin alias for the shared `useAPhone`, kept only so this file's intent is
+/// readable at the call site, exactly as `_pumpApp` is for `pumpShell`. The
+/// helper itself lives in `test/helpers/test_env.dart` because
+/// `test/ui/stats_screen_test.dart` needs the identical thing and the two copies
+/// were byte-for-byte the same.
+void _useAPhone(WidgetTester tester) => useAPhone(tester);
 
 /// Mounts the app and waits for both start-up reads.
 ///

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lexilearn/app.dart';
 import 'package:lexilearn/data/database.dart';
@@ -60,6 +61,28 @@ class TestHarness {
   }
 
   Future<void> dispose() => repository.close();
+}
+
+/// Sizes the surface like the phone the artwork is drawn on: 360×780 logical.
+///
+/// **Not a convenience — a precondition for tapping a Home grid tile.** The
+/// default test surface is 800×600, which is tall enough for Home's header, its
+/// search field and the *first* row of the 2×2 quick-launch grid and no further.
+/// The second row lands below the root, and `tap` on an off-screen widget
+/// throws rather than scrolling to it: measured, the centre of `إحصائياتك`
+/// resolves to `Offset(204.0, 865.4)` on an 800×600 surface, and `tap` reports
+/// "would not hit test on the specified widget … outside the bounds of the root
+/// of the render tree, Size(800.0, 600.0)".
+///
+/// Shared rather than copied because two test files hit it and the copy is
+/// byte-identical: `test/ui/home_screen_test.dart` and
+/// `test/ui/stats_screen_test.dart`, both of which tap a tile in that second
+/// row. 360×780 is the golden's own logical size
+/// (`test/goldens/golden_test.dart` sets the same 1080×2340 at 3× by hand).
+void useAPhone(WidgetTester tester) {
+  tester.view.physicalSize = const Size(1080, 2340);
+  tester.view.devicePixelRatio = 3.0;
+  addTearDown(tester.view.reset);
 }
 
 /// How long the shell's start-up query is given on the real event loop.

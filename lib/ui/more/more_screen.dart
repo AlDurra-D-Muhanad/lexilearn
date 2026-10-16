@@ -2,8 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:lexilearn/design/design_tokens.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
 
-/// The brand's fifth destination: everything else — statistics, packs, import
-/// and backup.
+/// The brand's **fourth** destination: `المزيد`, reached from the bottom bar.
+///
+/// It is the fourth of four, not a fifth thing that statistics belongs to.
+/// `docs/design/brand-reference.png` draws exactly four items in the bar —
+/// الرئيسية, البطاقات, الاختبارات, المزيد — in the light phone and again in the
+/// dark one, and Amendment 1 in `docs/design/style-direction.md` corrects an
+/// earlier five-destination draft back to four. **Statistics is not on that bar
+/// and is not here either**: it is reached from the `إحصائياتك` tile in Home's
+/// 2×2 quick-launch grid, which pushes `StatsScreen` the way `المفضلة` pushes
+/// `FavoritesScreen`. See `lib/ui/stats/stats_screen.dart` and
+/// `lib/ui/home/home_screen.dart`.
 ///
 /// Task 9's shell. Task 13 replaces the body with that page and owns switching
 /// the active pack through [onPackSelected].
@@ -22,7 +31,12 @@ class MoreScreen extends StatelessWidget {
         title: 'المزيد',
         icon: Icons.tune_outlined,
         headline: 'لا يوجد شيء هنا بعد',
-        supporting: 'الإحصائيات والحزم والنسخ الاحتياطي في هذه الصفحة.',
+        // Task 13 owns this string along with the rest of the body. It used to
+        // say "statistics, packs and backup live on this page", which stopped
+        // being true in Task 12: statistics is on the Home grid tile, not here.
+        // Left as a placeholder's own text until Task 13 writes the real page —
+        // it is not a statement about where statistics can be found.
+        supporting: 'الحزم والنسخ الاحتياطي في هذه الصفحة.',
         packKey: packKey,
       );
 }

@@ -163,6 +163,12 @@ class _StatsBodyState extends State<_StatsBody> {
 
   StatsController get _controller => widget.controller;
 
+  /// Closes the confirmation without resetting.
+  ///
+  /// Named so the `إلغاء` button and the `PopScope` callback are literally the
+  /// same behaviour rather than two expressions that happen to agree.
+  void _cancel() => setState(() => _confirming = false);
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -190,9 +196,35 @@ class _StatsBodyState extends State<_StatsBody> {
               Positioned.fill(child: _content()),
               if (_confirming)
                 Positioned.fill(
-                  child: _ConfirmLayer(
-                    onCancel: () => setState(() => _confirming = false),
-                    onConfirm: _reset,
+                  // Back is *cancelled*, not blocked and not allowed through.
+                  // Measured before this wrapper existed: with the confirm layer
+                  // open, `tester.binding.handlePopRoute()` returned `true`, the
+                  // `StatsScreen` count went to 0 and the host route came back —
+                  // so Android's back silently left the screen mid-confirmation.
+                  // A user who presses back expecting to dismiss a modal
+                  // expects the modal to go, and on this screen nothing is lost
+                  // either way (the reset has not been invoked), but the screen
+                  // vanishing under an open destructive confirmation is not a
+                  // state to design for.
+                  //
+                  // `canPop: false` keeps the route; the callback turns the
+                  // blocked pop into a cancel, so back and `إلغاء` do the same
+                  // thing. Pinned by *the system back cancels the confirmation
+                  // rather than leaving the screen* in
+                  // `test/ui/stats_screen_test.dart`.
+                  child: PopScope<void>(
+                    canPop: false,
+                    onPopInvokedWithResult: (didPop, _) {
+                      // `didPop` is always false while `canPop` is false; the
+                      // guard is here so a future `canPop` cannot turn a
+                      // cancellation into a navigation.
+                      if (didPop) return;
+                      setState(() => _confirming = false);
+                    },
+                    child: _ConfirmLayer(
+                      onCancel: _cancel,
+                      onConfirm: _reset,
+                    ),
                   ),
                 ),
             ],
@@ -631,8 +663,17 @@ class _ResetButton extends StatelessWidget {
 /// the two in one tree, and the body is still there underneath the barrier,
 /// which is the point of asking first.
 ///
-/// The barrier is not dismissible and the system back does not reach through it,
-/// so the only ways out are the two buttons.
+/// **Back cancels the confirmation and does not leave the screen.** The
+/// `PopScope` in [_StatsBodyState.build] blocks the pop and turns it into this
+/// layer's cancel, so Android's back button behaves the way it behaves on any
+/// modal. What the barrier blocks is a *tap* — `ModalBarrier(dismissible: false)`
+/// takes the taps and sends them nowhere.
+///
+/// The three ways out are the two buttons and back; what none of them does is
+/// reset, because `onConfirm` is the only path to `StatsController.reset()`. The
+/// button behaviour is pinned by *asks first, and cancelling changes nothing*
+/// and this one's back behaviour by *the system back cancels the confirmation
+/// rather than leaving the screen*.
 class _ConfirmLayer extends StatelessWidget {
   const _ConfirmLayer({required this.onCancel, required this.onConfirm});
 
