@@ -112,6 +112,38 @@ class AppTheme {
             color: isDark ? AppColors.borderDark : AppColors.borderLight,
           ),
         ),
+        // Material 3 does NOT paint a filled field's outline from `border`. It
+        // synthesises it inside the decorator from `colorScheme.onSurfaceVariant`,
+        // and it picks `enabledBorder` / `focusedBorder` / `disabledBorder` to do
+        // so — `border` only fills the gap if none of the three is set. All three
+        // used to be null here, so every input in the app fell back to the
+        // muted-text role and drew its outline in `#6B7280` instead of the brand
+        // hairline. Measured: overriding `onSurfaceVariant` to `#00FF00` and
+        // rasterising produced a `#00FF00` border.
+        //
+        // `onSurfaceVariant` itself is deliberately left alone — it is correctly
+        // the muted text role, and recolouring it to fix a border would
+        // recolour every muted string in the app. Pinned by
+        // `test/design/app_theme_test.dart` and by
+        // `test/design/input_outline_test.dart`.
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadii.pill),
+          borderSide: BorderSide(
+            color: isDark ? AppColors.borderDark : AppColors.borderLight,
+          ),
+        ),
+        disabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadii.pill),
+          borderSide: BorderSide(
+            color: isDark ? AppColors.borderDark : AppColors.borderLight,
+          ),
+        ),
+        // Focus reads as a colour from the palette — the brand purple, at the
+        // 2px Material draws a focused outline — rather than as a heavier grey.
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadii.pill),
+          borderSide: BorderSide(color: scheme.primary, width: 2),
+        ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.m,
           vertical: AppSpacing.m,

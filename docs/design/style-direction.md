@@ -75,6 +75,33 @@ $bmp.Dispose()
 Two exact-colour counts are the pass condition: `#000000` must be **0** pixels,
 and `#1D1B20` must be **0** pixels while `#1F2937` is present.
 
+### The golden is a live regression surface, and this is its guard
+
+`test/goldens/golden_test.dart` **has** to stay skipped. Golden bytes depend on
+the platform's font rasteriser — Windows uses Segoe UI, Linux CI uses Roboto — so
+a byte-identical match across the two is impossible by construction. That skip has
+a cost, and it is worth being explicit about it: since Task 10 the golden renders
+the **real `LexiLearnApp`**, not a local stand-in. So every change to the bottom
+bar, the header, the search field or the theme silently invalidates the committed
+PNG, and the skipped test will not say so.
+
+So the census is a script, and it is run by hand whenever a screen task changes
+anything a pixel would notice:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tool\golden_census.ps1
+```
+
+It reads the committed PNG, asserts the pass condition above, prints the brand
+token table, and reports the darkest pixel in the image — a stronger statement
+than the two exact counts, because if the darkest pixel is the brand ink there is
+no near-black hiding either. It reads committed pixels and regenerates nothing;
+regenerating is the test's job, on purpose, by commenting out its `skip:` line and
+running with `--update-goldens`.
+
+A live regression surface with a guard nobody runs is the same as no guard. Run
+it.
+
 ## Navigation
 **Four** bottom destinations, matching the artwork: الرئيسية (Home),
 البطاقات (Flashcards), الاختبارات (Quizzes), المزيد (More). The active
@@ -212,3 +239,24 @@ brand's favour:
 
    `test/ui/home_shell_test.dart` pins all four, so a later icon change is a
    test failure rather than silent drift.
+8. **Home's 2×2 grid is in reading order, which transposes it against the
+   artwork.** The mock draws `الاختبارات` top-right and `بطاقات التعلم`
+   top-left, with `إحصائياتك` and `المفضلة` the other way round on the second
+   row. Reproducing that arrangement would mean fighting the directional
+   `GridView`, which places its first child at the RTL *start* — and what the
+   mock shows is a left-to-right grid of Arabic labels, which is what a designer
+   draws in Figma and not what an Arabic screen reads as. So the children are in
+   reading order, top-right first: `بطاقات التعلم`, `الاختبارات`, `المفضلة`,
+   `إحصائياتك` — the order the brand reference names the tiles in. **Both rows
+   are transposed relative to the mock. Do not "fix" this by reordering the
+   children to match the PNG**; that would break reading order to imitate a
+   mock's own layout mistake.
+9. **The search field's magnifier sits at the RTL start, not the end.** The
+   artwork draws it at the right-hand end of the field, which is the *end* in
+   RTL, and the placeholder at the start. Material's `InputDecoration` places
+   `prefixIcon` at the start, so the app's field reads opposite to the mock. The
+   Material convention wins, because the artwork's other left-to-right tell — the
+   header's greeting pushed to the left — was resolved the same way, and because
+   a magnifier is a control rather than prose: it belongs where the app puts
+   every other control's leading edge. Recorded so a later task does not read the
+   PNG and "correct" it.

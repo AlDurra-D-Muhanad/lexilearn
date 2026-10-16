@@ -9,9 +9,7 @@ import 'package:lexilearn/design/design_tokens.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/domain/word_of_the_day.dart';
 import 'package:lexilearn/ui/favorites/favorites_screen.dart';
-import 'package:lexilearn/ui/flashcards/flashcards_screen.dart';
-import 'package:lexilearn/ui/more/more_screen.dart';
-import 'package:lexilearn/ui/quiz/quiz_setup_screen.dart';
+import 'package:lexilearn/ui/home_shell.dart';
 import 'package:lexilearn/ui/search/search_controller.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
 import 'package:provider/provider.dart';
@@ -131,8 +129,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onChanged(String value) {
-    // Rebuilt immediately so the clear button appears the moment there is
-    // something to clear, rather than one debounce later.
+    // Rebuilt immediately so the clear button appears with the first keystroke.
+    // It reads `_field.text`, not `_search.query`: `SearchController` only
+    // assigns the query inside `search()`, which is 250 ms away, so a button
+    // driven by the controller appeared a quarter-second after the character it
+    // was meant to erase. Measured: 0 clear buttons before typing, 0 at +100 ms,
+    // 1 after the debounce.
     setState(() {});
     // 250 ms — `AppDurations.standard`, the brand's own "immediate" duration.
     // Long enough to coalesce a fast typist into one read, short enough that
@@ -174,7 +176,12 @@ class _HomeScreenState extends State<HomeScreen> {
               controller: _field,
               onChanged: _onChanged,
               onClear: _clear,
-              hasQuery: _hasQuery,
+              // The field's own text, not `_hasQuery`: the clear button must
+              // exist from the first keystroke, and `_search.query` only catches
+              // up after the 250 ms debounce. `_hasQuery` still decides the
+              // body swap below, where waiting is right — the results really are
+              // the debounced read's, not the field's.
+              hasQuery: _field.text.trim().isNotEmpty,
             ),
             const SizedBox(height: AppSpacing.m),
             Expanded(
@@ -393,37 +400,12 @@ class _SearchField extends StatelessWidget {
   /// is the state the screen already rebuilt for.
   final bool hasQuery;
 
-  /// The field's outline, stated per state.
-  ///
-  /// Material 3 paints a *filled* text field's outline with
-  /// `colorScheme.onSurfaceVariant`, whatever `InputDecoration.border` says. That
-  /// was measured rather than assumed: rasterising the field with
-  /// `onSurfaceVariant` overridden to `#00FF00` produced a `#00FF00` border, and
-  /// under the app theme — where `onSurfaceVariant` is `textSecondaryLight` —
-  /// the rasterised border comes out `#6B7280`, the secondary *text* grey, in a
-  /// brand that specifies `#E5E7EB` for this hairline.
-  ///
-  /// `app_theme.dart` belongs to Task 8 and its `onSurfaceVariant` is pinned by
-  /// `test/design/app_theme_test.dart`, so the brand hairline is named here from
-  /// the same token the theme uses. This is the app's only text input, so a
-  /// screen-local statement is the cheaper fix than a theme-wide one that would
-  /// recolour every `onSurfaceVariant` string along with it.
-  static OutlineInputBorder _border(Color color, {double width = 1}) =>
-      OutlineInputBorder(
-        borderRadius: BorderRadius.circular(AppRadii.pill),
-        borderSide: BorderSide(color: color, width: width),
-      );
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final scheme = theme.colorScheme;
-    final secondary = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondaryLight;
-    final hairline = isDark ? AppColors.borderDark : AppColors.borderLight;
-    final primary = isDark ? AppColors.primaryDark : AppColors.primaryLight;
+    final secondary =
+        isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
@@ -435,21 +417,19 @@ class _SearchField extends StatelessWidget {
         // the app names Inter, but this field holds whatever the user types, and
         // an Arabic query typed into an Inter-bound field renders as tofu — the
         // bilingual search the Python original had would be unreadable.
+        //
+        // The pill outline is not restated here either. `AppTheme`'s
+        // `inputDecorationTheme` carries `enabledBorder` / `focusedBorder` /
+        // `disabledBorder`, because Material 3 synthesises a filled field's
+        // outline from those three and ignores `border` when they are null.
+        // Pinned by `test/design/input_outline_test.dart`.
         decoration: InputDecoration(
           hintText: _searchHint,
           hintTextDirection: TextDirection.rtl,
-          border: _border(hairline),
-          enabledBorder: _border(hairline),
-          // Focused takes the brand purple, at the 2px Material draws it at, so
-          // the field's focus state is a colour from the palette rather than a
-          // grey that happens to be in the right place.
-          focusedBorder: _border(primary, width: 2),
-          errorBorder: _border(scheme.error),
-          disabledBorder: _border(hairline),
           // Material puts the icon at the *start*, which is the right-hand end in
           // RTL. The artwork draws its magnifier at the other end, as a
-          // left-to-right mock would; the golden this screen is measured against
-          // uses the Material convention, so this does too.
+          // left-to-right mock would; see `docs/design/style-direction.md`
+          // → Amendments.
           prefixIcon: Icon(Icons.search_rounded, color: secondary),
           suffixIcon: !hasQuery
               ? null
@@ -469,12 +449,16 @@ class _SearchField extends StatelessWidget {
 /// The brand fills it with the primary colour — see
 /// `docs/design/brand-reference.md` — and the artwork fills it with a
 /// photograph, which is out of scope by user decision. So it is the one surface
-/// on this screen that is *not* an `AppSurface`: `AppSurface` paints the
-/// neutral surface colour and has no override for it, and reaching for a `Card`
-/// instead would trade the brand's shadow for Material's elevation shadow, which
-/// this rasteriser strokes as an opaque black keyline. The tokens below are the
-/// same ones `AppSurface` composes, including its rule that dark mode separates
-/// by hairline and light mode by shadow.
+/// on this screen that is not the neutral surface, and it says so through
+/// `AppSurface`'s `fill` rather than by reaching for a `Card` (which would trade
+/// the brand's shadow for Material's elevation shadow, that this rasteriser
+/// strokes as an opaque black keyline) or for a private `Container` (which would
+/// quietly stop sharing the radius and shadow rules). Every surface on this
+/// screen is an `AppSurface`; this one is the named exception.
+///
+/// Dark mode takes the neutral surface fill rather than the primary: a light
+/// purple card at full strength would be the loudest thing on an already dark
+/// screen, and the artwork's dark phone draws this card as a dark surface too.
 class _WordOfTheDayCard extends StatelessWidget {
   const _WordOfTheDayCard({required this.entry, required this.onOpenWord});
 
@@ -488,18 +472,9 @@ class _WordOfTheDayCard extends StatelessWidget {
     final onFill = isDark ? AppColors.textDark : AppColors.surfaceLight;
     final fill = isDark ? AppColors.surfaceDark : AppColors.primaryLight;
 
-    return Container(
+    return AppSurface(
+      fill: fill,
       padding: const EdgeInsets.all(AppSpacing.l),
-      decoration: BoxDecoration(
-        color: fill,
-        borderRadius: BorderRadius.circular(AppRadii.md),
-        // In light mode the border takes the fill, so the card reads as one
-        // edge-to-edge shape rather than a purple panel in a grey outline.
-        border: Border.all(
-          color: isDark ? AppColors.borderDark : AppColors.primaryLight,
-        ),
-        boxShadow: isDark ? AppShadows.none : AppShadows.light,
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -518,7 +493,7 @@ class _WordOfTheDayCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppText.latinDisplay
-                      .copyWith(fontSize: 28, color: onFill),
+                      .copyWith(fontSize: AppText.wordOfTheDay, color: onFill),
                 ),
               ),
               // Static, never played: text-to-speech is out of scope by user
@@ -561,19 +536,30 @@ class _WordOfTheDayCard extends StatelessWidget {
 /// The 2×2 quick-launch grid the artwork draws under the card.
 ///
 /// Children are in *reading* order, top-right first, because the grid lays out
-/// directionally. The artwork's mock transposes the top two tiles, which is what
-/// a left-to-right mock of an Arabic grid looks like; the reading order is the
-/// one the brand reference names the tiles in.
+/// directionally. The artwork's mock transposes both rows, which is what a
+/// left-to-right mock of an Arabic grid looks like; the reading order is the one
+/// the brand reference names the tiles in. Recorded in
+/// `docs/design/style-direction.md` → Amendments.
 ///
-/// The tiles open their destination as a route rather than switching the bottom
-/// bar. `HomeShell` owns the bar's index and does not hand its children a way
-/// to move it — `HomeScreen`'s signature is fixed — so a tile pushing its
-/// destination is the only link available, and `المفضلة` has to be pushed anyway
-/// because it is not a tab at all.
+/// **Three of the four tiles switch the bottom bar; only `المفضلة` pushes.**
+/// Pushing a route for a destination the bar can already show leaves the bar
+/// highlighting `الرئيسية` under a screen the user did not choose, and makes
+/// Back return to Home instead of to the bar. `المفضلة` is genuinely not a tab —
+/// the artwork reaches it from here and from the word card's heart — so it has
+/// nothing to switch to and is pushed. The bar's index and its handler come from
+/// `ShellTabScope`, which `HomeShell` publishes because this screen's
+/// constructor cannot take a callback.
 class _QuickLaunchGrid extends StatelessWidget {
   const _QuickLaunchGrid({required this.packKey});
 
   final String packKey;
+
+  /// Switches the bar to [index] when a scope is present.
+  ///
+  /// Mounted outside the shell — `HomeScreen` is pumpable on its own in a test —
+  /// there is nothing to switch, so the tap does nothing rather than throwing.
+  void _goToTab(BuildContext context, int index) =>
+      ShellTabScope.of(context)?.selectTab(index);
 
   @override
   Widget build(BuildContext context) {
@@ -592,9 +578,8 @@ class _QuickLaunchGrid extends StatelessWidget {
           iconColor: AppColors.accent,
           title: 'بطاقات التعلم',
           subtitle: 'ابدأ الآن',
-          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-            builder: (_) => FlashcardsScreen(packKey: packKey),
-          )),
+          onTap: () => _goToTab(context, 1),
+
         ),
         _QuickLaunchTile(
           icon: Icons.check_box_rounded,
@@ -603,12 +588,7 @@ class _QuickLaunchGrid extends StatelessWidget {
           iconColor: Theme.of(context).colorScheme.onSurface,
           title: 'الاختبارات',
           subtitle: 'اختبر نفسك',
-          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-            builder: (_) => QuizSetupScreen(
-              packKey: packKey,
-              onPackSelected: (_) {},
-            ),
-          )),
+          onTap: () => _goToTab(context, 2),
         ),
         _QuickLaunchTile(
           icon: Icons.favorite_rounded,
@@ -627,12 +607,7 @@ class _QuickLaunchGrid extends StatelessWidget {
           iconColor: Theme.of(context).colorScheme.onSurface,
           title: 'إحصائياتك',
           subtitle: 'تقدمك وإنجازك',
-          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-            builder: (_) => MoreScreen(
-              packKey: packKey,
-              onPackSelected: (_) {},
-            ),
-          )),
+          onTap: () => _goToTab(context, 3),
         ),
       ],
     );
@@ -726,7 +701,14 @@ class _EntryRow extends StatelessWidget {
           for (final translation in entry.translations)
             Text(translation, textDirection: TextDirection.rtl),
           if (entry.note.isNotEmpty)
-            Text(entry.note, style: theme.textTheme.bodySmall),
+            // A note in the dataset is English prose, like the term above it, so
+            // it asks for Inter and LTR explicitly rather than being reordered by
+            // the app's direction or set in Tajawal's own Latin.
+            Text(
+              entry.note,
+              textDirection: TextDirection.ltr,
+              style: AppText.latin.merge(theme.textTheme.bodySmall),
+            ),
         ],
       ),
       isThreeLine: entry.translations.length > 1,

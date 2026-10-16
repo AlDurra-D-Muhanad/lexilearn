@@ -85,13 +85,9 @@ void main() {
     // label `بطاقات` where it draws `البطاقات`. Every screen task was told to
     // copy this file, so a stale preview here was a stale preview everywhere.
     //
-    // `pumpShell` waits for the shell's start-up read. The Home screen reads its
-    // pack a second time — it cannot read the pack until the shell has resolved
-    // the key — so that read needs one more turn on the shared settle. Same
-    // reason, same constant; see `pumpShell` in `test/helpers/test_env.dart`.
+    // `pumpShell` waits for both start-up reads — the shell's, and the Home
+    // screen's own, which cannot begin until the shell has resolved the pack key.
     await pumpShell(tester, harness.repository);
-    await tester.runAsync(() => Future<void>.delayed(shellDatabaseSettle));
-    await tester.pumpAndSettle();
 
     await expectLater(
       find.byType(MaterialApp),

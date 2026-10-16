@@ -84,4 +84,12 @@ class AppText {
   static const TextStyle latinDisplay =
       TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w600);
   static const TextStyle arabic = TextStyle(fontFamily: 'Tajawal');
+
+  /// The display size on the Home screen's word-of-the-day card.
+  ///
+  /// A word being *asked about* is the largest text on its screen, so this is the
+  /// one place in the app that needs a size above the Material body scale. Named
+  /// here rather than written as a literal at the call site, so the card is not
+  /// the sixth place in the app where a raw number appears.
+  static const double wordOfTheDay = 28;
 }

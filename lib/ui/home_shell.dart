@@ -116,6 +116,18 @@ class _HomeShellState extends State<HomeShell> {
 
   void _selectPack(String packKey) => setState(() => _activePackKey = packKey);
 
+  /// Switches the bottom bar to [index].
+  ///
+  /// Named separately from the bar's `onDestinationSelected` closure so the same
+  /// one handler serves both the bar and Home's quick-launch grid. It is also
+  /// what `ShellTabScope` below exposes to descendants, which is the whole
+  /// reason that widget exists — see its documentation.
+  void _selectTab(int index) {
+    if (index < 0 || index >= _destinations.length) return;
+    if (index == _index) return;
+    setState(() => _index = index);
+  }
+
   /// Opens the word detail view for [entry].
   ///
   /// Deliberately empty until Task 14 lands: `WordDetailScreen` does not exist
@@ -141,23 +153,73 @@ class _HomeShellState extends State<HomeShell> {
 
     return Scaffold(
       body: SafeArea(
-        // One movement per tab change, at the brand's fast duration — the
-        // style direction reserves `AppDurations.fast` for exactly this. The
-        // key is the index, so changing packs inside a destination updates the
-        // screen in place instead of replaying the transition.
-        child: AnimatedSwitcher(
-          duration: AppDurations.fast,
-          child: KeyedSubtree(
-            key: ValueKey<int>(_index),
-            child: screens[_index],
+        child: ShellTabScope(
+          // The grid's tiles select bar destinations rather than pushing a
+          // second copy of them. `HomeScreen` predates this and cannot take a
+          // callback — its constructor is fixed by the interfaces later tasks
+          // depend on — so the shell publishes the handler down the tree instead.
+          // Descendants re-read [index] on every tab change, so a tile can also
+          // tell which destination is showing.
+          index: _index,
+          selectTab: _selectTab,
+          child: AnimatedSwitcher(
+            // One movement per tab change, at the brand's fast duration — the
+            // style direction reserves `AppDurations.fast` for exactly this. The
+            // key is the index, so changing packs inside a destination updates
+            // the screen in place instead of replaying the transition.
+            duration: AppDurations.fast,
+            child: KeyedSubtree(
+              key: ValueKey<int>(_index),
+              child: screens[_index],
+            ),
           ),
         ),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: (value) => setState(() => _index = value),
+        onDestinationSelected: _selectTab,
         destinations: _destinations,
       ),
     );
   }
+}
+
+/// The shell's selected destination, published to the screens inside it.
+///
+/// **Why this exists.** `HomeShell` owns the bottom bar's index, and Home's
+/// quick-launch grid links to three of those same destinations. Pushing a route
+/// for a destination the bar can already show leaves the bar highlighting
+/// `الرئيسية` under a screen the user did not choose, and makes Back return to
+/// Home rather than to the bar. Passing `onSelectTab` down through a constructor
+/// is not available: `HomeScreen`'s signature is fixed by the interfaces Tasks 11
+/// onwards depend on. So the shell hands the handler down the tree.
+///
+/// Read it with [ShellTabScope.of], and **only inside `build` or a callback** —
+/// this depends on the inherited widget, so a `build` of an ancestor will not
+/// see a later change. That is the right trade here: the grid is the only reader,
+/// and it rebuilds anyway because the shell rebuilds.
+class ShellTabScope extends InheritedWidget {
+  const ShellTabScope({
+    super.key,
+    required this.index,
+    required this.selectTab,
+    required super.child,
+  });
+
+  /// Which destination is showing, as an index into the bar's order.
+  final int index;
+
+  /// Switches the bar to [index]. Out-of-range values are ignored by the shell,
+  /// so a bad index cannot crash it.
+  final ValueChanged<int> selectTab;
+
+  /// The nearest enclosing scope, or null when there is none — which is what a
+  /// screen mounted outside the shell sees, and what makes `HomeScreen` usable
+  /// on its own in a test.
+  static ShellTabScope? of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ShellTabScope>();
+
+  @override
+  bool updateShouldNotify(ShellTabScope oldWidget) =>
+      oldWidget.index != index || oldWidget.selectTab != selectTab;
 }

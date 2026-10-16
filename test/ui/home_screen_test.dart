@@ -65,21 +65,14 @@ void _useAPhone(WidgetTester tester) {
   addTearDown(tester.view.reset);
 }
 
-/// Mounts the app and gives the screen's *own* start-up read its turn.
+/// Mounts the app and waits for both start-up reads.
 ///
-/// `pumpShell` waits for the shell's read — the one that fills in the active pack
-/// key. `HomeScreen` cannot read its pack until it has that key, so the
-/// word-of-the-day read starts in the last moments of `pumpShell`'s window and
-/// has none of it left. One more turn, on the same shared `shellDatabaseSettle`.
-///
-/// `pumpShell` is still what mounts the app; this only adds the second read's
-/// wait, which is a fact about two sequential reads rather than a second helper.
-/// Tasks 13-15 reach their screens the same way and will need the same turn.
-Future<void> _pumpApp(WidgetTester tester, VocabRepository repository) async {
-  await pumpShell(tester, repository);
-  await tester.runAsync(() => Future<void>.delayed(shellDatabaseSettle));
-  await tester.pumpAndSettle();
-}
+/// A thin alias for the shared `pumpShell`, kept only so this file's intent is
+/// readable at the call site. `HomeScreen` reads the pack a second time — it
+/// cannot until the shell has resolved the pack key — and `pumpShell` waits for
+/// both, so no test here needs a private `runAsync` turn of its own.
+Future<void> _pumpApp(WidgetTester tester, VocabRepository repository) =>
+    pumpShell(tester, repository);
 
 /// Types [value] into the search field and lets both halves of the wait finish.
 ///
@@ -180,7 +173,11 @@ void main() {
       }
     });
 
-    testWidgets('every grid tile is a brand surface', (tester) async {
+    testWidgets('every surface on the dashboard is an AppSurface', (tester) async {
+      // The rule is meant to be checkable, not argued: the four grid tiles and
+      // the word-of-the-day card all go through the shared surface, which is what
+      // carries the brand shadow and the radius. The card says "not the neutral
+      // fill" through `AppSurface.fill`, so it is still one of these.
       await _pumpApp(tester, harness.repository);
 
       for (final tile in _tiles) {
@@ -190,19 +187,29 @@ void main() {
           reason: '"${tile[0]}" is not inside an AppSurface',
         );
       }
-      // The word-of-the-day card is deliberately *not* an `AppSurface`: the brand
-      // fills it with the primary colour, `AppSurface` paints the neutral surface
-      // colour and has no override for it. So the assertion that covers it is the
-      // one below — nothing on the dashboard is a bare `Card`.
+      expect(
+        find.ancestor(
+            of: inHome(_meaningButton), matching: find.byType(AppSurface)),
+        findsOneWidget,
+        reason: 'the word-of-the-day card is not an AppSurface',
+      );
+      // And nothing anywhere on the dashboard is a bare Card, which is the other
+      // half of the same rule.
+      expect(find.byType(Card), findsNothing);
     });
 
-    testWidgets('nothing on the dashboard is a bare Card', (tester) async {
-      // `Card` reaches its shadow through `elevation`, which the test rasteriser
-      // strokes as an opaque black keyline — 29,111 black pixels the last time a
-      // screen reached for it. Surfaces go through `AppSurface`.
+    testWidgets('the word-of-the-day card asks for the primary fill',
+        (tester) async {
       await _pumpApp(tester, harness.repository);
 
-      expect(find.byType(Card), findsNothing);
+      final surface = tester.widget<AppSurface>(
+        find.ancestor(
+          of: inHome(_meaningButton),
+          matching: find.byType(AppSurface),
+        ),
+      );
+      expect(surface.fill, AppColors.primaryLight,
+          reason: 'the brand fills this card with the primary colour');
     });
 
     testWidgets('the active pack is named on the screen', (tester) async {
@@ -211,33 +218,29 @@ void main() {
       expect(inHome('en_ar'), findsOneWidget);
     });
 
-    testWidgets('the field asks for the brand hairline, not the theme\'s default',
+    testWidgets('the field takes its outline from the theme, not from itself',
         (tester) async {
-      // Material 3 paints a filled field's outline with `colorScheme.onSurfaceVariant`
-      // whatever `border` says, and the app theme sets that to the secondary
-      // *text* grey. So the screen names the hairline per state, and this pins it.
+      // Material 3 synthesises a filled field's outline from `enabledBorder` /
+      // `focusedBorder` / `disabledBorder` and ignores `border` when they are
+      // null, falling back to `colorScheme.onSurfaceVariant` — the muted text
+      // role. So the outline lives in `AppTheme`, exactly once, and this screen
+      // restates none of it. The screen-side assertion is that the borders are
+      // *absent* here; the theme-side guard is `test/design/input_outline_test.dart`.
       await _pumpApp(tester, harness.repository);
 
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.decoration?.border, isNull);
+      expect(field.decoration?.enabledBorder, isNull);
+      expect(field.decoration?.focusedBorder, isNull);
+      expect(field.decoration?.disabledBorder, isNull);
+
+      // And the mounted decorator still resolves the brand hairline, so this is
+      // a check that the theme supplies it rather than that it is missing.
       final decoration =
           tester.widget<InputDecorator>(find.byType(InputDecorator)).decoration;
-      for (final entry in <String, InputBorder?>{
-        'border': decoration.border,
-        'enabledBorder': decoration.enabledBorder,
-        'disabledBorder': decoration.disabledBorder,
-      }.entries) {
-        final border = entry.value;
-        expect(border, isA<OutlineInputBorder>(), reason: entry.key);
-        final outline = border! as OutlineInputBorder;
-        expect(outline.borderSide.color, AppColors.borderLight,
-            reason: '${entry.key} is not the brand hairline');
-        // The artwork's search field is a full pill, not a 16px card radius.
-        expect(outline.borderRadius.topLeft.x, AppRadii.pill,
-            reason: '${entry.key} is not a pill');
-      }
       expect(
-        (decoration.focusedBorder! as OutlineInputBorder).borderSide.color,
-        AppColors.primaryLight,
-        reason: 'the focused field takes the brand purple',
+        (decoration.enabledBorder! as OutlineInputBorder).borderSide.color,
+        AppColors.borderLight,
       );
     });
 
@@ -365,45 +368,132 @@ void main() {
 
       expect(find.byIcon(Icons.close), findsNothing);
     });
+
+    testWidgets('the clear button appears with the first keystroke, not after '
+        'the debounce', (tester) async {
+      // Driven by the controller's query this button waited 250 ms for a
+      // character the user had already typed: 0 clear buttons before typing,
+      // 0 at +100 ms, 1 only once the debounce had fired. The field's own text
+      // is the thing the button erases, so that is what it now reads.
+      await _pumpApp(tester, harness.repository);
+      expect(find.byIcon(Icons.close), findsNothing);
+
+      await tester.enterText(find.byType(TextField), 'b');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.byIcon(Icons.close), findsOneWidget,
+          reason: 'the clear button must not wait for the debounce');
+    });
+
+    testWidgets('a field holding only spaces shows no clear button',
+        (tester) async {
+      await _pumpApp(tester, harness.repository);
+
+      await tester.enterText(find.byType(TextField), '   ');
+      await tester.pump();
+
+      expect(find.byIcon(Icons.close), findsNothing,
+          reason: 'spaces are not something to clear');
+    });
   });
 
   group('the quick-launch grid', () {
-    testWidgets('بطاقات التعلم opens the deck', (tester) async {
+    /// Asserts the tile *switched the bar* rather than pushing a route.
+    ///
+    /// The distinction is the whole point of the test and it has two halves: the
+    /// bar's `selectedIndex` must have moved, and Home must be **gone from the
+    /// tree**. A push leaves `HomeScreen` mounted underneath the pushed route and
+    /// leaves `selectedIndex` at 0, so either half alone would pass for the
+    /// behaviour this replaced.
+    ///
+    /// `skipOffstage: false` is load-bearing: the default skips offstage widgets,
+    /// and a route pushed over Home makes it offstage — so the default finder
+    /// reports "no HomeScreen" for a push and would pass this test for the wrong
+    /// reason.
+    void expectSwitchedTo(WidgetTester tester, int index, Type screen) {
+      final bar = tester.widget<NavigationBar>(find.byType(NavigationBar));
+      expect(bar.selectedIndex, index,
+          reason: 'the bar did not follow the tile');
+      expect(find.byType(screen), findsOneWidget);
+      expect(find.byType(HomeScreen, skipOffstage: false), findsNothing,
+          reason: 'Home is still in the tree, so a route was pushed over it');
+    }
+
+    testWidgets('بطاقات التعلم switches the bar to the deck', (tester) async {
       _useAPhone(tester);
       await _pumpApp(tester, harness.repository);
       await tester.tap(inHome(_tiles[0][0]));
       await tester.pumpAndSettle();
 
-      expect(find.byType(FlashcardsScreen), findsOneWidget);
+      expectSwitchedTo(tester, 1, FlashcardsScreen);
     });
 
-    testWidgets('الاختبارات opens the quiz setup', (tester) async {
+    testWidgets('الاختبارات switches the bar to the quiz setup', (tester) async {
       _useAPhone(tester);
       await _pumpApp(tester, harness.repository);
       await tester.tap(inHome(_tiles[1][0]));
       await tester.pumpAndSettle();
 
-      expect(find.byType(QuizSetupScreen), findsOneWidget);
+      expectSwitchedTo(tester, 2, QuizSetupScreen);
     });
 
-    testWidgets('المفضلة opens the saved words', (tester) async {
+    testWidgets('إحصائياتك switches the bar to the rest of the app',
+        (tester) async {
+      _useAPhone(tester);
+      await _pumpApp(tester, harness.repository);
+      await tester.tap(inHome(_tiles[3][0]));
+      await tester.pumpAndSettle();
+
+      expectSwitchedTo(tester, 3, MoreScreen);
+    });
+
+    testWidgets('the bar follows the tile and Back is not needed to return',
+        (tester) async {
+      _useAPhone(tester);
+      await _pumpApp(tester, harness.repository);
+      await tester.tap(inHome(_tiles[0][0]));
+      await tester.pumpAndSettle();
+      expect(find.byType(HomeScreen, skipOffstage: false), findsNothing);
+
+      // Back through the bar, not through the navigator: the user is changing
+      // tabs, not unwinding a route.
+      await tester.tap(find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('الرئيسية'),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex, 0);
+    });
+
+    testWidgets('المفضلة pushes, because it is not a bar destination',
+        (tester) async {
       // Favourites is deliberately not a bottom-bar tab, per the artwork. The
-      // tile is the other of the two doors the brand draws to it.
+      // tile is one of the two doors the brand draws to it, so it must stay a
+      // push: there is no tab for it to switch to.
       _useAPhone(tester);
       await _pumpApp(tester, harness.repository);
       await tester.tap(inHome(_tiles[2][0]));
       await tester.pumpAndSettle();
 
       expect(find.byType(FavoritesScreen), findsOneWidget);
-    });
-
-    testWidgets('إحصائياتك opens the rest of the app', (tester) async {
-      _useAPhone(tester);
-      await _pumpApp(tester, harness.repository);
-      await tester.tap(inHome(_tiles[3][0]));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(MoreScreen), findsOneWidget);
+      // Home is still in the tree underneath — offstage, because a route is now
+      // over it. That is what a push means here, and it is the one tile where it
+      // is correct. `skipOffstage: false` is what makes this assertion say
+      // something: the default finder would report zero and pass a push test
+      // with a tab switch in it.
+      expect(find.byType(HomeScreen, skipOffstage: false), findsOneWidget);
+      // The bar is on the Home route underneath, so it is offstage too and the
+      // finder has to be told not to skip it.
+      expect(
+        tester
+            .widget<NavigationBar>(
+                find.byType(NavigationBar, skipOffstage: false))
+            .selectedIndex,
+        0,
+      );
     });
 
     testWidgets('a tile is a button to a screen reader', (tester) async {

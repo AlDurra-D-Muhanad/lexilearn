@@ -69,8 +69,31 @@ const Duration shellDatabaseSettle = Duration(milliseconds: 50);
 ///
 /// Shared rather than copied: Tasks 10, 13, 14 and 15 all reach their screens
 /// through `HomeShell` and all hit this same trap.
+///
+/// **There are two sequential reads, so the waits are interleaved with a
+/// rebuild — and the `pump()` between them is the whole trick.** The shell's read
+/// fills in the active pack key. A destination that needs the pack's *entries*
+/// cannot start reading until it has that key, and it learns it in
+/// `didUpdateWidget`, which runs during a **rebuild** — not during the shell's
+/// `setState`. So the second read has not even been *issued* when the shell's
+/// turn ends, and two `runAsync` calls back to back wait for nothing: the second
+/// finds no read in flight and `pumpAndSettle` issues the read and then settles
+/// before it can answer. Measured, not assumed — with the pair back to back,
+/// `HomeScreen`'s card was missing from every dashboard test and its read landed
+/// *after* the assertions had already failed.
+///
+/// `HomeScreen` does exactly this — its word-of-the-day card needs the entries —
+/// so it carried its own `runAsync` turn in each of the two test files that reach
+/// it. That is two copies, and Tasks 13, 14 and 15 would have added three more,
+/// so the turn lives here. If a destination ever grows a *third* sequential read,
+/// add a `pump()`-then-`runAsync` pair here rather than copying one into a test.
 Future<void> pumpShell(WidgetTester tester, VocabRepository repository) async {
   await tester.pumpWidget(LexiLearnApp(repository: repository));
+  // The shell's own start-up read: this is what fills in the active pack key.
+  await tester.runAsync(() => Future<void>.delayed(shellDatabaseSettle));
+  // Rebuild, so `didUpdateWidget` runs and the destination issues its read.
+  await tester.pump();
+  // The destination's read, which only now exists.
   await tester.runAsync(() => Future<void>.delayed(shellDatabaseSettle));
   await tester.pumpAndSettle();
 }
