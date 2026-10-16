@@ -1,10 +1,13 @@
 import 'package:lexilearn/core/clock.dart';
+import 'package:lexilearn/domain/backup_codec.dart';
+import 'package:lexilearn/domain/backup_document.dart';
 import 'package:lexilearn/domain/pack_codec.dart';
 import 'package:lexilearn/domain/quiz_session_result.dart';
 import 'package:lexilearn/domain/search_matcher.dart';
 import 'package:lexilearn/domain/stats_summary.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
+import 'package:lexilearn/domain/word_progress.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'pack_dao.dart';
@@ -126,5 +129,87 @@ class VocabRepository {
       await _sessions.deleteForPack(packKey, executor: txn);
       return cleared;
     });
+  }
+
+  /// Everything on this device, as one JSON document: every pack with all of its
+  /// entries, every word's progress, and the session history. This is the file a
+  /// user saves to Drive or Dropbox, and the file [importBackupJson] reads back.
+  ///
+  /// **Every pack is walked separately on purpose.** `word_progress` is keyed on
+  /// `(pack_key, entry_id)`, so a backup has to gather one pack's rows at a time
+  /// rather than assume there is a single active pack.
+  Future<String> exportBackupJson() async {
+    final summaries = await _packs.listPacks();
+    final packs = <VocabPack>[];
+    final progress = <WordProgress>[];
+    for (final summary in summaries) {
+      final pack = await _packs.getPack(summary.packKey);
+      // A pack row whose entries have gone is skipped rather than exported as an
+      // empty vocabulary list: it would restore as a real pack that cannot be
+      // searched, quizzed or studied.
+      if (pack != null) packs.add(pack);
+      progress.addAll(await _progress.allForPack(summary.packKey));
+    }
+    return BackupCodec.encode(BackupDocument(
+      exportedAt: _clock(),
+      packs: packs,
+      progress: progress,
+      // Capped, deliberately: a year of daily quizzes is a few hundred rows and
+      // the file is meant to be readable by a person. There is no screen in the
+      // app that would notice the difference.
+      sessions: await _sessions.recent(limit: 1000),
+    ));
+  }
+
+  /// Replaces packs, progress, and sessions in a single transaction, returning
+  /// how many packs were restored. A failure part-way leaves the device exactly
+  /// as it was.
+  ///
+  /// The document is decoded **before** the transaction opens, so a rejected
+  /// file never reaches the database at all — the same ordering
+  /// [importPack] uses, and for the same reason.
+  ///
+  /// **CRITICAL: every DAO call inside the transaction receives `executor: txn`,
+  /// and there are SEVEN of them.** A DAO on its own connection opens a second
+  /// handle while this transaction holds the write lock. It does not fail fast —
+  /// **it hangs**, with no exception, no log line and no timeout message you
+  /// wrote. `docs/engineering-standards.md` §3.
+  ///
+  /// The seven, and why each one is easy to forget:
+  ///
+  /// | # | Call | Easy to forget because |
+  /// |---|---|---|
+  /// | 1 | `_packs.listPacks(executor: txn)` | — |
+  /// | 2 | `_progress.reset(..., executor: txn)` | already had the parameter from Task 7 |
+  /// | 3 | `_sessions.deleteForPack(..., executor: txn)` | already had it from Task 7 |
+  /// | 4 | `_packs.deletePack(..., executor: txn)` | `PackDao` had no `executor` on any method until this task |
+  /// | 5 | `_packs.insertPack(..., executor: txn)` | same |
+  /// | 6 | `_progress.replace(..., executor: txn)` | written by this task, in the same loop |
+  /// | 7 | `_sessions.insert(..., executor: txn)` | same |
+  ///
+  /// Because the failure mode is a hang and not an error, a missing argument is
+  /// invisible to CI. `test/data/vocab_repository_test.dart` → *restore completes
+  /// inside five seconds* is the guard: it bounds the future with
+  /// `.timeout(Duration(seconds: 5))`, so the regression surfaces as a red test.
+  Future<int> importBackupJson(String jsonText) async {
+    final backup = BackupCodec.decode(jsonText);
+    await _db.transaction((txn) async {
+      for (final summary in await _packs.listPacks(executor: txn)) {
+        await _progress.reset(summary.packKey, executor: txn);
+        await _sessions.deleteForPack(summary.packKey, executor: txn);
+        await _packs.deletePack(summary.packKey, executor: txn);
+      }
+      for (final pack in backup.packs) {
+        await _packs.insertPack(pack,
+            isBundled: false, importedAt: _clock(), executor: txn);
+      }
+      for (final row in backup.progress) {
+        await _progress.replace(row, executor: txn);
+      }
+      for (final session in backup.sessions) {
+        await _sessions.insert(session, executor: txn);
+      }
+    });
+    return backup.packs.length;
   }
 }

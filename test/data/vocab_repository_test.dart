@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lexilearn/domain/backup_codec.dart';
 import 'package:lexilearn/domain/pack_codec.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
@@ -44,6 +45,19 @@ Future<List<Object?>> _snapshot(TestHarness harness) async {
   }
   return seen;
 }
+
+/// The raw `word_progress` rows.
+///
+/// Read directly rather than through `stats`, because the rollback test below
+/// drops the `quiz_sessions` table and `stats()` reads sessions on its way to
+/// building `StatsSummary` — asking it afterwards would fail on the missing
+/// table instead of reporting what the restore did. The plan's version of that
+/// test did exactly this and failed with `no such table: quiz_sessions`.
+///
+/// Taking the harness rather than the repository keeps this file free of an
+/// import of the type under test, like [_snapshot].
+Future<List<Map<String, Object?>>> _progressRows(TestHarness harness) =>
+    harness.database.query('word_progress');
 
 void main() {
   late TestHarness harness;
@@ -341,5 +355,298 @@ void main() {
             '"title":"t","entries":[]}'),
         throwsA(isA<PackDecodeException>()));
     expect(await _snapshot(harness), before);
+  });
+
+  // --- backup: export, restore, and the transaction that has to be real -------
+
+  /// A second pack, so "every pack" is a claim the tests can actually make.
+  ///
+  /// It holds the **same entry ids** as `en_ar`, which is the only thing that
+  /// can tell two packs' progress rows apart once they are in the same file.
+  const VocabPack secondPack = VocabPack(
+    schemaVersion: 1,
+    packId: 'en_tr',
+    title: 'English to Turkish',
+    sourceLanguage: 'en',
+    targetLanguage: 'tr',
+    entries: <VocabEntry>[
+      VocabEntry(id: 'fever-1', term: 'fever', translations: <String>['ateş']),
+      VocabEntry(
+        id: 'buried-1',
+        term: 'Buried',
+        translations: <String>['gömülü'],
+        note: 'a note the brief never writes',
+        phonetic: '/ˈbʌrid/',
+        partOfSpeech: 'adjective',
+        synonyms: <String>['interred'],
+        examples: <String>['a buried city'],
+      ),
+    ],
+  );
+
+  Future<TestHarness> twoPackHarness() async {
+    final two = await TestHarness.create(packs: const <VocabPack>[
+      VocabPack(
+        schemaVersion: 1,
+        packId: 'en_ar',
+        title: 'English to Arabic',
+        sourceLanguage: 'en',
+        targetLanguage: 'ar',
+        entries: <VocabEntry>[
+          VocabEntry(id: 'fever-1', term: 'fever', translations: <String>['حمى']),
+        ],
+      ),
+      secondPack,
+    ]);
+    addTearDown(two.dispose);
+    return two;
+  }
+
+  test('a backup round-trips every pack and its progress', () async {
+    await harness.repository.recordAnswer(
+        packKey: 'en_ar', entryId: 'fever-1', wasCorrect: true);
+    final json = await harness.repository.exportBackupJson();
+
+    final fresh = await TestHarness.create();
+    addTearDown(fresh.dispose);
+    final restored = await fresh.repository.importBackupJson(json);
+
+    expect(restored, 1);
+    expect((await fresh.repository.packs()).map((p) => p.packKey), <String>['en_ar']);
+    final stats = await fresh.repository.stats('en_ar');
+    expect(stats.totalAttempts, 1);
+    expect(stats.totalCorrect, 1);
+  });
+
+  test('a backup carries every pack, not only the one the shell is showing',
+      () async {
+    // `word_progress` is keyed on `(pack_key, entry_id)` and the repository has
+    // no notion of an "active" pack, so a backup that gathered one pack's rows
+    // and stopped would restore a second phone with one pack and no way to tell.
+    final two = await twoPackHarness();
+    await two.repository.recordAnswer(
+        packKey: 'en_tr', entryId: 'fever-1', wasCorrect: true);
+
+    final json = await two.repository.exportBackupJson();
+    final fresh = await TestHarness.create();
+    addTearDown(fresh.dispose);
+    expect(await fresh.repository.importBackupJson(json), 2);
+
+    expect((await fresh.repository.packs()).map((p) => p.packKey),
+        containsAll(<String>['en_ar', 'en_tr']));
+    // The entry ids are identical across the two packs, so only the `pack_key`
+    // filter can attribute this row.
+    expect((await fresh.repository.stats('en_tr')).totalAttempts, 1);
+    expect((await fresh.repository.stats('en_ar')).totalAttempts, 0);
+  });
+
+  test('a restored entry keeps the fields a hand-written backup can carry',
+      () async {
+    // `en_tr` is built with a note, a phonetic, a part of speech, a synonym and
+    // an example — none of which the bundled dataset populates. They survive the
+    // SQLite columns only if the codec wrote them, the DAO stored them and the
+    // restore put them back.
+    final two = await twoPackHarness();
+    final json = await two.repository.exportBackupJson();
+    final fresh = await TestHarness.create();
+    addTearDown(fresh.dispose);
+    await fresh.repository.importBackupJson(json);
+
+    final entries = await fresh.repository.entries('en_tr');
+    final buried = entries.firstWhere((entry) => entry.id == 'buried-1');
+    expect(buried.term, 'Buried');
+    expect(buried.translations, <String>['gömülü']);
+    expect(buried.note, 'a note the brief never writes');
+    expect(buried.phonetic, '/ˈbʌrid/');
+    expect(buried.partOfSpeech, 'adjective');
+    expect(buried.synonyms, <String>['interred']);
+    expect(buried.examples, <String>['a buried city']);
+  });
+
+  test('a backup round-trips the session history', () async {
+    await harness.repository.recordAnswer(
+        packKey: 'en_ar', entryId: 'fever-1', wasCorrect: true);
+    await harness.repository.finishSession(
+      packKey: 'en_ar',
+      startedAt: DateTime.utc(2026, 10, 14, 9),
+      totalQuestions: 4,
+      correctCount: 3,
+    );
+
+    final json = await harness.repository.exportBackupJson();
+    final fresh = await TestHarness.create();
+    addTearDown(fresh.dispose);
+    await fresh.repository.importBackupJson(json);
+
+    final sessions = (await fresh.repository.stats('en_ar')).recentSessions;
+    expect(sessions, hasLength(1));
+    expect(sessions.single.totalQuestions, 4);
+    expect(sessions.single.correctCount, 3);
+    expect(sessions.single.startedAt.toUtc(), DateTime.utc(2026, 10, 14, 9));
+  });
+
+  test('importing a backup replaces progress rather than doubling it',
+      () async {
+    await harness.repository.recordAnswer(
+        packKey: 'en_ar', entryId: 'fever-1', wasCorrect: true);
+    final json = await harness.repository.exportBackupJson();
+
+    await harness.repository.importBackupJson(json);
+    expect((await harness.repository.stats('en_ar')).totalAttempts, 1);
+
+    // And again, because `replace` writes an absolute value while `record`
+    // increments: restoring twice must be idempotent, or a user who restores
+    // onto a phone that already has the data watches their accuracy halve.
+    await harness.repository.importBackupJson(json);
+    expect((await harness.repository.stats('en_ar')).totalAttempts, 1);
+  });
+
+  test('restore removes the packs that were on the device but not in the file',
+      () async {
+    final two = await twoPackHarness();
+    final json = await two.repository.exportPackJson('en_ar');
+    // A file carrying only `en_ar`: `en_tr` is on the device and not in the
+    // backup, so restoring must not silently keep it alongside a document that
+    // does not mention it.
+    final backup = '{"kind":"backup","schemaVersion":1,'
+        '"exportedAt":"2026-10-14T12:00:00.000Z","packs":[$json],'
+        '"progress":[],"sessions":[]}';
+
+    expect(await two.repository.importBackupJson(backup), 1);
+    expect((await two.repository.packs()).map((p) => p.packKey), <String>['en_ar']);
+  });
+
+  test('a malformed backup is rejected and changes nothing', () async {
+    final before = await _snapshot(harness);
+    await expectLater(
+        harness.repository.importBackupJson('nope'), throwsA(isA<PackDecodeException>()));
+    expect(await _snapshot(harness), before);
+  });
+
+  test('a plain pack document is refused by the restore path too', () async {
+    // The mirror image of `importPack refuses a backup document`: both files are
+    // `.json` and a user may hand either one to either action, so each has to
+    // refuse the other's shape with a sentence that names the alternative.
+    final before = await _snapshot(harness);
+    await expectLater(
+      harness.repository.importBackupJson(await harness.repository.exportPackJson('en_ar')),
+      throwsA(isA<PackDecodeException>().having(
+        (e) => e.message,
+        'message',
+        contains('vocabulary pack'),
+      )),
+    );
+    expect(await _snapshot(harness), before);
+  });
+
+  test('importPack refuses a backup document', () async {
+    final json = await harness.repository.exportBackupJson();
+    await expectLater(
+        harness.repository.importPack(json), throwsA(isA<PackDecodeException>()));
+  });
+
+  test('a failure mid-restore rolls back rather than half-applying', () async {
+    // Proves the transaction is real: drop the table the SECOND delete in the
+    // loop targets, so the failure happens *after* `_progress.reset` has already
+    // run inside the transaction. Had that call been on its own connection — or
+    // had `_progress.reset` been — the zeroing would already have committed and
+    // the device would be left with cleared progress and no error at all.
+    await harness.repository.recordAnswer(
+        packKey: 'en_ar', entryId: 'fever-1', wasCorrect: true);
+    final packsBefore = await _snapshot(harness);
+    final progressBefore = await _progressRows(harness);
+    expect(progressBefore, hasLength(1));
+
+    final json = await harness.repository.exportBackupJson();
+    await harness.database.execute('DROP TABLE quiz_sessions');
+
+    await expectLater(
+        harness.repository.importBackupJson(json), throwsA(anything));
+
+    expect(await _progressRows(harness), progressBefore,
+        reason: 'the progress rows the restore had already deleted were restored');
+    expect(await _snapshot(harness), packsBefore,
+        reason: 'the pack the restore had already deleted is back');
+  });
+
+  test('a backup of a device with no packs at all restores to no packs',
+      () async {
+    final empty = await TestHarness.create();
+    addTearDown(empty.dispose);
+
+    final json = await empty.repository.exportBackupJson();
+    expect(await empty.repository.importBackupJson(json), 0);
+    expect(await empty.repository.packs(), isEmpty);
+  });
+
+  test('exportBackupJson stamps the injected clock, not the wall', () async {
+    // Same pinning as `importPack stamps importedAt from the injected clock`.
+    // Without it a golden or a diff of two exports would be unreproducible.
+    final pinned = DateTime.utc(2031, 3, 4, 5, 6, 7);
+    final fresh = await TestHarness.create(now: pinned);
+    addTearDown(fresh.dispose);
+
+    final document = BackupCodec.decode(await fresh.repository.exportBackupJson());
+    expect(document.exportedAt, pinned);
+  });
+
+  test('restore completes inside five seconds — the executor: txn guard',
+      () async {
+    // **This is the guard for `docs/engineering-standards.md` §3, and it exists
+    // because the failure it catches is a hang, not an error.**
+    //
+    // `importBackupJson` makes seven DAO calls inside one transaction. A DAO on
+    // its own connection opens a second handle and waits on the write lock the
+    // transaction holds; that never fails and never returns, so an ordinary
+    // `expectLater(..., completes)` would sit there until the ten-minute test
+    // timeout and CI would report a suite that simply stopped, with nothing
+    // pointing at the cause. Bounding the future with `.timeout` converts that
+    // hang into a red test naming the restore. Measured by dropping one argument
+    // at a time: sqflite itself then prints `Warning database has been locked …
+    // Make sure you always use the transaction object for database operations
+    // during a transaction`, and this test fails at exactly 5.0 s with
+    // `TimeoutException after 0:00:05.000000: Future not completed`.
+    //
+    // **Two packs, not one, and that is the whole trick.** `transaction` opens a
+    // *deferred* transaction, so SQLite does not take the write lock until the
+    // first write. With one pack installed, `_progress.reset` — the first call in
+    // the delete loop — runs before anything on the transaction has written, so
+    // it takes the lock first and a missing `executor: txn` there is *silent*:
+    // dropping it left this test green. With two, the first pack's
+    // `_sessions.deleteForPack` has already taken the lock by the time the second
+    // pack's `_progress.reset` runs, so that regression deadlocks too. Measured,
+    // not assumed.
+    //
+    // The bound is 5 s against an in-memory sqflite round trip measured in
+    // milliseconds, so it is slack rather than a tuning target: far below any
+    // plausible suite timeout, far above a healthy restore.
+    final two = await twoPackHarness();
+    await two.repository.recordAnswer(
+        packKey: 'en_ar', entryId: 'fever-1', wasCorrect: true);
+    await two.repository.recordAnswer(
+        packKey: 'en_tr', entryId: 'fever-1', wasCorrect: true);
+    // A finished session as well, because `_sessions.insert` is the seventh
+    // call and it is only *reached* if the file carries one: with no sessions in
+    // the backup the loop body never runs, and dropping its `executor: txn` left
+    // this test **green**. Measured.
+    await two.repository.finishSession(
+      packKey: 'en_ar',
+      startedAt: DateTime.utc(2026, 10, 14, 9),
+      totalQuestions: 4,
+      correctCount: 3,
+    );
+    final json = await two.repository.exportBackupJson();
+
+    await expectLater(
+      two.repository.importBackupJson(json).timeout(const Duration(seconds: 5)),
+      completes,
+    );
+
+    // Not a tautology: the restore really happened, so a green run is not a
+    // hung future being abandoned rather than the work being done.
+    expect((await two.repository.packs()).map((p) => p.packKey),
+        containsAll(<String>['en_ar', 'en_tr']));
+    expect((await two.repository.stats('en_ar')).totalAttempts, 1);
+    expect((await two.repository.stats('en_ar')).recentSessions, hasLength(1));
   });
 }

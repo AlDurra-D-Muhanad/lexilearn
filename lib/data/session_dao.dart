@@ -6,7 +6,12 @@ class SessionDao {
 
   final Database _db;
 
-  Future<int> insert(QuizSessionResult result) => _db.insert('quiz_sessions', <String, Object?>{
+  /// [executor] joins a caller's transaction. `importBackupJson` restores the
+  /// whole session history through here while holding the write lock, and a
+  /// call on this DAO's own connection in that state does not fail — it hangs
+  /// forever. See `docs/engineering-standards.md` §3.
+  Future<int> insert(QuizSessionResult result, {DatabaseExecutor? executor}) =>
+      (executor ?? _db).insert('quiz_sessions', <String, Object?>{
         'pack_key': result.packKey,
         'started_at': result.startedAt.toUtc().toIso8601String(),
         'total_questions': result.totalQuestions,

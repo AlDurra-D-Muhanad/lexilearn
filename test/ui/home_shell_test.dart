@@ -51,6 +51,26 @@ const _destinations = <_Destination>[
 Future<void> _pumpShell(WidgetTester tester, TestHarness harness) =>
     pumpShell(tester, harness.repository);
 
+/// A tap on a bottom-bar destination, and enough waiting for what it reads.
+///
+/// `settleDatabase` is not decoration here and it is **required** for `المزيد`,
+/// because that screen reads SQLite from `initState` — the pack list and the
+/// active pack's figures. `pumpAndSettle` alone cannot deliver them: a
+/// `testWidgets` body runs in a fake-async zone where a real sqflite future never
+/// answers, and before this the body ended with the read still in flight, which
+/// the binding reports as `Pending timers: … PackDao.listPacks` and counts as a
+/// failure.
+///
+/// This is the pattern `test/helpers/test_env.dart` names for exactly this
+/// situation — "a destination or widget that mounts its own read needs only
+/// this" — added in Task 13, when `MoreScreen` became the first destination to
+/// mount a read of its own after `pumpShell` had already returned.
+Future<void> _openDestination(WidgetTester tester, Finder icon) async {
+  await tester.tap(icon);
+  await tester.pumpAndSettle();
+  await settleDatabase(tester);
+}
+
 void main() {
   late TestHarness harness;
 
@@ -80,8 +100,7 @@ void main() {
     expect(find.text('en_ar'), findsOneWidget);
 
     for (final destination in _destinations.skip(1)) {
-      await tester.tap(find.byIcon(destination.icon));
-      await tester.pumpAndSettle();
+      await _openDestination(tester, find.byIcon(destination.icon));
 
       expect(
         find.byType(destination.screen),
@@ -136,8 +155,7 @@ void main() {
         matching: find.text(destination.label),
       );
       expect(label, findsOneWidget);
-      await tester.tap(label);
-      await tester.pumpAndSettle();
+      await _openDestination(tester, label);
 
       expect(
         tester.takeException(),

@@ -30,14 +30,46 @@ class PackDao {
 
   final Database _db;
 
+  /// Runs [action] atomically on [executor] when one was handed in, and on this
+  /// DAO's own connection otherwise.
+  ///
+  /// **The two cases are not interchangeable, and the reason is in the type.**
+  /// `transaction` is a member of `Database`, **not** of `DatabaseExecutor` —
+  /// `sqflite_common-2.5.14/lib/sqlite_api.dart` declares
+  /// `abstract class Transaction implements DatabaseExecutor {}`, which adds
+  /// nothing of its own, and puts `transaction` on `Database` alone. A
+  /// `Transaction` is therefore already inside a transaction and must not be
+  /// wrapped in another: its atomicity *is* the caller's atomicity, and
+  /// `write(txn)` simply joins it.
+  ///
+  /// **Why this exists at all.** Before Task 13 this DAO had no `executor`
+  /// parameter on any method and held `_db` privately, so `importBackupJson`
+  /// could not tell it to join the transaction it had opened. Every call it made
+  /// inside that transaction opened a second connection and waited on the write
+  /// lock the first one held — which does not fail, it hangs, with no exception
+  /// and no log line. `docs/engineering-standards.md` §3; the guard-timeout test
+  /// in `test/data/vocab_repository_test.dart` is what makes a regression of this
+  /// visible.
+  Future<T> _atomic<T>(
+    DatabaseExecutor? executor,
+    Future<T> Function(Transaction txn) action,
+  ) {
+    if (executor is Transaction) return action(executor);
+    final Database database = executor == null ? _db : executor as Database;
+    return database.transaction(action);
+  }
+
   /// Replaces the pack and all of its entries atomically. Progress rows are
   /// keyed on deterministic entry ids and are intentionally left untouched.
+  ///
+  /// [executor] joins a caller's transaction; see [_atomic].
   Future<void> insertPack(
     VocabPack pack, {
     required bool isBundled,
     required DateTime importedAt,
+    DatabaseExecutor? executor,
   }) async {
-    await _db.transaction((txn) async {
+    await _atomic(executor, (txn) async {
       await txn.insert(
         'packs',
         <String, Object?>{
@@ -80,8 +112,12 @@ class PackDao {
 
   /// Cascades to `entries`. Also removes this pack's progress and sessions so
   /// Stats cannot read rows for a pack that no longer exists.
-  Future<void> deletePack(String packKey) async {
-    await _db.transaction((txn) async {
+  ///
+  /// [executor] joins a caller's transaction; see [_atomic]. `importBackupJson`
+  /// deletes through here while restoring, and on its own connection that call
+  /// would hang rather than fail.
+  Future<void> deletePack(String packKey, {DatabaseExecutor? executor}) async {
+    await _atomic(executor, (txn) async {
       await txn.delete('word_progress',
           where: 'pack_key = ?', whereArgs: <Object?>[packKey]);
       await txn.delete('quiz_sessions',
@@ -90,8 +126,11 @@ class PackDao {
     });
   }
 
-  Future<List<PackSummary>> listPacks() async {
-    final rows = await _db.query('packs',
+  /// [executor] joins a caller's transaction; see [_atomic]. `importBackupJson`
+  /// reads through here *inside* the transaction it opened, because the packs it
+  /// is about to delete have to be the packs as they are right now.
+  Future<List<PackSummary>> listPacks({DatabaseExecutor? executor}) async {
+    final rows = await (executor ?? _db).query('packs',
         orderBy: 'is_bundled DESC, imported_at DESC');
     return rows
         .map((row) => PackSummary(
@@ -106,6 +145,15 @@ class PackDao {
         .toList();
   }
 
+  /// The three read helpers below deliberately carry **no** [executor].
+  ///
+  /// Unlike the three methods above they are single-statement reads, and no
+  /// caller reaches them from inside a transaction: `exportBackupJson` walks
+  /// them before it opens one, and nothing else in `lib/` passes a `Transaction`
+  /// to this DAO. Adding an unused parameter would be an untested surface
+  /// pretending to be a guarantee; if a future caller needs them inside a
+  /// transaction, that caller is the moment to add it — and this paragraph is
+  /// what tells them to.
   Future<VocabPack?> getPack(String packKey) async {
     final rows = await _db.query('packs',
         where: 'pack_key = ?', whereArgs: <Object?>[packKey], limit: 1);

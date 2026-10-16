@@ -66,6 +66,25 @@ class ProgressDao {
         whereArgs: <Object?>[packKey],
       );
 
+  /// Writes an absolute value, used only by backup restore. Never increments.
+  ///
+  /// [executor] is NOT optional-by-omission here: `importBackupJson` calls this
+  /// inside a transaction, and a `replace` that opens its own connection while
+  /// that transaction holds the write lock **hangs forever** — no exception, no
+  /// log line, no timeout you wrote. See `docs/engineering-standards.md` §3.
+  Future<void> replace(WordProgress progress, {DatabaseExecutor? executor}) =>
+      (executor ?? _db).insert(
+        'word_progress',
+        <String, Object?>{
+          'entry_id': progress.entryId,
+          'pack_key': progress.packKey,
+          'attempts': progress.attempts,
+          'correct_count': progress.correct,
+          'last_seen_at': progress.lastSeenAt?.toUtc().toIso8601String(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
   WordProgress _fromRow(Map<String, Object?> row) => WordProgress(
         entryId: row['entry_id']! as String,
         packKey: row['pack_key']! as String,
