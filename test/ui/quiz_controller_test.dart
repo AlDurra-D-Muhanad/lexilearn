@@ -347,7 +347,15 @@ void main() {
     // Every method is called, not just the ones that look risky: `answer()` was
     // the one left unguarded while `start()`, `next()` and `_finish()` were
     // fixed, and it was caught by reading the four call sites, not by any test.
-    // A test that lists all of them is what stops a fifth being added quietly.
+    //
+    // **This calls three of the four notifying sites, not all four, and the
+    // comment used to say otherwise.** `answer`, `next` and `start` are the
+    // three public ones; the fourth is the private `_finish()`, which this test
+    // never reaches — it answers question 0 of a 2-question quiz, so `next()`
+    // advances off the answer rather than consuming the last question and
+    // finishing. Deleting the guard from `_finish()` alone would leave this
+    // green. It is a canary against a fifth *public* method going in
+    // unguarded, not a guarantee about the class, and a comment cannot fail.
     //
     // In this order, because each one has to *reach* a notification to prove
     // anything: `answer` commits and notifies, `next` advances off that answer

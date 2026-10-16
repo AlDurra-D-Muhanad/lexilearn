@@ -191,8 +191,9 @@ class _QuizSetupFormState extends State<_QuizSetupForm> {
               // (`dropdown.dart:2002-2007`) calls
               // `setValue(widget.initialValue)` when `initialValue` changes, so
               // the field already re-reads it. Deleting this key leaves all
-              // 21 tests in `test/ui/quiz_screen_test.dart` green — measured,
-              // not assumed.
+              // 23 tests in `test/ui/quiz_screen_test.dart` green — measured,
+              // not assumed. (23, not the 21 an earlier version of this comment
+              // claimed: the file has grown since.)
               //
               // It is kept because the behaviour it leans on is an
               // implementation detail of one Flutter version rather than

@@ -10,6 +10,7 @@ import 'package:lexilearn/ui/flashcards/flashcards_screen.dart';
 import 'package:lexilearn/ui/home/home_screen.dart';
 import 'package:lexilearn/ui/more/more_screen.dart';
 import 'package:lexilearn/ui/quiz/quiz_setup_screen.dart';
+import 'package:lexilearn/ui/stats/stats_screen.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
 import 'package:lexilearn/ui/theme/app_theme.dart';
 import 'package:provider/provider.dart';
@@ -438,14 +439,48 @@ void main() {
       expectSwitchedTo(tester, 2, QuizSetupScreen);
     });
 
-    testWidgets('إحصائياتك switches the bar to the rest of the app',
+    testWidgets('إحصائياتك pushes statistics and leaves the bar where it was',
         (tester) async {
+      // **A deliberate decision, replacing a placeholder this file used to pin.**
+      // This test previously asserted `expectSwitchedTo(tester, 3, MoreScreen)` —
+      // that the tile selected bar index 3, which is `المزيد`. It did so because
+      // `المزيد` was still a placeholder with nothing behind it, and it was
+      // flagged in review as a risk inherited by accident: it pinned a number
+      // that stood for "somewhere else", not for a decision about statistics.
+      //
+      // The decision, and the evidence for it: `docs/design/brand-reference.png`
+      // draws the bottom bar with exactly four items — الرئيسية, البطاقات,
+      // الاختبارات, المزيد — in the light phone and again in the dark one, and
+      // statistics is not among them in either. The same artwork draws a fourth
+      // Home grid tile carrying the bar-chart glyph, and this is it. So
+      // statistics is a route pushed from the grid, exactly as `المفضلة` is, and
+      // index 3 stays `المزيد`.
+      //
+      // The push/switch distinction is asserted in both directions, because
+      // either half alone passes for the other: a push leaves `HomeScreen`
+      // mounted but offstage and the bar at 0, and a tab switch takes
+      // `HomeScreen` out of the tree and moves the bar.
       _useAPhone(tester);
       await _pumpApp(tester, harness.repository);
       await tester.tap(inHome(_tiles[3][0]));
       await tester.pumpAndSettle();
+      // The pushed screen issues its own read from `initState`, and
+      // `pumpShell`'s two turns happened before it existed.
+      await settleDatabase(tester);
 
-      expectSwitchedTo(tester, 3, MoreScreen);
+      expect(find.byType(StatsScreen), findsOneWidget);
+      expect(find.byType(HomeScreen, skipOffstage: false), findsOneWidget,
+          reason: 'a push leaves Home mounted underneath; a tab switch removes it');
+      expect(
+        tester
+            .widget<NavigationBar>(
+                find.byType(NavigationBar, skipOffstage: false))
+            .selectedIndex,
+        0,
+        reason: 'statistics is not one of the bar\'s four destinations',
+      );
+      expect(find.byType(MoreScreen, skipOffstage: false), findsNothing,
+          reason: 'المزيد is a different destination, not a stand-in for stats');
     });
 
     testWidgets('the bar follows the tile and Back is not needed to return',

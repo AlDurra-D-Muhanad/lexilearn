@@ -11,6 +11,7 @@ import 'package:lexilearn/domain/word_of_the_day.dart';
 import 'package:lexilearn/ui/favorites/favorites_screen.dart';
 import 'package:lexilearn/ui/home_shell.dart';
 import 'package:lexilearn/ui/search/search_controller.dart';
+import 'package:lexilearn/ui/stats/stats_screen.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
 import 'package:provider/provider.dart';
 
@@ -541,13 +542,14 @@ class _WordOfTheDayCard extends StatelessWidget {
 /// the brand reference names the tiles in. Recorded in
 /// `docs/design/style-direction.md` → Amendments.
 ///
-/// **Three of the four tiles switch the bottom bar; only `المفضلة` pushes.**
-/// Pushing a route for a destination the bar can already show leaves the bar
-/// highlighting `الرئيسية` under a screen the user did not choose, and makes
-/// Back return to Home instead of to the bar. `المفضلة` is genuinely not a tab —
-/// the artwork reaches it from here and from the word card's heart — so it has
-/// nothing to switch to and is pushed. The bar's index and its handler come from
-/// `ShellTabScope`, which `HomeShell` publishes because this screen's
+/// **Two of the four tiles switch the bottom bar; `المفضلة` and `إحصائياتك`
+/// push.** Pushing a route for a destination the bar can already show leaves the
+/// bar highlighting `الرئيسية` under a screen the user did not choose, and makes
+/// Back return to Home instead of to the bar. `المفضلة` and `إحصائياتك` are
+/// genuinely not tabs — the artwork reaches both from the grid and neither from
+/// anywhere else, and its bar has only the four items above — so they have
+/// nothing to switch to and are pushed. The bar's index and its handler come
+/// from `ShellTabScope`, which `HomeShell` publishes because this screen's
 /// constructor cannot take a callback.
 class _QuickLaunchGrid extends StatelessWidget {
   const _QuickLaunchGrid({required this.packKey});
@@ -607,7 +609,19 @@ class _QuickLaunchGrid extends StatelessWidget {
           iconColor: Theme.of(context).colorScheme.onSurface,
           title: 'إحصائياتك',
           subtitle: 'تقدمك وإنجازك',
-          onTap: () => _goToTab(context, 3),
+          // Pushed, not a bar selection — and this is a decision, not a gap.
+          // The artwork's bar draws exactly four destinations (الرئيسية,
+          // البطاقات, الاختبارات, المزيد) in the light phone and again in the
+          // dark one, with no statistics item in either, so index 3 is المزيد
+          // and routing statistics through it would be reaching Stats by way of
+          // a screen the user never asked for. The artwork *does* draw a fourth
+          // Home tile carrying the bar-chart glyph, which is this one, so the
+          // screen is a route pushed from the grid. See
+          // `docs/design/style-direction.md` → Navigation, and
+          // `lib/ui/stats/stats_screen.dart`.
+          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) => StatsScreen(packKey: packKey),
+              )),
         ),
       ],
     );

@@ -212,7 +212,10 @@ void main() {
     // as one that is right. Pinning the measurements is what makes the next one
     // a failure instead of a surprise.
     //
-    // 54 is the row's text plus `2 × 14` of vertical padding; 6 is
+    // 54 is the row's 24px of text, plus `2 × 14` of vertical padding, plus
+    // `2 × 1` for the `Border.all` on its top and bottom edge: 24 + 28 + 2.
+    // The border is the part this used to leave out — the comment said
+    // "the text plus 2 × 14", which is 52, not 54. 6 is
     // `LinearProgressIndicator.minHeight`.
     final track = find.byType(LinearProgressIndicator);
     expect(track, findsOneWidget);
@@ -646,8 +649,6 @@ class _SetupHostState extends State<_SetupHost> {
   }
 }
 
-/// A tap, and then one real turn of the event loop.
-///
 /// A tap, and then one real turn of the event loop.
 ///
 /// A tap runs the controller's synchronous half inside the test's fake-async
