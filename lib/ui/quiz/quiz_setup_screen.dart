@@ -182,11 +182,27 @@ class _QuizSetupFormState extends State<_QuizSetupForm> {
               );
             }
             return DropdownButtonFormField<String>(
-              // Keyed on the active pack so switching packs elsewhere in the
-              // app updates what the field shows. `initialValue` is only read
-              // when the field is first built, so without the key a change
-              // made from Home would leave this showing the old pack while
-              // the quiz drew from the new one.
+              // **Defensive, and currently redundant — do not read a green test
+              // here as proof that it is load-bearing.** An earlier version of
+              // this comment claimed that without the key `initialValue` is read
+              // once and the field would show a stale pack. That is not what
+              // happens: on Flutter 3.44.6,
+              // `_DropdownButtonFormFieldState.didUpdateWidget`
+              // (`dropdown.dart:2002-2007`) calls
+              // `setValue(widget.initialValue)` when `initialValue` changes, so
+              // the field already re-reads it. Deleting this key leaves all
+              // 21 tests in `test/ui/quiz_screen_test.dart` green — measured,
+              // not assumed.
+              //
+              // It is kept because the behaviour it leans on is an
+              // implementation detail of one Flutter version rather than
+              // documented contract, and because the failure it guards against
+              // is a silent one: a field showing the previous pack while the
+              // quiz draws from the next. If a future Flutter drops that
+              // `didUpdateWidget` branch, this is what keeps the screen
+              // correct. `test/ui/quiz_screen_test.dart` →
+              // *the picker reports the pack the user chooses* proves the
+              // *end* behaviour, not this mechanism.
               key: ValueKey<String>('quiz-pack-${widget.packKey}'),
               isExpanded: true,
               initialValue: packs.any((pack) => pack.packKey == widget.packKey)

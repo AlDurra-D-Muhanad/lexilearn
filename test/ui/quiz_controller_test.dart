@@ -253,6 +253,36 @@ void main() {
     expect(stats.totalCorrect, 0);
   });
 
+  test('the progress row is written against the answer, not the option picked',
+      () async {
+    final controller = build(count: 1);
+    await controller.start();
+    final question = controller.question!;
+    final picked = _firstWrongIndex(controller);
+
+    await controller.answer(picked);
+
+    // **Which entry the row is keyed on is the entire content of the guarantee.**
+    // `recordAnswer` keys progress on `entryId`, so writing the *picked* option's
+    // id instead of the answer's files a wrong answer against the distractor's
+    // word — crediting the user's mistake to a word they were never asked about,
+    // and leaving the word that was asked unmarked. Every other test in this
+    // file passes under that mutation, because `StatsSummary.totalAttempts` and
+    // `totalCorrect` are aggregates over the pack and cannot tell the two ids
+    // apart. So this reads the row itself.
+    final rows = await harness.database.query(
+      'word_progress',
+      where: 'pack_key = ?',
+      whereArgs: <Object?>['p'],
+    );
+
+    expect(rows, hasLength(1));
+    expect(rows.single['entry_id'], question.answer.id);
+    expect(rows.single['entry_id'], isNot(question.options[picked].entryId));
+    // And it is a miss, which is the other half of what that row says.
+    expect(rows.single['correct_count'], 0);
+  });
+
   test('finishing a session records it in history', () async {
     final controller = build(count: 1);
     await controller.start();
@@ -301,6 +331,40 @@ void main() {
     // question the user never saw.
     expect(controller.question, same(first));
     expect(controller.isFinished, isFalse);
+  });
+
+  test('every method is safe to call after dispose()', () async {
+    final controller = build(count: 2);
+    await controller.start();
+    final correct = controller.question!.correctIndex;
+    controller.dispose();
+
+    // `ChangeNotifier.notifyListeners()` after `dispose()` throws a
+    // `FlutterError` in debug rather than doing nothing, and this controller
+    // issues database reads that can land after the route owning it is popped.
+    // All four notifying methods are therefore routed through one guard.
+    //
+    // Every method is called, not just the ones that look risky: `answer()` was
+    // the one left unguarded while `start()`, `next()` and `_finish()` were
+    // fixed, and it was caught by reading the four call sites, not by any test.
+    // A test that lists all of them is what stops a fifth being added quietly.
+    //
+    // In this order, because each one has to *reach* a notification to prove
+    // anything: `answer` commits and notifies, `next` advances off that answer
+    // and notifies again, and `start` re-reads the pack and notifies last. Called
+    // the other way round, `start` would reset the selection and `next` would
+    // return early — passing while touching nothing.
+    await expectLater(controller.answer(correct), completes);
+    await expectLater(controller.next(), completes);
+    await expectLater(controller.start(), completes);
+
+    // Suppressing the *notification* does not suppress the write, deliberately.
+    // An answer that was really given is worth more on disk than it is lost in
+    // memory, and making the controller inert after dispose would drop it — the
+    // opposite of what ruling 1 of this task asks for.
+    final stats = await harness.repository.stats('p');
+    expect(stats.totalAttempts, 1);
+    expect(stats.totalCorrect, 1);
   });
 
   test('answerCorrectness is null until an answer is chosen', () async {

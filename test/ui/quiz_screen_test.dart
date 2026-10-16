@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -124,7 +123,7 @@ void main() {
 
   Future<void> pumpQuiz(WidgetTester tester) async {
     await tester.pumpWidget(_QuizApp(controller: controller));
-    await _settle(tester);
+    await settleDatabase(tester);
   }
 
   Finder optionText(QuizQuestion question, int index) =>
@@ -199,6 +198,37 @@ void main() {
     }
   });
 
+  testWidgets('the option rows and the progress track keep their measured heights',
+      (tester) async {
+    await pumpQuiz(tester);
+    final question = controller.question!;
+
+    // **Measured, not derived — and this test exists because nothing measured
+    // them.** Naming these two numbers through `AppSpacing` arithmetic once
+    // changed both of them: `AppSpacing.s - AppSpacing.xs` is 4, not 6, and
+    // `AppSpacing.m - AppSpacing.xs` is 12, not 14. Every test in the suite
+    // stayed green through both changes, because no test asserted a height and a
+    // tap target 4px shorter than the artwork draws looks exactly as plausible
+    // as one that is right. Pinning the measurements is what makes the next one
+    // a failure instead of a surprise.
+    //
+    // 54 is the row's text plus `2 × 14` of vertical padding; 6 is
+    // `LinearProgressIndicator.minHeight`.
+    final track = find.byType(LinearProgressIndicator);
+    expect(track, findsOneWidget);
+    expect(tester.getSize(track).height, 6.0);
+
+    final button = find.ancestor(
+      of: optionText(question, 0),
+      matching: find.byType(AnimatedContainer),
+    );
+    expect(button, findsOneWidget);
+    expect(tester.getSize(button).height, 54.0);
+
+    // Both measured at the same place in the same tree, so neither number can
+    // move without this going red.
+  });
+
   testWidgets('the advance button is disabled until an option is tapped', (tester) async {
     await pumpQuiz(tester);
 
@@ -267,12 +297,14 @@ void main() {
     expect(controller.answeredCount, 1);
     expect(controller.correctCount, 1);
 
-    // Read through `runAsync` rather than awaited directly: this is a real
-    // SQLite round trip, and a `testWidgets` body runs in a fake-async zone
-    // where a real `Future` never completes on its own — awaited bare, the test
-    // would sit until the ten-minute timeout instead of failing. The same trap
-    // `pumpShell` documents, met with the same one call.
-    final stats = (await tester.runAsync(() => harness.repository.stats('p')))!;
+    // `readOutsideFakeAsync` rather than awaited directly: this is a real SQLite
+    // round trip, and a `testWidgets` body runs in a fake-async zone where a real
+    // `Future` never completes on its own — awaited bare, the test would sit
+    // until the ten-minute timeout instead of failing.
+    final stats = await readOutsideFakeAsync(
+      tester,
+      () => harness.repository.stats('p'),
+    );
     expect(stats.totalAttempts, 1);
   });
 
@@ -290,16 +322,12 @@ void main() {
     // original re-read its file on every keystroke, so one question scored twice
     // — once from the widget, once from here.
     //
-    // Fired and not awaited, because that is what `_OptionTile`'s `onTap` does
-    // and because `answer` awaits a database write: awaiting it in a
-    // fake-async zone never completes. The writes are given a real turn below,
-    // before the row count is read.
-    unawaited(pushed.answer(question.correctIndex));
-    await tester.pumpAndSettle();
-    unawaited(pushed.answer(wrong));
-    await tester.pumpAndSettle();
-    await tester.runAsync(() => Future<void>.delayed(shellDatabaseSettle));
-    await tester.pumpAndSettle();
+    // `commitAndSettle` rather than a bare `await`: `answer` reaches the
+    // database, and awaiting it in a fake-async zone never completes. Firing and
+    // pumping is also what the app does — `_OptionTile`'s `onTap` discards the
+    // future.
+    await commitAndSettle(tester, () => pushed.answer(question.correctIndex));
+    await commitAndSettle(tester, () => pushed.answer(wrong));
 
     expect(pushed.answeredCount, 1);
     expect(pushed.correctCount, 1);
@@ -307,7 +335,10 @@ void main() {
     expect(pushed.isSelectedOption(question.correctIndex), isTrue);
     expect(pushed.isSelectedOption(wrong), isFalse);
 
-    final stats = (await tester.runAsync(() => harness.repository.stats('p')))!;
+    final stats = await readOutsideFakeAsync(
+      tester,
+      () => harness.repository.stats('p'),
+    );
     expect(stats.totalAttempts, 1);
     expect(stats.totalCorrect, 1);
   });
@@ -355,9 +386,43 @@ void main() {
     expect(find.byType(AppSurface), findsWidgets);
   });
 
+  testWidgets('the progress fill is brand purple in light and amber in dark',
+      (tester) async {
+    await pumpQuiz(tester);
+
+    // The artwork's own distinction: the light phone draws the progression under
+    // the heading in the primary purple, the dark one in the brand amber. The
+    // amber is a fill here, which is the one job `design_tokens.dart:44-46` gives
+    // it — never body text.
+    //
+    // Both halves are asserted, and the light half is asserted as *two* facts,
+    // because `color: null` on its own would pass if the theme's primary were
+    // anything at all. `null` means "the theme paints it", so the theme's
+    // primary has to be checked separately — and it is `#885CF6` because of
+    // Amendment 4, not because Material seeded it.
+    final fill = tester.widget<LinearProgressIndicator>(
+      find.byType(LinearProgressIndicator),
+    );
+    expect(fill.color, isNull);
+    expect(AppTheme.light().colorScheme.primary, const Color(0xFF885CF6));
+
+    await tester.pumpWidget(
+      _QuizApp(controller: controller, brightness: Brightness.dark),
+    );
+    await settleDatabase(tester);
+
+    expect(
+      tester.widget<LinearProgressIndicator>(
+        find.byType(LinearProgressIndicator),
+      ).color,
+      AppColors.accent,
+    );
+    expect(AppColors.accent, const Color(0xFFF59E0B));
+  });
+
   testWidgets('the quiz screen survives a dark theme', (tester) async {
     await tester.pumpWidget(_QuizApp(controller: controller, brightness: Brightness.dark));
-    await _settle(tester);
+    await settleDatabase(tester);
     final question = controller.question!;
 
     await _tap(tester, optionText(question, _firstWrongIndex(question)));
@@ -372,7 +437,7 @@ void main() {
   testWidgets('an empty pack lands on the result screen rather than throwing',
       (tester) async {
     await tester.pumpWidget(_QuizApp(controller: empty));
-    await _settle(tester);
+    await settleDatabase(tester);
 
     expect(tester.takeException(), isNull);
     expect(find.byType(QuizResultScreen), findsOneWidget);
@@ -452,15 +517,21 @@ void main() {
     expect(find.byType(QuizResultScreen), findsNothing);
 
     // And the session the pushed screen ran is on disk, not in the widget tree.
-    // Through `runAsync`, for the same fake-async reason as the read above.
-    final stats = (await tester.runAsync(() => harness.repository.stats('p')))!;
+    // Read outside the fake zone, for the same reason as the read above.
+    final stats = await readOutsideFakeAsync(
+      tester,
+      () => harness.repository.stats('p'),
+    );
     expect(stats.recentSessions, hasLength(1));
   });
 
   testWidgets('the picker reports the pack the user chooses', (tester) async {
     // The one part of this destination with no coverage at all: nothing in the
-    // suite opened the dropdown, so `onChanged`, its `value != packKey` guard and
-    // the `ValueKey` that re-keys the field on a pack switch were all unexercised.
+    // suite opened the dropdown, so `onChanged` and its `value != packKey` guard
+    // were unexercised. Both are load-bearing — delete the guard and this test
+    // reports `['q', 'q']`. The `ValueKey` beside them is defensive and
+    // currently redundant; see the comment below and the one in
+    // `quiz_setup_screen.dart`, which do not claim otherwise.
     // Mounted against a host that owns the active key exactly as `HomeShell`
     // does, because a host that only records the call would prove the callback
     // fires and nothing about what the screen does next.
@@ -471,7 +542,7 @@ void main() {
       repository: two.repository,
       selected: selected,
     ));
-    await _settle(tester);
+    await settleDatabase(tester);
 
     // The field opens on the pack it was handed, named.
     expect(find.text('$_packTitle ($_packEntries)'), findsOneWidget);
@@ -485,8 +556,16 @@ void main() {
     // 2. …the host rebuilt, so the field shows the pack that was chosen…
     expect(find.text('$_secondTitle ($_secondEntries)'), findsOneWidget);
     // …and so does the pill, which is drawn from the same key the quiz would
-    // draw from. Without the `ValueKey`, `initialValue` is read once and this
-    // would still read 'P (4)'.
+    // draw from, so the screen cannot show one pack and quiz another.
+    //
+    // This assertion was previously annotated with a claim about the
+    // `ValueKey` — that without it `initialValue` is read once and the field
+    // would still read 'P (4)'. **That claim was false and has been removed.**
+    // On Flutter 3.44.6 `_DropdownButtonFormFieldState.didUpdateWidget` calls
+    // `setValue(widget.initialValue)` when `initialValue` changes, so deleting
+    // the key leaves this whole test green — verified, not assumed. What this
+    // test pins is the *end behaviour*; the key is defensive only, and the
+    // comment on it in `quiz_setup_screen.dart` says so.
     expect(find.text('q'), findsOneWidget);
     expect(find.text('p'), findsNothing);
 
@@ -569,40 +648,34 @@ class _SetupHostState extends State<_SetupHost> {
 
 /// A tap, and then one real turn of the event loop.
 ///
+/// A tap, and then one real turn of the event loop.
+///
 /// A tap runs the controller's synchronous half inside the test's fake-async
 /// zone, so the pixels the user sees are already right by the time
 /// `pumpAndSettle` returns — but the repository write that follows it can only
 /// complete on the real loop. Without this turn those writes are still in flight
-/// when the harness closes its database in `tearDown`. This is the one-line
-/// reason `pumpShell` exists, for the screens this file mounts itself.
+/// when the harness closes its database in `tearDown`.
+///
+/// This is `pumpAndSettle`, `settleDatabase` and one `tap`, and the middle two
+/// are [settleDatabase] rather than a second copy of it. It stays private
+/// because it is a tap *first*: `commitAndSettle` covers the other direction,
+/// where the write is fired directly instead of reached through a gesture.
 Future<void> _tap(WidgetTester tester, Finder finder) async {
   await tester.tap(finder);
-  await tester.pumpAndSettle();
-  await tester.runAsync(() => Future<void>.delayed(shellDatabaseSettle));
-  await tester.pumpAndSettle();
-}
-
-/// One real turn of the event loop, for a read that was issued rather than
-/// awaited — a `FutureBuilder`, or a controller `start()` already in flight.
-Future<void> _settle(WidgetTester tester) async {
-  await tester.pumpAndSettle();
-  await tester.runAsync(() => Future<void>.delayed(shellDatabaseSettle));
-  await tester.pumpAndSettle();
+  await settleDatabase(tester);
 }
 
 /// Opens the quiz destination through the shell.
 ///
-/// `pumpShell` is the shared helper and it is not copied here: what this adds is
-/// the read the destination issues once *it* is on screen, which the shell's own
-/// two turns cannot cover. `pumpShell` documents that a destination needing a
-/// third sequential read should grow a `pump()`-then-`runAsync` pair there
-/// rather than in a test, and `test/helpers/test_env.dart` is outside this
-/// task's file list — so the pair lives here and is flagged rather than
-/// duplicated silently.
+/// `pumpShell` and `settleDatabase` are both shared helpers and neither is
+/// copied here. What this adds is only the ordering: `pumpShell` is the shell's
+/// two reads, the tap switches destination, and the second [settleDatabase] is
+/// the read that destination issues once *it* is on screen, which the shell's
+/// own turns cannot cover.
 Future<void> _openSetup(WidgetTester tester, VocabRepository repository) async {
   await pumpShell(tester, repository);
   await _tap(tester, find.byIcon(Icons.check_box_outlined));
-  await _settle(tester);
+  await settleDatabase(tester);
   expect(find.byType(QuizSetupScreen), findsOneWidget);
 }
 

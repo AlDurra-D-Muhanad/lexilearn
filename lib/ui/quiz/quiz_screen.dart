@@ -23,19 +23,28 @@ const String _loading = 'جارٍ التحميل…';
 /// The counter row's height: the Latin caption line plus the gap under it, and
 /// the thickness of the fill it sits beside.
 ///
-/// Named rather than written as three literals at the three call sites, for the
-/// same reason `_pickerHeight` is named on the setup screen: `AppSpacing` carries
-/// a scale for gaps, and `AppText` one for type, and neither scale has a value
-/// for a stroked track — so the numbers are pinned here once rather than
-/// scattered as bare magic numbers.
+/// 28 = `AppSpacing.l + AppSpacing.xs`, and that arithmetic genuinely evaluates
+/// to the 28 this row was drawn at, so the scale is the right home for it.
 const double _progressRowHeight = AppSpacing.l + AppSpacing.xs;
-const double _progressTrackHeight = AppSpacing.s - AppSpacing.xs;
+
+/// The thickness of the progress fill.
+///
+/// **A literal, not arithmetic on the scale.** `AppSpacing` is a scale of *gaps*
+/// — 4, 8, 16, 24, 32 — and a 6px stroked track is not on it. The first version
+/// of this constant was written `AppSpacing.s - AppSpacing.xs`, which is **4,
+/// not 6**: a 2px-shorter track that turned no test red, because nothing here
+/// measured a height. Named, spelled out, and pinned by
+/// `the option rows and the progress track keep their measured heights`.
+const double _progressTrackHeight = 6;
 
 /// The vertical padding inside an option row.
 ///
-/// Between `AppSpacing.s` and `AppSpacing.m`: enough for a 56px-tall target with
-/// room to read. Named here for the same reason as the two above.
-const double _optionVerticalPadding = AppSpacing.m - AppSpacing.xs;
+/// **A literal, not arithmetic on the scale**, for the same reason and the same
+/// lesson as [_progressTrackHeight]: this was written
+/// `AppSpacing.m - AppSpacing.xs`, which is **12, not 14**. Four rows, so the
+/// mistake was worth 16px of option-column height, and the whole suite stayed
+/// green through it. 14 is what puts the row at the 54px this screen draws.
+const double _optionVerticalPadding = 14;
 
 /// One question: the word, four translations, and — once an answer is given —
 /// whether it was right.

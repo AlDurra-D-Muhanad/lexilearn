@@ -179,7 +179,12 @@ class QuizController extends ChangeNotifier {
     final wasCorrect = question.isCorrect(index);
     _answered++;
     if (wasCorrect) _correct++;
-    notifyListeners();
+    // Guarded like every other notification here. A tile's `onTap` cannot fire
+    // after its route is popped, so this is the one call site where a disposed
+    // controller is hard to reach — but "hard to reach" is not "impossible", and
+    // an unguarded `notifyListeners()` throws a `FlutterError` rather than doing
+    // nothing. All four call sites go through [_notifyIfAlive].
+    _notifyIfAlive();
 
     await repository.recordAnswer(
       packKey: packKey,

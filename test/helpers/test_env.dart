@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lexilearn/app.dart';
 import 'package:lexilearn/data/database.dart';
@@ -7,6 +9,15 @@ import 'package:lexilearn/domain/vocab_pack.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// An in-memory database plus a repository, for widget and DAO tests.
+///
+/// **Build it in `setUp`, `setUpAll` or `tearDown`-free scope — never inside a
+/// `testWidgets` body.** [TestHarness.create] opens a real database, and a
+/// `testWidgets` body runs inside a fake-async zone in which a real `Future`
+/// never completes on its own. Awaiting the harness there does not fail: it
+/// hangs until the ten-minute test timeout, with no message naming the cause.
+/// That is the same trap as the one [pumpShell] was written for, one level up,
+/// and it is reached by `setUp` / `setUpAll` being outside the fake zone and
+/// `testWidgets` being inside it.
 class TestHarness {
   TestHarness._(this.database, this.repository);
 
@@ -97,3 +108,59 @@ Future<void> pumpShell(WidgetTester tester, VocabRepository repository) async {
   await tester.runAsync(() => Future<void>.delayed(shellDatabaseSettle));
   await tester.pumpAndSettle();
 }
+
+/// One real turn of the event loop, for a read that was **issued** rather than
+/// awaited — a `FutureBuilder`, or a controller `start()` already in flight.
+///
+/// [pumpShell] is this plus the pump that makes the second read exist at all. A
+/// destination or widget that mounts its own read needs only this.
+///
+/// Same reason as `pumpShell`, and the same ten-minute timeout if it is skipped.
+Future<void> settleDatabase(WidgetTester tester) async {
+  await tester.pumpAndSettle();
+  await tester.runAsync(() => Future<void>.delayed(shellDatabaseSettle));
+  await tester.pumpAndSettle();
+}
+
+/// Fires [write] — an async call that is expected to reach the database — and
+/// gives it a real turn of the event loop before returning.
+///
+/// **Do not `await` such a call inside a `testWidgets` body.** It never
+/// completes there, and the failure mode is a ten-minute timeout rather than an
+/// error. This is what a controller's `answer()` looks like from a test: the
+/// synchronous half (counters, and the pixels the user sees) has already run by
+/// the time this returns, and the `recordAnswer` write behind it has landed.
+///
+/// ```dart
+/// await commitAndSettle(tester, () => pushed.answer(index));
+/// expect(controller.correctCount, 1);
+/// ```
+///
+/// The alternative, `tester.runAsync(...)` around the whole call, also works but
+/// runs the call outside the fake zone, so any `notifyListeners()` inside it
+/// lands outside a frame. Firing it inside and then pumping keeps the widget
+/// updates on the normal schedule.
+Future<void> commitAndSettle(
+  WidgetTester tester,
+  Future<void> Function() write,
+) async {
+  unawaited(write());
+  await tester.pumpAndSettle();
+  await tester.runAsync(() => Future<void>.delayed(shellDatabaseSettle));
+  await tester.pumpAndSettle();
+}
+
+/// Awaits [read] — a database query — from inside a `testWidgets` body.
+///
+/// The read-only counterpart of [commitAndSettle], and the same trap: awaited
+/// bare, it hangs for the full ten minutes. `runAsync` is the only way to give a
+/// real `Future` a turn from inside the fake zone.
+///
+/// ```dart
+/// final stats = await readOutsideFakeAsync(tester, () => repository.stats('p'));
+/// ```
+Future<T> readOutsideFakeAsync<T>(
+  WidgetTester tester,
+  Future<T> Function() read,
+) async =>
+    (await tester.runAsync(read)) as T;
