@@ -1,15 +1,44 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
+
+// `SearchController` is also a Material widget (`search_anchor.dart`), so the
+// app's own one is this file's `SearchController` and Material's is hidden.
+// Renaming either would break the interface later tasks were told to depend on.
+import 'package:flutter/material.dart' hide SearchController;
+import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/design/design_tokens.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
+import 'package:lexilearn/domain/word_of_the_day.dart';
+import 'package:lexilearn/ui/favorites/favorites_screen.dart';
+import 'package:lexilearn/ui/flashcards/flashcards_screen.dart';
+import 'package:lexilearn/ui/more/more_screen.dart';
+import 'package:lexilearn/ui/quiz/quiz_setup_screen.dart';
+import 'package:lexilearn/ui/search/search_controller.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
+import 'package:provider/provider.dart';
 
-/// The brand's first destination.
+/// The chrome strings, taken from `docs/design/brand-reference.png`.
+const String _greeting = 'مرحباً بك!';
+const String _subheading = 'كل كلمة جديدة تقرّبك من هدفك';
+const String _searchHint = 'ابحث عن كلمة...';
+const String _wordOfTheDayLabel = 'Word of the Day';
+const String _meaningButton = 'معرفة المعنى';
+const String _clearTooltip = 'مسح';
+const String _noResults = 'لا توجد نتائج. جرّب جزءاً من الكلمة.';
+const String _searchFailed = 'تعذّر البحث.';
+
+/// The brand's first destination: the greeting, the word of the day, the search
+/// field, and the 2×2 quick-launch grid.
 ///
-/// Task 9's shell: it owns the title, the empty state and the pack plumbing, so
-/// `HomeShell` compiles and the bottom bar can be tested on its own. Task 10
-/// replaces the body with the greeting, the word-of-the-day card, the
-/// `ابحث عن كلمة...` search field and the quick-launch grid.
-class HomeScreen extends StatelessWidget {
+/// **Search is a field on this screen, not a destination.** The artwork's Home
+/// phone draws the field directly under the heading and the grid under the word
+/// of the day, with no separate search screen anywhere in the bar, so there is
+/// nothing to navigate to when the user types.
+///
+/// Typed into the field, the same body becomes the result list. Swapping rather
+/// than stacking is deliberate: the dashboard is a dashboard, and pushing a list
+/// over it would leave a search field half-hidden behind the results it
+/// produced.
+class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
     required this.packKey,
@@ -17,39 +46,225 @@ class HomeScreen extends StatelessWidget {
     required this.onOpenWord,
   });
 
+  /// The pack every part of this screen is scoped to. Empty until `HomeShell`
+  /// resolves it, and empty for good when nothing is installed.
   final String packKey;
+
+  /// Switches the active pack.
+  ///
+  /// Handed to this screen by the shell alongside every other destination, and
+  /// deliberately not called from here yet: the pack picker is Task 13's, and
+  /// inventing a second one on Home would put the same list in two places. What
+  /// Home *does* do with [packKey] is show it — the pill in the header — so the
+  /// screen is visibly scoped to something rather than reading as a dead end.
   final ValueChanged<String> onPackSelected;
+
+  /// Opens one word. Task 14 points this at `WordDetailScreen`; until then
+  /// `HomeShell` holds a no-op.
   final ValueChanged<VocabEntry> onOpenWord;
 
   @override
-  Widget build(BuildContext context) => _Placeholder(
-        title: 'الرئيسية',
-        icon: Icons.search,
-        headline: 'ابحث عن كلمة…',
-        supporting: 'كلماتك في حزمة واحدة، ابدأ من هنا.',
-        packKey: packKey,
-      );
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-/// Task 9's placeholder body.
-///
-/// Private to this file on purpose. Task 9's plan asked for one `_Placeholder`
-/// per destination file rather than a shared widget, and Dart allows the same
-/// private name in five files — so each screen that arrives later replaces its
-/// own copy instead of editing a shared one.
-class _Placeholder extends StatelessWidget {
-  const _Placeholder({
-    required this.title,
-    required this.icon,
-    required this.headline,
-    required this.supporting,
-    required this.packKey,
-  });
+class _HomeScreenState extends State<HomeScreen> {
+  late final SearchController _search;
+  final TextEditingController _field = TextEditingController();
 
-  final String title;
-  final IconData icon;
-  final String headline;
-  final String supporting;
+  Timer? _debounce;
+
+  /// The whole active pack, read once per pack switch.
+  ///
+  /// Held separately from the search results because the word of the day must be
+  /// picked from the *pack*, not from whatever happens to be on screen: a
+  /// filtered list would give the card a different word depending on the last
+  /// thing typed.
+  List<VocabEntry> _entries = const <VocabEntry>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _search = SearchController(repository: context.read<VocabRepository>())
+      ..addListener(_onSearchChanged);
+    _loadPack(widget.packKey);
+  }
+
+  @override
+  void didUpdateWidget(HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.packKey == widget.packKey) return;
+    _loadPack(widget.packKey);
+    // Re-run whatever is in the field against the new pack rather than dropping
+    // the user's query on the floor. `SearchController` remembers the key, so
+    // this does not have to carry one.
+    if (_field.text.isNotEmpty) {
+      _debounce?.cancel();
+      _run(_field.text);
+    }
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _search
+      ..removeListener(_onSearchChanged)
+      ..dispose();
+    _field.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadPack(String packKey) async {
+    final repository = context.read<VocabRepository>();
+    // An empty key is the shell's start-up window, not a missing pack: it must
+    // not be asked for, because the read would answer "no such pack" and the
+    // screen would flash an error before it has ever shown anything.
+    final entries = packKey.isEmpty
+        ? const <VocabEntry>[]
+        : await repository.entries(packKey);
+    // Two pack switches in quick succession race here; only the last one wins.
+    if (!mounted || widget.packKey != packKey) return;
+    setState(() => _entries = entries);
+  }
+
+  void _onSearchChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onChanged(String value) {
+    // Rebuilt immediately so the clear button appears the moment there is
+    // something to clear, rather than one debounce later.
+    setState(() {});
+    // 250 ms — `AppDurations.standard`, the brand's own "immediate" duration.
+    // Long enough to coalesce a fast typist into one read, short enough that
+    // the list still feels like it is following along. Without it every
+    // keystroke is a round trip to SQLite.
+    _debounce?.cancel();
+    _debounce = Timer(AppDurations.standard, () => _run(value));
+  }
+
+  void _run(String value) => _search.search(value, packKey: widget.packKey);
+
+  /// Empties the field and goes straight back to the dashboard.
+  ///
+  /// Deliberately does not query for "everything": clearing a search is a cue to
+  /// leave the results, and re-reading the pack to then throw the answer away is
+  /// a read for nobody.
+  void _clear() {
+    _debounce?.cancel();
+    _field.clear();
+    _search.clear();
+  }
+
+  /// Whether the body is showing results rather than the dashboard.
+  ///
+  /// Decided on the *trimmed* query, because a field holding nothing but spaces
+  /// should stay on the dashboard instead of dumping the whole pack.
+  bool get _hasQuery => _search.query.trim().isNotEmpty;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            _Header(packKey: widget.packKey),
+            const SizedBox(height: AppSpacing.m),
+            _SearchField(
+              controller: _field,
+              onChanged: _onChanged,
+              onClear: _clear,
+              hasQuery: _hasQuery,
+            ),
+            const SizedBox(height: AppSpacing.m),
+            Expanded(
+              child: _hasQuery ? _results() : _dashboard(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _dashboard() {
+    // `pick` throws on an empty list, by design. With no pack installed the
+    // answer is "no card", not "an empty card" — and the grid still stands,
+    // because the destinations do not depend on a pack being present.
+    final wordOfTheDay =
+        _entries.isEmpty ? null : WordOfTheDay.pick(_entries, DateTime.now());
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.m,
+        0,
+        AppSpacing.m,
+        AppSpacing.m,
+      ),
+      children: <Widget>[
+        if (wordOfTheDay != null) ...<Widget>[
+          _WordOfTheDayCard(
+            entry: wordOfTheDay,
+            onOpenWord: widget.onOpenWord,
+          ),
+          const SizedBox(height: AppSpacing.m),
+        ],
+        _QuickLaunchGrid(packKey: widget.packKey),
+      ],
+    );
+  }
+
+  Widget _results() {
+    if (_search.isSearching) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_search.error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.l),
+          child: Text(
+            _searchFailed,
+            textAlign: TextAlign.center,
+            style: Theme.of(context)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(color: Theme.of(context).colorScheme.error),
+          ),
+        ),
+      );
+    }
+    if (_search.results.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.l),
+          child: Text(
+            _noResults,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ),
+      );
+    }
+    return ListView.separated(
+      itemCount: _search.results.length,
+      separatorBuilder: (_, _) => const Divider(height: 1),
+      itemBuilder: (context, index) => _EntryRow(
+        entry: _search.results[index],
+        onTap: widget.onOpenWord,
+      ),
+    );
+  }
+}
+
+/// The greeting, the active pack, and the brand's book mark.
+///
+/// Laid out directionally, so it reads right-to-left like the rest of the app.
+/// The artwork draws its own header the other way round — the greeting pushed to
+/// the left, the mark on the right — which is what a mock drawn left-to-right
+/// looks like once it is inside an Arabic screen. Material's own convention is
+/// followed here, as it is in the golden this file's screen is measured against.
+class _Header extends StatelessWidget {
+  const _Header({required this.packKey});
+
   final String packKey;
 
   @override
@@ -58,66 +273,463 @@ class _Placeholder extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final secondary =
         isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: theme.scaffoldBackgroundColor,
-        title: Text(title),
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.m,
+        AppSpacing.m,
+        AppSpacing.m,
+        0,
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(AppSpacing.l),
-          child: AppSurface(
-            padding: const EdgeInsets.all(AppSpacing.l),
+      child: Row(
+        children: <Widget>[
+          Expanded(
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Icon(
-                  icon,
-                  size: 40,
-                  color: isDark ? AppColors.primaryDark : AppColors.primaryLight,
-                ),
-                const SizedBox(height: AppSpacing.m),
                 Text(
-                  headline,
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.titleMedium,
+                  _greeting,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.headlineSmall
+                      ?.copyWith(fontWeight: FontWeight.w600),
                 ),
-                const SizedBox(height: AppSpacing.s),
+                const SizedBox(height: AppSpacing.xs),
                 Text(
-                  supporting,
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium?.copyWith(color: secondary),
-                ),
-                const SizedBox(height: AppSpacing.l),
-                // The active pack, named. `HomeShell` resolves it once and hands
-                // the same key to every destination, so showing it here is what
-                // proves the shell threads state around rather than only
-                // swapping widgets. A pack key is a Latin run, so it asks for
-                // Inter explicitly instead of inheriting Tajawal's own Latin.
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.m,
-                    vertical: AppSpacing.s,
-                  ),
-                  decoration: BoxDecoration(
-                    color:
-                        isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
-                    borderRadius: BorderRadius.circular(AppRadii.pill),
-                    border: Border.all(
-                      color: isDark ? AppColors.borderDark : AppColors.borderLight,
-                    ),
-                  ),
-                  child: Text(
-                    packKey.isEmpty ? '—' : packKey,
-                    textDirection: TextDirection.ltr,
-                    style: AppText.latin.copyWith(fontSize: 13, color: secondary),
-                  ),
+                  _subheading,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(color: secondary),
                 ),
               ],
             ),
           ),
+          const SizedBox(width: AppSpacing.s),
+          _PackPill(packKey: packKey),
+          const SizedBox(width: AppSpacing.s),
+          const _BookMark(),
+        ],
+      ),
+    );
+  }
+}
+
+/// The pack this screen is scoped to, named.
+///
+/// Not decoration: `HomeShell` resolves the active pack once and hands the same
+/// key to all four destinations, so this is what proves the screen is reading
+/// that state rather than standing still.
+class _PackPill extends StatelessWidget {
+  const _PackPill({required this.packKey});
+
+  final String packKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final secondary =
+        isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.s,
+        vertical: AppSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
+        borderRadius: BorderRadius.circular(AppRadii.pill),
+        border: Border.all(
+          color: isDark ? AppColors.borderDark : AppColors.borderLight,
         ),
       ),
+      child: Text(
+        // A pack key is a Latin run, so it asks for Inter explicitly instead of
+        // inheriting Tajawal's own Latin.
+        packKey.isEmpty ? '—' : packKey,
+        textDirection: TextDirection.ltr,
+        style: AppText.latin.copyWith(fontSize: 12, color: secondary),
+      ),
+    );
+  }
+}
+
+/// The amber book mark, on the circle the artwork draws it in.
+class _BookMark extends StatelessWidget {
+  const _BookMark();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        // The artwork's amber circle at its own tint: the accent is too light to
+        // fill a large disc without shouting, which is why it is a wash here and
+        // the full-strength amber only on the glyph.
+        color: AppColors.accent.withValues(alpha: isDark ? 0.24 : 0.16),
+        shape: BoxShape.circle,
+      ),
+      child: const Icon(Icons.menu_book_rounded, color: AppColors.accent, size: 22),
+    );
+  }
+}
+
+/// The search field: a full pill, per the theme's `inputDecorationTheme`.
+class _SearchField extends StatelessWidget {
+  const _SearchField({
+    required this.controller,
+    required this.onChanged,
+    required this.onClear,
+    required this.hasQuery,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  /// Drives the clear button. The *controller's* text would do the same, but this
+  /// is the state the screen already rebuilt for.
+  final bool hasQuery;
+
+  /// The field's outline, stated per state.
+  ///
+  /// Material 3 paints a *filled* text field's outline with
+  /// `colorScheme.onSurfaceVariant`, whatever `InputDecoration.border` says. That
+  /// was measured rather than assumed: rasterising the field with
+  /// `onSurfaceVariant` overridden to `#00FF00` produced a `#00FF00` border, and
+  /// under the app theme — where `onSurfaceVariant` is `textSecondaryLight` —
+  /// the rasterised border comes out `#6B7280`, the secondary *text* grey, in a
+  /// brand that specifies `#E5E7EB` for this hairline.
+  ///
+  /// `app_theme.dart` belongs to Task 8 and its `onSurfaceVariant` is pinned by
+  /// `test/design/app_theme_test.dart`, so the brand hairline is named here from
+  /// the same token the theme uses. This is the app's only text input, so a
+  /// screen-local statement is the cheaper fix than a theme-wide one that would
+  /// recolour every `onSurfaceVariant` string along with it.
+  static OutlineInputBorder _border(Color color, {double width = 1}) =>
+      OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadii.pill),
+        borderSide: BorderSide(color: color, width: width),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final scheme = theme.colorScheme;
+    final secondary = isDark
+        ? AppColors.textSecondaryDark
+        : AppColors.textSecondaryLight;
+    final hairline = isDark ? AppColors.borderDark : AppColors.borderLight;
+    final primary = isDark ? AppColors.primaryDark : AppColors.primaryLight;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        textInputAction: TextInputAction.search,
+        // No `AppText.latin` here, and deliberately. Every *static* Latin run in
+        // the app names Inter, but this field holds whatever the user types, and
+        // an Arabic query typed into an Inter-bound field renders as tofu — the
+        // bilingual search the Python original had would be unreadable.
+        decoration: InputDecoration(
+          hintText: _searchHint,
+          hintTextDirection: TextDirection.rtl,
+          border: _border(hairline),
+          enabledBorder: _border(hairline),
+          // Focused takes the brand purple, at the 2px Material draws it at, so
+          // the field's focus state is a colour from the palette rather than a
+          // grey that happens to be in the right place.
+          focusedBorder: _border(primary, width: 2),
+          errorBorder: _border(scheme.error),
+          disabledBorder: _border(hairline),
+          // Material puts the icon at the *start*, which is the right-hand end in
+          // RTL. The artwork draws its magnifier at the other end, as a
+          // left-to-right mock would; the golden this screen is measured against
+          // uses the Material convention, so this does too.
+          prefixIcon: Icon(Icons.search_rounded, color: secondary),
+          suffixIcon: !hasQuery
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: _clearTooltip,
+                  onPressed: onClear,
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The word-of-the-day card.
+///
+/// The brand fills it with the primary colour — see
+/// `docs/design/brand-reference.md` — and the artwork fills it with a
+/// photograph, which is out of scope by user decision. So it is the one surface
+/// on this screen that is *not* an `AppSurface`: `AppSurface` paints the
+/// neutral surface colour and has no override for it, and reaching for a `Card`
+/// instead would trade the brand's shadow for Material's elevation shadow, which
+/// this rasteriser strokes as an opaque black keyline. The tokens below are the
+/// same ones `AppSurface` composes, including its rule that dark mode separates
+/// by hairline and light mode by shadow.
+class _WordOfTheDayCard extends StatelessWidget {
+  const _WordOfTheDayCard({required this.entry, required this.onOpenWord});
+
+  final VocabEntry entry;
+  final ValueChanged<VocabEntry> onOpenWord;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final onFill = isDark ? AppColors.textDark : AppColors.surfaceLight;
+    final fill = isDark ? AppColors.surfaceDark : AppColors.primaryLight;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.l),
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        // In light mode the border takes the fill, so the card reads as one
+        // edge-to-edge shape rather than a purple panel in a grey outline.
+        border: Border.all(
+          color: isDark ? AppColors.borderDark : AppColors.primaryLight,
+        ),
+        boxShadow: isDark ? AppShadows.none : AppShadows.light,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            _wordOfTheDayLabel,
+            style: AppText.latin.copyWith(fontSize: 13, color: onFill),
+          ),
+          const SizedBox(height: AppSpacing.s),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: <Widget>[
+              Flexible(
+                child: Text(
+                  entry.term,
+                  textDirection: TextDirection.ltr,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.latinDisplay
+                      .copyWith(fontSize: 28, color: onFill),
+                ),
+              ),
+              // Static, never played: text-to-speech is out of scope by user
+              // decision, so the artwork's speaker is a glyph and not a control.
+              const SizedBox(width: AppSpacing.s),
+              const Icon(Icons.volume_up_rounded, color: AppColors.accent),
+            ],
+          ),
+          if (entry.phonetic.isNotEmpty)
+            Text(
+              entry.phonetic,
+              textDirection: TextDirection.ltr,
+              style: AppText.latin.copyWith(fontSize: 14, color: onFill),
+            ),
+          const SizedBox(height: AppSpacing.m),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: ElevatedButton(
+              onPressed: () => onOpenWord(entry),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: AppColors.textLight,
+                shape: const StadiumBorder(),
+                // `elevatedButtonTheme` still defaults to Material 3 elevation 1,
+                // and that is the same `canvas.drawShadow` defect the cards used
+                // to have: the test rasteriser strokes it as an opaque black
+                // keyline around the pill, 2,363 pixels of them the last time it
+                // was measured. The amber fill carries the button on its own.
+                elevation: 0,
+              ),
+              child: const Text(_meaningButton),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The 2×2 quick-launch grid the artwork draws under the card.
+///
+/// Children are in *reading* order, top-right first, because the grid lays out
+/// directionally. The artwork's mock transposes the top two tiles, which is what
+/// a left-to-right mock of an Arabic grid looks like; the reading order is the
+/// one the brand reference names the tiles in.
+///
+/// The tiles open their destination as a route rather than switching the bottom
+/// bar. `HomeShell` owns the bar's index and does not hand its children a way
+/// to move it — `HomeScreen`'s signature is fixed — so a tile pushing its
+/// destination is the only link available, and `المفضلة` has to be pushed anyway
+/// because it is not a tab at all.
+class _QuickLaunchGrid extends StatelessWidget {
+  const _QuickLaunchGrid({required this.packKey});
+
+  final String packKey;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: AppSpacing.m,
+      crossAxisSpacing: AppSpacing.m,
+      // Square-ish, as the artwork draws them, and short enough that four of
+      // them plus the card fit a phone without the whole body scrolling.
+      childAspectRatio: 1.15,
+      children: <Widget>[
+        _QuickLaunchTile(
+          icon: Icons.auto_stories_rounded,
+          iconColor: AppColors.accent,
+          title: 'بطاقات التعلم',
+          subtitle: 'ابدأ الآن',
+          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => FlashcardsScreen(packKey: packKey),
+          )),
+        ),
+        _QuickLaunchTile(
+          icon: Icons.check_box_rounded,
+          // Ink, not amber: this is the colour the artwork draws this tile's
+          // mark in, and the amber is reserved for the two it also draws amber.
+          iconColor: Theme.of(context).colorScheme.onSurface,
+          title: 'الاختبارات',
+          subtitle: 'اختبر نفسك',
+          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => QuizSetupScreen(
+              packKey: packKey,
+              onPackSelected: (_) {},
+            ),
+          )),
+        ),
+        _QuickLaunchTile(
+          icon: Icons.favorite_rounded,
+          iconColor: AppColors.accent,
+          title: 'المفضلة',
+          subtitle: 'كلماتك المفضلة',
+          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => FavoritesScreen(
+              packKey: packKey,
+              onOpenWord: (_) {},
+            ),
+          )),
+        ),
+        _QuickLaunchTile(
+          icon: Icons.insights_rounded,
+          iconColor: Theme.of(context).colorScheme.onSurface,
+          title: 'إحصائياتك',
+          subtitle: 'تقدمك وإنجازك',
+          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => MoreScreen(
+              packKey: packKey,
+              onPackSelected: (_) {},
+            ),
+          )),
+        ),
+      ],
+    );
+  }
+}
+
+class _QuickLaunchTile extends StatelessWidget {
+  const _QuickLaunchTile({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final secondary =
+        isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
+    final radius = BorderRadius.circular(AppRadii.md);
+
+    return Semantics(
+      // A tile is a button, and a screen reader has to be told so: `InkWell`
+      // alone exposes a tap but not the role, and the whole card is one target.
+      container: true,
+      button: true,
+      label: title,
+      child: AppSurface(
+        padding: const EdgeInsets.all(AppSpacing.m),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: radius,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Icon(icon, color: iconColor),
+              const SizedBox(height: AppSpacing.s),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleSmall,
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(color: secondary),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One search result.
+class _EntryRow extends StatelessWidget {
+  const _EntryRow({required this.entry, required this.onTap});
+
+  final VocabEntry entry;
+  final ValueChanged<VocabEntry> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListTile(
+      onTap: () => onTap(entry),
+      // An English term in an Arabic app must not be reordered by the app's
+      // direction; its translations must be.
+      title: Text(
+        entry.term,
+        textDirection: TextDirection.ltr,
+        style: AppText.latin,
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          for (final translation in entry.translations)
+            Text(translation, textDirection: TextDirection.rtl),
+          if (entry.note.isNotEmpty)
+            Text(entry.note, style: theme.textTheme.bodySmall),
+        ],
+      ),
+      isThreeLine: entry.translations.length > 1,
     );
   }
 }

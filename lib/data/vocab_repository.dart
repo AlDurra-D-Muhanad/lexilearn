@@ -1,6 +1,7 @@
 import 'package:lexilearn/core/clock.dart';
 import 'package:lexilearn/domain/pack_codec.dart';
 import 'package:lexilearn/domain/quiz_session_result.dart';
+import 'package:lexilearn/domain/search_matcher.dart';
 import 'package:lexilearn/domain/stats_summary.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
@@ -29,17 +30,16 @@ class VocabRepository {
 
   Future<List<VocabEntry>> entries(String packKey) => _packs.entriesOf(packKey);
 
+  /// Looks the pack up, then hands the comparison to `SearchMatcher`.
+  ///
+  /// The matching rule itself lives in `lib/domain/search_matcher.dart` and is
+  /// not restated here: two copies of a normalisation rule is how a bidi mark
+  /// ends up stripped on one path and not the other.
   Future<List<VocabEntry>> search({
     required String packKey,
     required String query,
-  }) async {
-    final normalised = _normalise(query);
-    final all = await _packs.entriesOf(packKey);
-    if (normalised.isEmpty) return all;
-    return all
-        .where((entry) => _normalise(entry.searchableText).contains(normalised))
-        .toList();
-  }
+  }) async =>
+      SearchMatcher.filter(await _packs.entriesOf(packKey), query);
 
   Future<VocabPack> importPack(String jsonText) async {
     // Decode first: a bad file must never reach the database, so a failed
@@ -127,27 +127,4 @@ class VocabRepository {
       return cleared;
     });
   }
-
-  /// Lowercase, strip invisible marks, collapse whitespace. Arabic queries and
-  /// Arabic-containing text must compare consistently in both directions.
-  ///
-  /// The stripped classes are the bidi embedding/override/marking controls
-  /// (U+200E-U+200F, U+202A-U+202E, U+2066-U+2069) that the source dataset
-  /// really does contain, plus U+061C ARABIC LETTER MARK and the zero-width
-  /// family U+200B-U+200D and U+FEFF, which arrive when text is pasted out of
-  /// a rich-text editor. None of them are visible, so none should stop a match.
-  ///
-  /// NOTE: Task 10 extracts this into `lib/domain/search_matcher.dart` as
-  /// `SearchMatcher`, which the UI calls directly. It stays here, private, until
-  /// then. Task 5 does not own that file.
-  static String _normalise(String value) => value
-      .replaceAll(_invisibleMarks, '')
-      .trim()
-      .toLowerCase()
-      .replaceAll(_whitespaceRun, ' ');
-
-  static final RegExp _invisibleMarks = RegExp(
-      '[\u200e\u200f\u202a-\u202e\u2066-\u2069\u061c\u200b-\u200d\ufeff]');
-
-  static final RegExp _whitespaceRun = RegExp(r'\s+');
 }
