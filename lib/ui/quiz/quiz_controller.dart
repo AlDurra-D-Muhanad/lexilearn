@@ -61,6 +61,9 @@ class QuizController extends ChangeNotifier {
   bool _sessionSaved = false;
   DateTime? _startedAt;
 
+  /// Set in [dispose]. See [_notifyIfAlive].
+  bool _disposed = false;
+
   QuizQuestion? get question => _question;
   int get answeredCount => _answered;
   int get correctCount => _correct;
@@ -142,6 +145,13 @@ class QuizController extends ChangeNotifier {
   /// Separate from the constructor because a controller cannot do IO before it
   /// is built, and because an empty pack has to end the session rather than
   /// throw: [isFinished] is already true when this returns with no question.
+  ///
+  /// **The notification at the end is guarded, not bare.** `QuizSetupScreen`
+  /// creates this controller inside the pushed route's provider and calls
+  /// `start()` off it, so the read this issues is still in flight when the user
+  /// can pop that route — and `ChangeNotifier` asserts on `notifyListeners()`
+  /// after disposal rather than doing nothing. The route is not cancelling the
+  /// read; it is declining to be told about the answer.
   Future<void> start() async {
     _startedAt = _clock();
     final entries = await repository.entries(packKey);
@@ -151,7 +161,7 @@ class QuizController extends ChangeNotifier {
     _question = generator.canGenerate ? generator.next() : null;
     _questionNumber = _question == null ? 0 : 1;
     _selectedIndex = null;
-    notifyListeners();
+    _notifyIfAlive();
   }
 
   /// Commits [index] as the answer to the current question.
@@ -195,7 +205,7 @@ class QuizController extends ChangeNotifier {
         _question = next;
         _questionNumber++;
         _selectedIndex = null;
-        notifyListeners();
+        _notifyIfAlive();
         return;
       }
     }
@@ -204,7 +214,7 @@ class QuizController extends ChangeNotifier {
 
   void _finish() {
     _question = null;
-    notifyListeners();
+    _notifyIfAlive();
   }
 
   /// Writes the session summary, once.
@@ -227,6 +237,15 @@ class QuizController extends ChangeNotifier {
     // Answers are already persisted one at a time and the summary is written the
     // moment the last question is left, so a session torn down mid-question
     // loses nothing but the fact that it was abandoned.
+    _disposed = true;
     super.dispose();
+  }
+
+  /// `notifyListeners()` after [dispose] throws in debug, and every write to the
+  /// database this controller issues can land after the route that owns it has
+  /// been popped — [start] is the one that starts before any frame is drawn.
+  /// Same guard, and the same name, as `SearchController`.
+  void _notifyIfAlive() {
+    if (!_disposed) notifyListeners();
   }
 }

@@ -28,6 +28,11 @@ const int _maxQuestions = 200;
 const List<int> _presets = <int>[10, 20, 50];
 
 /// The height the pack picker occupies, reserved while it is still reading.
+///
+/// The theme's own form-field height, so the gap the form reserves while the
+/// read is in flight is exactly the gap the dropdown fills when it lands and the
+/// layout does not jump. Named rather than written as a literal at the one call
+/// site that needs it while it is still in flight.
 const double _pickerHeight = 56;
 
 /// The brand's third destination: choosing a pack and a session length, then
@@ -243,6 +248,11 @@ class _QuizSetupFormState extends State<_QuizSetupForm> {
           label: const Text(_startQuiz),
           style: FilledButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.m),
+            // A pill, with the quiz screen's advance button and the result
+            // screen's back button. These three are the app's full-width
+            // actions, so they are the three the brand's stadium shape applies
+            // to; the theme default is a 20px radius.
+            shape: const StadiumBorder(),
           ),
         ),
       ],
@@ -292,7 +302,7 @@ class _PackPill extends StatelessWidget {
         child: Text(
           packKey.isEmpty ? '—' : packKey,
           textDirection: TextDirection.ltr,
-          style: AppText.latin.copyWith(fontSize: 12, color: secondary),
+          style: AppText.latin.copyWith(fontSize: AppText.caption, color: secondary),
         ),
       ),
     );

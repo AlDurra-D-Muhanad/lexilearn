@@ -93,6 +93,10 @@ class QuizResultScreen extends StatelessWidget {
                     },
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: AppSpacing.m),
+                      // A pill, like every other full-width action in the app
+                      // and every action button in the artwork; the theme's
+                      // default is a 20px radius, which the brand does not use.
+                      shape: const StadiumBorder(),
                     ),
                     child: const Text(_backToSetup),
                   ),

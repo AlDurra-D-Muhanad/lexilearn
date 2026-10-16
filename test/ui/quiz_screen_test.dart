@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -33,6 +34,30 @@ const VocabPack _pack = VocabPack(
   ],
 );
 
+/// A second installed pack, so the picker has something to switch *to*.
+///
+/// Three words, so the two labels the picker draws differ in their entry count as
+/// well as their title — a test that only looked for the title could pass while
+/// the field was still showing the other pack's row.
+const VocabPack _secondPack = VocabPack(
+  schemaVersion: 1,
+  packId: 'q',
+  title: 'Second',
+  sourceLanguage: 'en',
+  targetLanguage: 'ar',
+  entries: <VocabEntry>[
+    VocabEntry(id: 'x', term: 'xray', translations: <String>['إكس']),
+    VocabEntry(id: 'y', term: 'yoga', translations: <String>['يوغا']),
+    VocabEntry(id: 'z', term: 'zinc', translations: <String>['زنك']),
+  ],
+);
+
+/// The picker labels, spelled out rather than interpolated into the assertions.
+const String _packTitle = 'P';
+const int _packEntries = 4;
+const String _secondTitle = 'Second';
+const int _secondEntries = 3;
+
 /// The chrome these tests assert on.
 ///
 /// Copied here rather than imported, because the screens keep their strings
@@ -55,6 +80,21 @@ void main() {
   /// A controller over a pack that is not installed, so its first read answers
   /// with nothing and the session is over before it starts.
   late QuizController empty;
+
+  /// A second install, used only by the picker test, which needs a pack to switch
+  /// *to*. Opened once in `setUpAll` rather than per test: opening a database is
+  /// a real async round trip, and a `testWidgets` body runs in a fake-async zone
+  /// where that never completes — a test that opened its own hung until the
+  /// ten-minute timeout. It is deliberately **not** the per-test harness: two
+  /// installed packs make `HomeShell` resolve whichever `listPacks` orders first,
+  /// and the setup-flow tests assert on sessions recorded under `p`.
+  late TestHarness twoPacks;
+
+  setUpAll(() async {
+    twoPacks = await TestHarness.create(packs: <VocabPack>[_pack, _secondPack]);
+  });
+
+  tearDownAll(() => twoPacks.dispose());
 
   setUp(() async {
     harness = await TestHarness.create(packs: <VocabPack>[_pack]);
@@ -129,6 +169,34 @@ void main() {
     for (final letter in <String>['A', 'B', 'C', 'D']) {
       expect(find.text(letter), findsNothing, reason: 'a "$letter" chip is back');
     }
+
+    // …and *full-width* is the other half of the claim, so it is measured rather
+    // than assumed. The screen's own `EdgeInsets.symmetric(horizontal: AppSpacing.m)`
+    // is the only inset between a row and the edge, so every option is exactly as
+    // wide as the question card above it — and that card is nearly the whole
+    // screen, which is what stops the equality passing for a narrow column.
+    //
+    // Measuring the `InkWell` rather than the text matters: the text is as wide
+    // as the word, which a chip layout would satisfy too.
+    final screenWidth = tester.getSize(find.byType(MaterialApp)).width;
+    final expectedWidth = screenWidth - 2 * AppSpacing.m;
+    for (var i = 0; i < question.options.length; i++) {
+      // The *button*, not the `InkWell` inside it: measured, the InkWell comes
+      // out 2px narrower than the box it is in, and the box is what the artwork
+      // draws and what the user aims at. Measured on the button box, each option
+      // is the screen less the screen's own `AppSpacing.m` inset on both sides.
+      final button = find.ancestor(
+        of: optionText(question, i),
+        matching: find.byType(AnimatedContainer),
+      );
+      expect(button, findsOneWidget, reason: 'option $i is not a button');
+      expect(tester.getSize(button).width, closeTo(expectedWidth, 0.5),
+          reason: 'option $i is not full-width');
+      // …and the floor, so the equality above cannot be satisfied by a column
+      // that is narrow on both screens.
+      expect(tester.getSize(button).width, greaterThan(screenWidth * 0.9),
+          reason: 'option $i is not full-width');
+    }
   });
 
   testWidgets('the advance button is disabled until an option is tapped', (tester) async {
@@ -191,6 +259,8 @@ void main() {
     await pumpQuiz(tester);
     final question = controller.question!;
 
+    // Tapped through the widget tree, so this pins `_OptionTile`'s guard: it
+    // nulls its `onTap` once answered, and that is the layer a finger reaches.
     await _tap(tester, optionText(question, question.correctIndex));
     await _tap(tester, optionText(question, 0));
 
@@ -204,6 +274,42 @@ void main() {
     // `pumpShell` documents, met with the same one call.
     final stats = (await tester.runAsync(() => harness.repository.stats('p')))!;
     expect(stats.totalAttempts, 1);
+  });
+
+  testWidgets('answering twice through the controller is one answer and one row',
+      (tester) async {
+    await pumpQuiz(tester);
+    final question = controller.question!;
+    final wrong = _firstWrongIndex(question);
+    final pushed = controllerOf(tester);
+
+    // **The controller's own guard, not the tile's.** Driven through the object
+    // the screen is watching, so `_OptionTile`'s nulled `onTap` is bypassed:
+    // delete `if (_selectedIndex != null) return` from `QuizController.answer`
+    // and the test above still passes, while this one goes red. The Python
+    // original re-read its file on every keystroke, so one question scored twice
+    // — once from the widget, once from here.
+    //
+    // Fired and not awaited, because that is what `_OptionTile`'s `onTap` does
+    // and because `answer` awaits a database write: awaiting it in a
+    // fake-async zone never completes. The writes are given a real turn below,
+    // before the row count is read.
+    unawaited(pushed.answer(question.correctIndex));
+    await tester.pumpAndSettle();
+    unawaited(pushed.answer(wrong));
+    await tester.pumpAndSettle();
+    await tester.runAsync(() => Future<void>.delayed(shellDatabaseSettle));
+    await tester.pumpAndSettle();
+
+    expect(pushed.answeredCount, 1);
+    expect(pushed.correctCount, 1);
+    // The first answer is still the one held: the second call did not move it.
+    expect(pushed.isSelectedOption(question.correctIndex), isTrue);
+    expect(pushed.isSelectedOption(wrong), isFalse);
+
+    final stats = (await tester.runAsync(() => harness.repository.stats('p')))!;
+    expect(stats.totalAttempts, 1);
+    expect(stats.totalCorrect, 1);
   });
 
   testWidgets('the final advance shows the result screen', (tester) async {
@@ -293,6 +399,21 @@ void main() {
     expect(find.byType(QuizScreen), findsNothing);
   });
 
+  testWidgets('the setup screen rejects an empty length', (tester) async {
+    await _openSetup(tester, harness.repository);
+
+    // The third bad answer the original could be given. `Search.py` re-prompted
+    // by recursing — `return loop()` after an `isdigit()` failure — so the third
+    // mistake blew the stack. Here there is no recursion to blow: `_start` is a
+    // `void` with an early return per failure, so the *same* message the `0`
+    // case shows is what an empty field shows, and the tap is simply refused.
+    await tester.enterText(find.byType(TextField), '');
+    await _tap(tester, find.widgetWithText(FilledButton, _startQuiz));
+
+    expect(find.textContaining(_lengthError), findsOneWidget);
+    expect(find.byType(QuizScreen), findsNothing);
+  });
+
   testWidgets('the setup screen offers one-tap lengths', (tester) async {
     await _openSetup(tester, harness.repository);
 
@@ -336,6 +457,49 @@ void main() {
     expect(stats.recentSessions, hasLength(1));
   });
 
+  testWidgets('the picker reports the pack the user chooses', (tester) async {
+    // The one part of this destination with no coverage at all: nothing in the
+    // suite opened the dropdown, so `onChanged`, its `value != packKey` guard and
+    // the `ValueKey` that re-keys the field on a pack switch were all unexercised.
+    // Mounted against a host that owns the active key exactly as `HomeShell`
+    // does, because a host that only records the call would prove the callback
+    // fires and nothing about what the screen does next.
+    final two = twoPacks;
+    final selected = <String>[];
+
+    await tester.pumpWidget(_SetupApp(
+      repository: two.repository,
+      selected: selected,
+    ));
+    await _settle(tester);
+
+    // The field opens on the pack it was handed, named.
+    expect(find.text('$_packTitle ($_packEntries)'), findsOneWidget);
+    expect(find.text('p'), findsOneWidget);
+
+    await _tap(tester, find.byType(DropdownButton<String>));
+    await _tap(tester, find.text('$_secondTitle ($_secondEntries)').last);
+
+    // 1. `onChanged` fired, carrying the key the screen was handed…
+    expect(selected, <String>['q']);
+    // 2. …the host rebuilt, so the field shows the pack that was chosen…
+    expect(find.text('$_secondTitle ($_secondEntries)'), findsOneWidget);
+    // …and so does the pill, which is drawn from the same key the quiz would
+    // draw from. Without the `ValueKey`, `initialValue` is read once and this
+    // would still read 'P (4)'.
+    expect(find.text('q'), findsOneWidget);
+    expect(find.text('p'), findsNothing);
+
+    // 3. Re-choosing the pack that is already active must not report it again:
+    //    the guard is what stops a no-op tap from resetting the whole app's
+    //    pack behind the user's back.
+    await _tap(tester, find.byType(DropdownButton<String>));
+    await _tap(tester, find.text('$_secondTitle ($_secondEntries)').last);
+
+    expect(selected, <String>['q'],
+        reason: 're-picking the active pack reported a pack switch');
+  });
+
   testWidgets('the Home tab does not build the quiz screen', (tester) async {
     // The committed golden renders the Home tab alone, and the shell builds one
     // destination at a time. This is what keeps that PNG valid across this task.
@@ -344,6 +508,63 @@ void main() {
     expect(find.byType(HomeScreen), findsOneWidget);
     expect(find.byType(QuizSetupScreen), findsNothing);
   });
+}
+
+/// Mounts `QuizSetupScreen` the way the shell does — the brand theme, the
+/// app-wide RTL direction, the repository from `provider` — over a host that owns
+/// the active pack key exactly as `HomeShell` does.
+///
+/// The host is the point. `QuizSetupScreen` cannot change the pack itself; it
+/// reports the choice and the shell rebuilds it. A host that only recorded the
+/// callback would prove the `onChanged` wiring and nothing about the re-keying,
+/// which is half of what had no coverage.
+class _SetupApp extends StatelessWidget {
+  const _SetupApp({required this.repository, required this.selected});
+
+  final VocabRepository repository;
+
+  /// Every pack key the screen reported, in order.
+  final List<String> selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Provider<VocabRepository>.value(
+      value: repository,
+      child: MaterialApp(
+        theme: AppTheme.light(),
+        darkTheme: AppTheme.dark(),
+        builder: (context, child) =>
+            Directionality(textDirection: TextDirection.rtl, child: child!),
+        home: _SetupHost(selected: selected),
+      ),
+    );
+  }
+}
+
+class _SetupHost extends StatefulWidget {
+  const _SetupHost({required this.selected});
+
+  final List<String> selected;
+
+  @override
+  State<_SetupHost> createState() => _SetupHostState();
+}
+
+class _SetupHostState extends State<_SetupHost> {
+  /// `HomeShell` starts from the first installed pack; the harness installs `p`
+  /// first, so this is the same starting state the real app reaches.
+  String _packKey = 'p';
+
+  @override
+  Widget build(BuildContext context) {
+    return QuizSetupScreen(
+      packKey: _packKey,
+      onPackSelected: (packKey) {
+        widget.selected.add(packKey);
+        setState(() => _packKey = packKey);
+      },
+    );
+  }
 }
 
 /// A tap, and then one real turn of the event loop.

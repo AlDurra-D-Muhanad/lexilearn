@@ -92,4 +92,12 @@ class AppText {
   /// here rather than written as a literal at the call site, so the card is not
   /// the sixth place in the app where a raw number appears.
   static const double wordOfTheDay = 28;
+
+  /// The size of a secondary Latin run: a pack key in a pill, the fraction
+  /// counter beside a progress bar, a caption under a label.
+  ///
+  /// Not a size the app invented — it is Material's own `bodySmall` — but named
+  /// for the same reason [wordOfTheDay] is: a literal at each call site is how
+  /// two screens drift apart on what is meant to be one decision.
+  static const double caption = 12;
 }

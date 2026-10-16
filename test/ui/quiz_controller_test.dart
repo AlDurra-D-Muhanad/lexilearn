@@ -13,6 +13,13 @@ import '../helpers/test_env.dart';
 /// `startedAt` can be asserted rather than merely counted.
 final DateTime _pinnedNow = DateTime.utc(2026, 10, 14, 12);
 
+/// How many seeds the nested-translation pair is driven across.
+///
+/// Two is the minimum that can draw both orders; the range is wider than that on
+/// purpose, because it also has to keep drawing *questions* and not start
+/// repeating one entry forever. Eight is comfortably inside both.
+const int _nestedSeeds = 8;
+
 /// Five distinct words, so a question can always offer three distractors.
 const VocabPack _pack = VocabPack(
   schemaVersion: 1,
@@ -346,61 +353,103 @@ void main() {
     expect(controller.answeredCount, 1);
   });
 
-  test('a wrong option whose text shares characters with the right one is wrong', () async {
+  test('a wrong option whose text shares characters with the right one is wrong',
+      () async {
     // The whole point of the port. Every other test here passes under a
     // substring grader too; this one cannot.
+    //
+    // **Every seed, not one.** `سكينة` is a prefix of `سكينة وهدوء`, so the
+    // generator can draw the pair either way round — the long phrase as the
+    // answer with the short prefix as the distractor, or the reverse. The two
+    // orders are exactly what the two directions of a substring grader disagree
+    // about: `answerText.contains(picked)` rejects one and accepts the other, and
+    // so does `picked.contains(answerText)`. Pinning a single seed therefore
+    // pins one mutant blind: with `Random(3)` the long phrase is always the
+    // answer, which catches the first direction and leaves the flipped one — the
+    // literal shape of the Python original's `Final_answer.__contains__` — green
+    // across the whole suite.
+    //
+    // Searching the seeds rather than conditioning on a lucky one is the shape
+    // `test/domain/quiz_generator_test.dart` uses for the orphan entry, and for
+    // the same reason: a silent skip is a green test that asserts nothing.
     final nested = await TestHarness.create(packs: <VocabPack>[_nestedPack]);
     addTearDown(nested.dispose);
-    final controller = QuizController(
-      repository: nested.repository,
-      packKey: 'nested',
-      questionCount: 1,
-      random: Random(3),
-      clock: () => _pinnedNow,
-    );
-    await controller.start();
+    final answerIdsSeen = <String>{};
 
-    final question = controller.question!;
-    expect(question.options, hasLength(2));
+    for (var seed = 0; seed < _nestedSeeds; seed++) {
+      final controller = QuizController(
+        repository: nested.repository,
+        packKey: 'nested',
+        questionCount: 1,
+        random: Random(seed),
+        clock: () => _pinnedNow,
+      );
+      await controller.start();
 
-    // The fixture, not the grader: assert the two strings really are nested, so
-    // that editing the pack cannot quietly turn this into a test that passes for
-    // the wrong reason.
-    final byLength = question.options.map((option) => option.text).toList()
-      ..sort((a, b) => a.length.compareTo(b.length));
-    expect(byLength.first.length, lessThan(byLength.last.length));
-    expect(byLength.last, contains(byLength.first));
+      final question = controller.question!;
+      expect(question.options, hasLength(2), reason: 'seed $seed');
+      answerIdsSeen.add(question.answer.id);
 
-    final wrong = _firstWrongIndex(controller);
-    await controller.answer(wrong);
+      // The fixture, not the grader: assert the two strings really are nested,
+      // so that editing the pack cannot quietly turn this into a test that
+      // passes for the wrong reason.
+      final byLength = question.options.map((option) => option.text).toList()
+        ..sort((a, b) => a.length.compareTo(b.length));
+      expect(byLength.first.length, lessThan(byLength.last.length),
+          reason: 'seed $seed');
+      expect(byLength.last, contains(byLength.first), reason: 'seed $seed');
 
-    expect(controller.correctCount, 0, reason: 'the wrong option scored correct');
-    expect(controller.lastSelectedWasCorrect, isFalse);
-    final stats = await nested.repository.stats('nested');
-    expect(stats.totalCorrect, 0);
-    expect(stats.totalAttempts, 1);
+      final wrong = _firstWrongIndex(controller);
+      await controller.answer(wrong);
+
+      expect(controller.correctCount, 0,
+          reason: 'seed $seed: the wrong option scored correct');
+      expect(controller.lastSelectedWasCorrect, isFalse, reason: 'seed $seed');
+
+      final stats = await nested.repository.stats('nested');
+      expect(stats.totalCorrect, 0,
+          reason: 'seed $seed: a wrong answer was written to the database');
+      expect(stats.totalAttempts, seed + 1, reason: 'seed $seed');
+    }
+
+    // The assertion that makes the loop mean anything: both entries were asked
+    // as the answer, so both nesting directions really were exercised. Without
+    // it a seed range that happened to draw one order would still pass.
+    expect(answerIdsSeen, containsAll(<String>['a', 'b']),
+        reason: 'the seed range never drew both nesting orders, so one direction '
+            'of a substring grader is untested');
   });
 
   test('the right option still scores on the nested pack', () async {
     // The other half of the pair: a grader that rejects every answer would pass
-    // the test above too.
+    // the test above too. Seeded the same way, and for the same reason.
     final nested = await TestHarness.create(packs: <VocabPack>[_nestedPack]);
     addTearDown(nested.dispose);
-    final controller = QuizController(
-      repository: nested.repository,
-      packKey: 'nested',
-      questionCount: 1,
-      random: Random(3),
-      clock: () => _pinnedNow,
-    );
-    await controller.start();
+    final answerIdsSeen = <String>{};
 
-    await controller.answer(controller.question!.correctIndex);
-    expect(controller.correctCount, 1);
-    expect(controller.lastSelectedWasCorrect, isTrue);
+    for (var seed = 0; seed < _nestedSeeds; seed++) {
+      final controller = QuizController(
+        repository: nested.repository,
+        packKey: 'nested',
+        questionCount: 1,
+        random: Random(seed),
+        clock: () => _pinnedNow,
+      );
+      await controller.start();
 
-    final stats = await nested.repository.stats('nested');
-    expect(stats.totalCorrect, 1);
+      answerIdsSeen.add(controller.question!.answer.id);
+      await controller.answer(controller.question!.correctIndex);
+
+      expect(controller.correctCount, 1, reason: 'seed $seed');
+      expect(controller.lastSelectedWasCorrect, isTrue, reason: 'seed $seed');
+
+      final stats = await nested.repository.stats('nested');
+      expect(stats.totalCorrect, seed + 1, reason: 'seed $seed');
+    }
+
+    expect(answerIdsSeen, containsAll(<String>['a', 'b']),
+        reason: 'the seed range never drew both nesting orders, so one direction '
+            'of a substring grader is untested');
   });
 }
 

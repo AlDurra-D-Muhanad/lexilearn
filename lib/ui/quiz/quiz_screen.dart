@@ -20,6 +20,23 @@ const String _next = 'التالي';
 const String _finish = 'إنهاء';
 const String _loading = 'جارٍ التحميل…';
 
+/// The counter row's height: the Latin caption line plus the gap under it, and
+/// the thickness of the fill it sits beside.
+///
+/// Named rather than written as three literals at the three call sites, for the
+/// same reason `_pickerHeight` is named on the setup screen: `AppSpacing` carries
+/// a scale for gaps, and `AppText` one for type, and neither scale has a value
+/// for a stroked track — so the numbers are pinned here once rather than
+/// scattered as bare magic numbers.
+const double _progressRowHeight = AppSpacing.l + AppSpacing.xs;
+const double _progressTrackHeight = AppSpacing.s - AppSpacing.xs;
+
+/// The vertical padding inside an option row.
+///
+/// Between `AppSpacing.s` and `AppSpacing.m`: enough for a 56px-tall target with
+/// room to read. Named here for the same reason as the two above.
+const double _optionVerticalPadding = AppSpacing.m - AppSpacing.xs;
+
 /// One question: the word, four translations, and — once an answer is given —
 /// whether it was right.
 class QuizScreen extends StatelessWidget {
@@ -46,7 +63,7 @@ class QuizScreen extends StatelessWidget {
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         title: const Text(_title),
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(28),
+          preferredSize: const Size.fromHeight(_progressRowHeight),
           child: _ProgressRow(controller: controller),
         ),
       ),
@@ -88,6 +105,10 @@ class QuizScreen extends StatelessWidget {
                 onPressed: answered ? controller.next : null,
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: AppSpacing.m),
+                  // A pill, like every other full-width action in the app and
+                  // every action button in the artwork: the theme's default is a
+                  // 20px radius, which is a shape the brand does not use.
+                  shape: const StadiumBorder(),
                 ),
                 child: Text(controller.isLastQuestion ? _finish : _next),
               ),
@@ -127,7 +148,7 @@ class _ProgressRow extends StatelessWidget {
             // Numerals, so Inter and LTR rather than the ambient family.
             '${controller.questionNumber} / ${controller.questionCount}',
             textDirection: TextDirection.ltr,
-            style: AppText.latin.copyWith(fontSize: 12, color: secondary),
+            style: AppText.latin.copyWith(fontSize: AppText.caption, color: secondary),
           ),
           const SizedBox(width: AppSpacing.s),
           Expanded(
@@ -135,8 +156,15 @@ class _ProgressRow extends StatelessWidget {
               borderRadius: BorderRadius.circular(AppRadii.pill),
               child: LinearProgressIndicator(
                 value: controller.progress,
-                minHeight: 6,
+                minHeight: _progressTrackHeight,
                 backgroundColor: isDark ? AppColors.borderDark : AppColors.borderLight,
+                // The artwork's **dark** phone draws the progression beneath the
+                // heading in the brand amber, not in the primary purple it uses
+                // in light. `null` leaves the theme's value alone, which is the
+                // purple `colorScheme.primary` already carries. This is the
+                // accent doing the job `design_tokens.dart` says it may do —
+                // filling, never body text.
+                color: isDark ? AppColors.accent : null,
               ),
             ),
           ),
@@ -318,7 +346,7 @@ class _OptionTile extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.m,
-                vertical: 14,
+                vertical: _optionVerticalPadding,
               ),
               child: Row(
                 children: <Widget>[

@@ -260,3 +260,14 @@ brand's favour:
    a magnifier is a control rather than prose: it belongs where the app puts
    every other control's leading edge. Recorded so a later task does not read the
    PNG and "correct" it.
+10. **Two Task 11 interfaces are not what the plan's Interfaces block says.**
+    Both are silent deviations and both came from the plan's own code snippet
+    rather than from its prose, so **Task 12 reads that block and will be
+    surprised.** Recorded here so no later task reaches for a type that does not
+    exist:
+
+    | Plan says | Built as | Why it does not matter |
+    |---|---|---|
+    | `void next()` | `Future<void> next()` | Strictly backward compatible: an `await`ed `Future<void>` and an ignored `void` call both compile, and `next()` is what writes the session row, so a caller that wants the row on disk when the call returns has to be able to wait. The plan's own snippet already returned `Future<void>`. |
+    | `class QuizSetupScreen extends StatefulWidget`, with the length field and its error in `_QuizSetupScreenState` | `StatelessWidget`, with that state in a private `_QuizSetupForm` | The **public constructor is byte-identical** — `QuizSetupScreen({super.key, required this.packKey, required this.onPackSelected})` — and `home_shell.dart:150` compiles against it unchanged. Only the two things the screen genuinely owns as state were moved into a child, so the exported widget has nothing to rebuild on its own and does not pretend to. **There is no `QuizSetupScreenState`, and no task should reach for one** — the private form is driven through the widget tree, as `test/ui/quiz_screen_test.dart` does. |
+

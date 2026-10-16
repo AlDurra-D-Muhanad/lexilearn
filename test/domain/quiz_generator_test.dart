@@ -176,6 +176,37 @@ void main() {
       expect(question.isCorrect(0), isTrue);
     });
 
+    test('grades by entry id, so two options that read alike are one answer', () {
+      // The generator cannot produce this question: `_pickDistractors` rejects
+      // any distractor whose text matches the answer's. It is built by hand for
+      // exactly that reason — the guarantee under test is `QuizQuestion`'s, and
+      // the generator's dedup only means no *reachable* question currently
+      // depends on it. Writing `isCorrect` as normalised text equality instead
+      // of an id comparison passes every other test in the suite, so without
+      // this one the guarantee has no failing test behind it at all.
+      const answer = VocabEntry(
+        id: 'b',
+        term: 'calm',
+        translations: <String>['سكينة'],
+      );
+      const question = QuizQuestion(
+        answer: answer,
+        options: <QuizOption>[
+          QuizOption(entryId: 'a', text: 'سكينة'),
+          QuizOption(entryId: 'b', text: 'سكينة'),
+        ],
+      );
+
+      expect(question.correctIndex, 1, reason: 'the id match is not the answer');
+      expect(question.isCorrect(0), isFalse,
+          reason: 'option 0 reads the same as the answer, and is not it');
+      expect(question.isCorrect(1), isTrue);
+      // And the range guard still applies, so a tap on a removed widget cannot
+      // walk off the end of the list on its way to an id comparison.
+      expect(question.isCorrect(-1), isFalse);
+      expect(question.isCorrect(2), isFalse);
+    });
+
     test('asks the entry with no translation instead of skipping it', () {
       final generator = QuizGenerator(
         entries: <VocabEntry>[
