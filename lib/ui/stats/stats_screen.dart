@@ -165,8 +165,23 @@ class _StatsBodyState extends State<_StatsBody> {
 
   /// Closes the confirmation without resetting.
   ///
-  /// Named so the `إلغاء` button and the `PopScope` callback are literally the
-  /// same behaviour rather than two expressions that happen to agree.
+  /// Named so the three ways out of the confirmation are one behaviour rather
+  /// than three expressions that happen to agree: the `إلغاء` button, the
+  /// `PopScope` callback Android's back reaches, and the close at the top of
+  /// [_reset], which dismisses the layer before the reset runs so the screen
+  /// does not sit showing a dialog it is already acting on.
+  ///
+  /// This doc was false when it was written — it named two call sites while the
+  /// other two inlined their own `setState` instead. The behaviour never
+  /// differed, and the test never noticed, which is exactly why it had to be
+  /// fixed rather than reworded: a comment asserting a single implementation
+  /// while three exist is the same defect as a comment asserting a safety
+  /// property the code lacks.
+  ///
+  /// The check is the one assignment left in the file — searching this file for
+  /// the `setState` that clears the flag must return this line and nothing else.
+  /// Note that the search is for the `setState`, not for the flag: the
+  /// declaration and this comment both contain the bare flag name too.
   void _cancel() => setState(() => _confirming = false);
 
   @override
@@ -219,7 +234,7 @@ class _StatsBodyState extends State<_StatsBody> {
                       // guard is here so a future `canPop` cannot turn a
                       // cancellation into a navigation.
                       if (didPop) return;
-                      setState(() => _confirming = false);
+                      _cancel();
                     },
                     child: _ConfirmLayer(
                       onCancel: _cancel,
@@ -278,7 +293,7 @@ class _StatsBodyState extends State<_StatsBody> {
   }
 
   Future<void> _reset() async {
-    setState(() => _confirming = false);
+    _cancel();
     await _controller.reset();
   }
 }

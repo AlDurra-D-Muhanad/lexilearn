@@ -192,6 +192,12 @@ const String _goldenSkipReason =
 /// The writes go through `tester.runAsync` because a `testWidgets` body runs in
 /// a fake-async zone where a real sqflite future never answers on its own — the
 /// same one-line reason the harness is built in `setUp` and `pumpShell` exists.
+///
+/// **These timestamps render in local time, so the reference images are
+/// machine-specific.** `DateTime.utc(2026, 10, 14, 12)` is `12:00` on a UTC box
+/// and `15:00` on the one that generated the committed PNGs. Regenerating
+/// anywhere else therefore produces a different image with nothing wrong with
+/// it, and the pixel census is unaffected — it counts colours, not glyphs.
 Future<void> _seedStats(WidgetTester tester, VocabRepository repository) async {
   await tester.runAsync(() async {
     Future<void> answer(

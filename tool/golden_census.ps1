@@ -42,8 +42,13 @@
 #>
 [CmdletBinding()]
 param(
-  # Reference images, relative to the repository root. Defaults to every golden
-  # the test file writes.
+  # Reference images, **relative to the repository root**. Defaults to every
+  # golden the test file writes. Absolute paths are not supported: Windows
+  # PowerShell 5.1's `Join-Path $root <absolute child>` does not return the
+  # child, it concatenates, so an absolute path resolves to a nonsense location
+  # and the script reports "no golden at <path>" and exits 1. That failure is
+  # loud rather than silent, but it reads like a missing file rather than a
+  # bad argument.
   [string[]]$ImagePath = @(
     'test/goldens/goldens/home_shell_user_shot.png',
     'test/goldens/goldens/stats_screen_user_shot_light.png',
