@@ -332,10 +332,29 @@ after a forced timeout, `cmd`, `ping`, `flutter_tester` and `dart` all return to
 **A timeout is never flattened into the failure path.** Exit `124` is reserved for a timeout; a real
 failure keeps its own code. A wrapper that reports every outcome as "failed" teaches you to ignore it.
 
-**Deadlines worth using:** `flutter analyze` 300 s · `flutter test` (a file) 300 s ·
-`flutter test` (whole suite) 900 s · `flutter build` 1800 s. Observed: analyze ~10 s, suite ~70 s,
-release build 491 s. These have roughly 10× headroom, so a false failure means something is genuinely
-wrong.
+**Deadlines, and how they were chosen.** Every one of these was **measured**, and the first draft of
+this table was not — it guessed `flutter analyze` at ~10 s from an early run. It is actually **~105 s**.
+A deadline set from that guess would have failed on a healthy machine. This is §1 aimed at this file.
+
+| Command | Deadline | Measured | Headroom |
+|---|---|---|---|
+| `flutter analyze` | 300 s | **105 s** | 2.9x |
+| `flutter test` (one file) | 300 s | ~12 s | 25x |
+| `flutter test` (whole suite) | 900 s | ~84 s | 10.7x |
+| `flutter build apk --release` | 1800 s | 491 s | 3.7x |
+
+Below 3x headroom, treat a timeout as a real signal and read the log. Above 10x, a timeout means
+something is actually stuck.
+
+### The lock message you will eventually see
+
+```
+Flutter failed to delete file at "build\native_assets\windows\sqlite3.dll".
+```
+
+This is hang mode 2. **Something still holds it** — almost always a `dart` or `flutter_tester` left
+alive by an earlier run, or by a concurrent one. Check `Get-Process dart,flutter_tester` **before**
+killing anything: if another task is legitimately running, the fix is to wait, not to reap.
 
 ### When a command times out, read the log before re-running
 
