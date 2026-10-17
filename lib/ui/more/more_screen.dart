@@ -751,9 +751,14 @@ class _BundledChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Chip(
         label: const Text(_bundledChip),
-        // `elevation: 0` for the same reason every button on this screen sets
-        // it: Material's default elevation 1 is the `canvas.drawShadow` defect
-        // the amber button carried once, 2,363 opaque black pixels of it.
+        // `elevation: 0` here, and **a `Chip` is not one of the
+        // families Material elevates** — `chip.dart:1350-1352` resolves
+        // `widget.elevation ?? chipTheme.elevation ?? chipDefaults.elevation ??
+        // 0`, so the last fallback is already zero. This line therefore pins an
+        // existing value rather than fixing the 2,363-black-pixel defect the
+        // amber `ElevatedButton` carried; it is kept because `app_theme.dart` now
+        // pins the same value for every chip app-wide and a reader of *this* file
+        // should not have to leave it to find that out.
         elevation: 0,
         visualDensity: VisualDensity.compact,
       );

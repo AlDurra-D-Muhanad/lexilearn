@@ -53,8 +53,9 @@ class SessionDao {
   /// a progress reset, and by a pack deletion.
   ///
   /// [executor] exists so a caller that must delete atomically alongside
-  /// another table can pass its `Transaction`. Left unset it runs on this
-  /// DAO's own connection, which is what every ordinary call wants.
+  /// another table can pass its `Transaction`. Left unset it runs on this DAO's
+  /// own `Database` handle — the same object, not a second connection — which is
+  /// what every ordinary call wants.
   Future<int> deleteForPack(String packKey, {DatabaseExecutor? executor}) =>
       (executor ?? _db).delete(
         'quiz_sessions',

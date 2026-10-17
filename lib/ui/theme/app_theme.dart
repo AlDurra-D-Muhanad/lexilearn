@@ -166,14 +166,26 @@ class AppTheme {
           ),
         ),
       ),
-      // Every button family is zeroed here, and this is the second half of
-      // Amendment 6. The first half was `cardTheme.elevation` above; the second
-      // was one `ElevatedButton`'s own `elevation: 0`, and **the per-widget
-      // opt-out did not hold** — measured over `lib/ui/`, three widgets shipped
-      // with no elevation override at all: `quiz_result_screen.dart`'s
-      // `FilledButton`, `stats_screen.dart`'s `_Notice` `OutlinedButton`, and
-      // `quiz_setup_screen.dart`'s `ActionChip`. Only the ones somebody happened
-      // to remember were safe.
+      // Three of the five families M3 elevates, zeroed here. This is the second
+      // half of Amendment 6. The first half was `cardTheme.elevation` above; the
+      // second was one `ElevatedButton`'s own `elevation: 0`, and **the
+      // per-widget opt-out did not hold** — measured over `lib/ui/`, three
+      // widgets shipped with no elevation override at all:
+      // `quiz_result_screen.dart`'s `FilledButton`, `stats_screen.dart`'s
+      // `_Notice` `OutlinedButton`, and `quiz_setup_screen.dart`'s `ActionChip`.
+      // Only the ones somebody happened to remember were safe.
+      //
+      // **These three, not all of them.** `TextButton` and `IconButton` are
+      // absent from this block on purpose, because neither needs it: both default
+      // to **0.0** in every state — `text_button.dart:390` and
+      // `icon_button.dart:1112-1113` (with `:1254`, `:1396` and `:1523` doing the
+      // same for the other three `IconButton` variants) — and entries for them
+      // would be more lines defending a value Material already gets right. Say
+      // that rather than "every family". The families M3 *does* elevate are
+      // `ElevatedButton`, `FilledButton`, `OutlinedButton`, `Chip` and
+      // `ActionChip`; the last two are both covered by the `chipTheme` entry at
+      // the bottom of this block, which `chip_theme.dart:432-437` names
+      // explicitly.
       //
       // The defaults these replace, read out of this SDK rather than assumed:
       //

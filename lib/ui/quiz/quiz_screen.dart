@@ -108,9 +108,23 @@ class QuizScreen extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.m),
               FilledButton(
-                // `FilledButton` draws no elevation shadow at all, so it needs no
-                // local `elevation: 0` — unlike `ElevatedButton`, whose default
-                // M3 elevation this rasteriser strokes as a black keyline.
+                // **No local `elevation: 0` here, and that is now a deliberate
+                // statement rather than an omission.** It used to read that
+                // `FilledButton` "draws no elevation shadow at all", which is
+                // false: `filled_button.dart:588-603` returns **1.0** for
+                // `WidgetState.hovered`, so a mouse-over is `canvas.drawShadow`
+                // again. It rests at 0.0, which is why nobody noticed and why the
+                // sentence survived a whole task.
+                //
+                // `app_theme.dart` now zeroes `filledButtonTheme` app-wide, so
+                // this button is covered at rest *and* on hover. Measured: removing
+                // that theme entry leaves this screen's own tests green, because
+                // nothing here asserts it — which is why the theme entry is pinned
+                // in `test/design/app_theme_test.dart` and resolves `hovered`, and
+                // why the per-widget line was **deleted** here instead of added.
+                // Adding it would have been the fourth per-widget opt-out, and the
+                // failure mode of those is precisely what the theme change exists
+                // to end.
                 onPressed: answered ? controller.next : null,
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: AppSpacing.m),

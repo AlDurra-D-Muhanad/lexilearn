@@ -518,11 +518,22 @@ class _WordOfTheDayCard extends StatelessWidget {
                 backgroundColor: AppColors.accent,
                 foregroundColor: AppColors.textLight,
                 shape: const StadiumBorder(),
-                // `elevatedButtonTheme` still defaults to Material 3 elevation 1,
-                // and that is the same `canvas.drawShadow` defect the cards used
-                // to have: the test rasteriser strokes it as an opaque black
-                // keyline around the pill, 2,363 pixels of them the last time it
-                // was measured. The amber fill carries the button on its own.
+                // `ElevatedButton` is the one Material 3 family that rests at
+                // elevation **1.0** (`elevated_button.dart:570-585`), and that
+                // is the same `canvas.drawShadow` defect the cards used to have:
+                // the test rasteriser strokes it as an opaque black keyline around
+                // the pill, 2,363 pixels of them the last time it was measured.
+                // The amber fill carries the button on its own.
+                //
+                // **`app_theme.dart` now zeroes `elevatedButtonTheme` too**, so
+                // this local line is redundant for *this* build and the comment
+                // above used to be stale about why. It is kept because it is the
+                // call site that pays for the amber pill specifically, and because
+                // standards §3 of `docs/engineering-standards.md` — "a rule without
+                // an incident gets simplified away" — says a local opt-out with
+                // the incident written next to it is what stops the next person
+                // deleting it as dead code. Pinned by
+                // `test/design/app_theme_test.dart`.
                 elevation: 0,
               ),
               child: const Text(_meaningButton),

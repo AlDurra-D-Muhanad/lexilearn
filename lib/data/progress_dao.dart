@@ -57,8 +57,9 @@ class ProgressDao {
   /// Deletes one pack's progress, returning how many rows went.
   ///
   /// [executor] exists so a caller that must delete atomically alongside
-  /// another table can pass its `Transaction`. Left unset it runs on this
-  /// DAO's own connection, which is what every ordinary call wants.
+  /// another table can pass its `Transaction`. Left unset it runs on this DAO's
+  /// own `Database` handle — the same object, not a second connection — which is
+  /// what every ordinary call wants.
   Future<int> reset(String packKey, {DatabaseExecutor? executor}) =>
       (executor ?? _db).delete(
         'word_progress',

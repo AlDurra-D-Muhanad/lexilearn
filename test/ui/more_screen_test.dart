@@ -78,7 +78,7 @@ Finder statTile(String label) =>
 Finder statValue(String label, String value) =>
     find.descendant(of: statTile(label), matching: find.text(value));
 
-/// A tap, then one real turn of the event loop.
+/// A tap, then enough real turns of the event loop for what it triggered.
 ///
 /// Shared helpers, no private copy of the dance: a tap that reaches the database
 /// needs the real event loop to land, and `settleDatabase` is exactly that turn.
@@ -89,29 +89,56 @@ Finder statValue(String label, String value) =>
 /// it, it warns and misses. Same one-line family of trouble as
 /// `useAPhone`, for the other reason a phone-sized surface does not solve: the
 /// page's length depends on how many packs and figures are on it.
+///
+/// **Three turns, not one, and that is a fix rather than slack.** `settleDatabase`
+/// is one turn of the real event loop, which covers one database round trip and
+/// not reliably two when the machine is loaded — and **most actions on this page
+/// are two round trips**, because every one of them writes and then re-reads:
+/// `importFromPicker` writes through `importPack` and then calls `load()`;
+/// `exportBackup` walks every pack and every pack's progress rows and only then
+/// reaches the platform; `restoreBackup` runs a whole transaction and then
+/// `load()`s. The second query is not even *issued* until the first has answered.
+///
+/// Measured, not assumed. With one turn, four of this file's tests went red
+/// **only under load** — 4 of 6 concurrent runs of this file, and **0 of 8**
+/// isolated `--plain-name` runs and 0 of 6 sequential full-file runs. Every one of
+/// the four failed with the same signature, `Found 0 widgets with text "<what the
+/// write should have produced>"`:
+///
+/// * `a valid file is imported and listed`
+/// * `exporting on a device with no file provider says so and recovers`
+/// * `a backup file is restored through the restore action`
+/// * `importing a backup through the pack action names the other one`
+///
+/// That is a **flaky test** by `docs/engineering-standards.md` §9's own three
+/// kinds — breaks under load, passes alone — and the fault is this test's
+/// design, not the toolchain and not a weak assertion. `stats_screen_test.dart`
+/// hit the identical trap, on the identical two-round-trip reset, measured it the
+/// same way, and fixed it with a bounded loop; this is that fix, one level up.
+///
+/// Bounded at three, and it decides nothing: every assertion after it is the
+/// thing that decides pass or fail. It only stops a test from reading the screen
+/// before the screen's own read has landed.
 Future<void> _tap(WidgetTester tester, Finder finder) async {
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
   await tester.tap(finder);
-  await settleDatabase(tester);
-}
-
-/// Confirms whatever destructive dialog is open and waits for the re-read.
-///
-/// **A reset is two sequential database round trips**, not one:
-/// `StatsController.reset()` awaits `resetProgress`'s transaction and *then*
-/// calls `load()`, which issues its own query — and that second query is not
-/// even issued until the first has answered. `settleDatabase` is one real turn of
-/// the event loop, which covers one round trip and not reliably two when the
-/// whole suite is running in parallel. Bounded, and it decides nothing.
-Future<void> _confirm(WidgetTester tester) async {
-  await tester.tap(find.widgetWithText(FilledButton, _delete).evaluate().isEmpty
-          ? find.widgetWithText(FilledButton, _reset)
-          : find.widgetWithText(FilledButton, _delete));
   for (var turn = 0; turn < 3; turn++) {
     await settleDatabase(tester);
   }
 }
+
+/// Confirms whatever destructive dialog is open, and waits the same way.
+///
+/// A confirmation is a database round trip plus the re-read behind it, so it gets
+/// the same bounded loop [_tap] gives — which is why this is [_tap] rather than a
+/// second copy of the loop.
+Future<void> _confirm(WidgetTester tester) => _tap(
+      tester,
+      find.widgetWithText(FilledButton, _delete).evaluate().isEmpty
+          ? find.widgetWithText(FilledButton, _reset)
+          : find.widgetWithText(FilledButton, _delete),
+    );
 
 /// Writes to the database from inside a `testWidgets` body, **before** anything
 /// is mounted, and hands the value back.

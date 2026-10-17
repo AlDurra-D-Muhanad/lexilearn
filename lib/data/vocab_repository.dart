@@ -218,7 +218,7 @@ class VocabRepository {
       // **A LANDMINE, and this comment is the only thing standing in front of
       // it.** Sites 2 and 3 below look redundant: `PackDao.deletePack` already
       // deletes `word_progress` and `quiz_sessions` for the pack
-      // (`pack_dao.dart:121-124`), so a "simplification" that drops the two
+      // (`pack_dao.dart:123-126`), so a "simplification" that drops the two
       // explicit deletes is *semantically* correct and *silently* drops the guard
       // from 7/7 to 5/7 — sites 2 and 3 become unreachable, nothing fails, and
       // `test/data/vocab_repository_test.dart`'s executor guard stops proving

@@ -548,9 +548,14 @@ void main() {
   test('a failure mid-restore rolls back rather than half-applying', () async {
     // Proves the transaction is real: drop the table the SECOND delete in the
     // loop targets, so the failure happens *after* `_progress.reset` has already
-    // run inside the transaction. Had that call been on its own connection — or
-    // had `_progress.reset` been — the zeroing would already have committed and
-    // the device would be left with cleared progress and no error at all.
+    // run inside the transaction. If `_progress.reset` had not been on the same
+    // transaction it would not have committed early either — it would have
+    // **waited**, on the lock `transaction()` holds (`database_mixin.dart:496`,
+    // waited on at `:549-592`), so the restore would have hung and failed the
+    // guard-timeout test instead of rolling back. The half-applied device this
+    // test rules out is the other ordering: `deletePack` alone, committing its
+    // deletes with no transaction around them. See
+    // `docs/engineering-standards.md` §3.
     await harness.repository.recordAnswer(
         packKey: 'en_ar', entryId: 'fever-1', wasCorrect: true);
     final packsBefore = await _snapshot(harness);

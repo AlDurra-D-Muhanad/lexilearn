@@ -132,13 +132,27 @@ class PacksController extends ChangeNotifier {
   /// reach a backup file at all.
   ///
   /// **One `_guard` for this one action, not a `_guard` inside a `_guard`.** The
-  /// first version called `restoreBackup` from inside its own guarded body, which
-  /// was wrong twice over and measurably so: the inner guard's `finally` cleared
-  /// `isBusy` while the outer action was still unwinding, and because the inner
-  /// guard caught first, a non-`PackDecodeException` failure was always reported
-  /// as the generic `حدث خطأ غير متوقع.` rather than the sentence for the device
-  /// it actually failed on. The restore's work is inlined here instead, so there
-  /// is exactly one place that catches and one place that restores `isBusy`.
+  /// first version called `restoreBackup` from inside its own guarded body. What
+  /// that actually cost: the inner guard's `finally` cleared `isBusy` while the
+  /// outer action was still unwinding, so `isBusy` was briefly false with work
+  /// still in flight, and there were two `finally` blocks whose interaction was
+  /// invisible from either call site. The restore's work is inlined here instead,
+  /// so there is exactly one place that catches and one place that restores
+  /// `isBusy`.
+  ///
+  /// **The collapse changed no sentence the user can read.** The old comment on
+  /// this method claimed it recovered a device-specific failure message, and that
+  /// was false: neither guard passed `deviceFailure`, so both catch clauses
+  /// produced the same strings before and after — `_unexpected` for a plain
+  /// `Object`, `_unavailableHere` for a `MissingPluginException`. `deviceFailure`
+  /// exists for exactly one caller, [exportBackup], which is the only method whose
+  /// failure is about the device rather than about a file the user chose.
+  ///
+  /// **[restoreBackup] therefore still reports the generic sentence on purpose**:
+  /// no restore-specific failure is distinguished anywhere in this class. If one
+  /// ever is — a backup that is unreadable because of storage, say — it belongs
+  /// in a `deviceFailure` passed from here and from [restoreBackup] together, and
+  /// then this method stops being identical to its own message table.
   Future<void> restoreFromPicker() async {
     await _guard(() async {
       final json = await _pick();
@@ -162,7 +176,9 @@ class PacksController extends ChangeNotifier {
   /// call and its message. It is duplicated rather than shared through a private
   /// helper precisely so that neither path can end up nesting a guard in a guard;
   /// the alternative — a `_restore` helper that both call — is one line shorter
-  /// and reintroduces the nesting when someone adds a second guard to it.
+  /// and reintroduces the nesting when someone adds a second guard to it. Both
+  /// report failures identically, and [restoreFromPicker] says why that is
+  /// deliberate.
   Future<int?> restoreBackup(String jsonText) => _guard(() async {
         final count = await _repository.importBackupJson(jsonText);
         _message = 'تمت الاستعادة — $count حزمة.';

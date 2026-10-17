@@ -31,7 +31,11 @@ class PackDao {
   final Database _db;
 
   /// Runs [action] atomically on [executor] when one was handed in, and on this
-  /// DAO's own connection otherwise.
+  /// DAO's own `Database` handle otherwise.
+  ///
+  /// "Handle", not "connection": it is the **same `Database` object** either way,
+  /// which is the whole correction in `docs/engineering-standards.md` §3. Calling
+  /// it a connection is what produced the first, wrong version of that rule.
   ///
   /// **The two cases are not interchangeable, and the reason is in the type.**
   /// `transaction` is a member of `Database`, **not** of `DatabaseExecutor` —
