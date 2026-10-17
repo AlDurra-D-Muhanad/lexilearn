@@ -299,3 +299,88 @@ no `ACCESS_NETWORK_STATE`, no `READ_EXTERNAL_STORAGE`, no `MANAGE_EXTERNAL_STORA
 in the `debug/` and `profile/` manifests, which Flutter adds for the debugger and which never ship.
 
 Re-verify after any dependency change.
+
+---
+
+## 13. Never run an unbounded command
+
+**The rule.** Every long command goes through `tool/run-bounded.ps1`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tool\run-bounded.ps1 -Cmd "flutter test" -TimeoutSeconds 900 -Label suite
+```
+
+`0` = success · `N` = the command's own failure code · `124` = timed out and the tree was killed.
+
+**Why this exists.** Four distinct hangs, only one of which is a failing test:
+
+1. a test awaiting a real future inside a fake-async zone — `flutter_test`'s `testWidgets` defaults
+   to **`Timeout.none`**, and `flutter test --timeout` *explicitly does not apply to the suite-loading
+   timeout*. A test-level bound does not reliably catch this.
+2. an orphaned `flutter_tester` / `dart` still holding
+   `build\native_assets\windows\sqlite3.dll`, so the **next** run blocks on startup.
+3. Gradle or the Flutter tool waiting on something that will never arrive.
+4. a toolchain flake with no cause at all — e.g.
+   `Unable to connect to flutter_tester process: WebSocketException`.
+
+A shell-level deadline catches all four. `flutter test --timeout` catches, at best, one.
+
+**The wrapper kills the process TREE, not `cmd.exe`.** Killing only the parent leaves `dart`,
+`flutter_tester` and `java` running, and those are exactly what keep `sqlite3.dll` locked. Verified:
+after a forced timeout, `cmd`, `ping`, `flutter_tester` and `dart` all return to 0.
+
+**A timeout is never flattened into the failure path.** Exit `124` is reserved for a timeout; a real
+failure keeps its own code. A wrapper that reports every outcome as "failed" teaches you to ignore it.
+
+**Deadlines worth using:** `flutter analyze` 300 s · `flutter test` (a file) 300 s ·
+`flutter test` (whole suite) 900 s · `flutter build` 1800 s. Observed: analyze ~10 s, suite ~70 s,
+release build 491 s. These have roughly 10× headroom, so a false failure means something is genuinely
+wrong.
+
+### When a command times out, read the log before re-running
+
+`run-bounded.ps1` prints the last 40 lines on timeout — that is *where it stopped*, which is the whole
+diagnosis. Re-running first destroys the only evidence.
+
+---
+
+## 14. Subagent dispatch fails — retry, but verify first
+
+Dispatch has failed **seven times** in this project: rate limit ×5, `ECONNRESET`, `ENOTFOUND
+opencode.ai`, `WebSocketException`. **Every failure was transport. None was correctness.**
+
+**The protocol:**
+
+1. **Verify before retrying.** `git log -1`, `git status --short`, and check whether the report file
+   exists. A failed dispatch may still have written files. Never assume "it failed, so nothing
+   happened" — twice a dead subagent left analyzer-clean, uncommitted work.
+2. **Re-send the SAME brief, not a narrower one.** Narrowing loses the review's value entirely, and the
+   implementer needs the same context you had.
+3. **Diagnose what you can before re-dispatching.** The rate-limited implementer for Task 13 left six
+   compile errors from *one* bad `const`. Reading the codepoints and the real constructor signatures
+   turned a re-dispatch into a two-line handoff.
+4. **After three failures, change the mechanism, not the brief** — split the task, or take the remaining
+   work inline yourself.
+
+**Always hand over a diagnosis when there is one.** A subagent that inherits "these six errors" burns a
+cycle rediscovering them. A subagent handed "line 31 is illegal because `DateTime.utc` is a factory, and
+lines 88 and 94 are collateral" starts working immediately.
+
+---
+
+## 15. Rate-limit failures leave work behind; the toolchain lies
+
+Three failure kinds, tracked separately under §9. One more, observed on this project:
+
+**A subagent that dies mid-task leaves partial work that may be analyzer-clean but is untested.** The
+right response is to check what exists, run the analyser yourself, and hand over a diagnosis — not to
+restart. Restarting throws away correct work and costs a full dispatch.
+
+`docs/privacy-policy.md` will say the app has no internet permission. **Verified from the built
+release artefact:** the merged `AndroidManifest.xml` inside the release APK contains no `INTERNET`,
+no `ACCESS_NETWORK_STATE`, no `READ_EXTERNAL_STORAGE`, no `MANAGE_EXTERNAL_STORAGE`.
+
+`android/app/src/main/AndroidManifest.xml` declares **no permissions at all**. `INTERNET` appears only
+in the `debug/` and `profile/` manifests, which Flutter adds for the debugger and which never ship.
+
+Re-verify after any dependency change.
