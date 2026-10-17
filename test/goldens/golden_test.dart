@@ -381,25 +381,6 @@ Future<void> _openFavorites(
   await settleDatabase(tester);
 }
 
-/// One real turn **before** `pumpAndSettle` — the opposite order to
-/// [settleDatabase], and for a measured reason.
-///
-/// `HomeScreen`'s results list shows an indeterminate
-/// `CircularProgressIndicator` while its read is in flight (`_results()`), and
-/// that widget schedules frames forever, so a `pumpAndSettle` that runs while it
-/// is on screen never returns. [settleDatabase] pumps first and takes its real
-/// turn second, so it is the wrong helper for anything behind a spinner.
-///
-/// Measured: with `settleDatabase` here, *word detail user shot* failed with
-/// `pumpAndSettle timed out`, in both modes. Every other screen in the app
-/// avoids this by never drawing a spinner for its loading state —
-/// `stats_screen.dart` and `more_screen.dart` both say so on the record — and
-/// Home's search is the one that still does.
-Future<void> _realTurnThenSettle(WidgetTester tester) async {
-  await tester.runAsync(() => Future<void>.delayed(shellDatabaseSettle));
-  await tester.pumpAndSettle();
-}
-
 /// Searches for one word and taps its result, so the reference image shows a
 /// **named** word.
 ///
@@ -411,6 +392,13 @@ Future<void> _realTurnThenSettle(WidgetTester tester) async {
 /// `serenity` on the next is a reference nobody can compare against. The search
 /// row is the app's other real door into a word: `_EntryRow` → `onOpenWord` →
 /// `HomeShell._openWordDetail`.
+///
+/// **The wait after the debounce is `realTurnThenSettle`, not `settleDatabase`**,
+/// because Home's results list sits behind an indeterminate spinner; the
+/// measurement is on that helper. This file used to carry a private copy of it,
+/// and it was the *second* copy — `home_screen_test.dart`'s `_search` did the
+/// same two lines in the same order without knowing. Moved to
+/// `test/helpers/test_env.dart` in Task 14's fix round.
 Future<void> _openWordDetail(
   WidgetTester tester,
   VocabRepository repository,
@@ -423,7 +411,7 @@ Future<void> _openWordDetail(
   await tester.pump(AppDurations.standard);
   // The search is a database query of its own, issued once the debounce fires,
   // and it sits behind that spinner. See [_realTurnThenSettle].
-  await _realTurnThenSettle(tester);
+  await realTurnThenSettle(tester);
 
   // Scoped to the results list, **not** a bare `find.text`. Measured: a bare one
   // matches twice — the `EditableText` in the search field now holds the same

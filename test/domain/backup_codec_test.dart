@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lexilearn/data/database.dart';
 import 'package:lexilearn/domain/backup_codec.dart';
 import 'package:lexilearn/domain/backup_document.dart';
 import 'package:lexilearn/domain/pack_codec.dart';
@@ -42,6 +43,9 @@ BackupDocument sample() => BackupDocument(
         WordProgress(entryId: 'a', packKey: 'p', attempts: 5, correct: 4),
       ],
       sessions: const <QuizSessionResult>[],
+      favorites: const <BackupFavorite>[
+        BackupFavorite(packKey: 'p', entryId: 'a'),
+      ],
     );
 
 void main() {
@@ -161,19 +165,24 @@ void main() {
     test('rejects a backup with no exportedAt', () {
       expect(
         () => BackupCodec.decode(
-            '{"kind":"backup","schemaVersion":1,"packs":[],"progress":[],"sessions":[]}'),
+            '{"kind":"backup","schemaVersion":'
+            '${BackupDocument.currentSchemaVersion},'
+            '"packs":[],"progress":[],"sessions":[],"favorites":[]}'),
         throwsA(isA<PackDecodeException>()),
       );
     });
 
     test('accepts a backup with no progress and no sessions', () {
       final decoded = BackupCodec.decode(
-          '{"kind":"backup","schemaVersion":1,"exportedAt":"2026-10-14T00:00:00Z",'
-          '"packs":[],"progress":[],"sessions":[]}');
+          '{"kind":"backup","schemaVersion":'
+          '${BackupDocument.currentSchemaVersion},'
+          '"exportedAt":"2026-10-14T00:00:00Z",'
+          '"packs":[],"progress":[],"sessions":[],"favorites":[]}');
 
       expect(decoded.packs, isEmpty);
       expect(decoded.progress, isEmpty);
       expect(decoded.sessions, isEmpty);
+      expect(decoded.favorites, isEmpty);
       expect(decoded.exportedAt, DateTime.utc(2026, 10, 14));
     });
 
@@ -193,8 +202,8 @@ void main() {
       // unhandled exception instead of a sentence — which is the entire reason
       // `BackupCodec` documents that every failure throws `PackDecodeException`.
       //
-      // All three list keys are checked, not just this one, because `_list` is
-      // called three times and a fix applied to one call site is not a fix.
+      // All four list keys are checked, not just this one, because `_list` is
+      // called four times and a fix applied to one call site is not a fix.
       //
       // The document names the malformed key **once**. A hand-written literal
       // that also carried `"packs":[]` would hand `jsonDecode` a duplicate key,
@@ -202,16 +211,17 @@ void main() {
       // list and the test would fail for a reason that has nothing to do with
       // `_list`. Measured: that is exactly what the first draft of this test did.
       String documentWith(String malformedKey) {
-        final rest = <String>['packs', 'progress', 'sessions']
+        final rest = <String>['packs', 'progress', 'sessions', 'favorites']
             .where((key) => key != malformedKey)
             .map((key) => '"$key":[]')
             .join(',');
-        return '{"kind":"backup","schemaVersion":1,'
+        return '{"kind":"backup","schemaVersion":'
+            '${BackupDocument.currentSchemaVersion},'
             '"exportedAt":"2026-10-14T00:00:00Z",'
             '"$malformedKey":{},$rest}';
       }
 
-      for (final key in <String>['packs', 'progress', 'sessions']) {
+      for (final key in <String>['packs', 'progress', 'sessions', 'favorites']) {
         expect(
           () => BackupCodec.decode(documentWith(key)),
           throwsA(isA<PackDecodeException>()),
@@ -230,6 +240,87 @@ void main() {
 
       expect(BackupCodec.decode(twice).packs.single.entries, pack.entries);
       expect(BackupCodec.decode(twice).progress.single.attempts, 5);
+    });
+
+    // --- favourites (Task 14, fix round 1) ---------------------------------------
+    //
+    // Favourites are the one list a user curates **by hand**. Progress and
+    // sessions are the app's own record of what the user did; a favourite is a
+    // decision, and losing it is losing something nothing else records. It
+    // therefore belongs in the file whose stated job is to put a new phone back
+    // where the old one was.
+
+    test('round-trips the saved words', () {
+      final decoded = BackupCodec.decode(BackupCodec.encode(sample()));
+
+      expect(decoded.favorites, hasLength(1));
+      expect(decoded.favorites.single.packKey, 'p');
+      expect(decoded.favorites.single.entryId, 'a');
+    });
+
+    test('round-trips several favourites across two packs', () {
+      final document = BackupDocument(
+        exportedAt: exportedAt,
+        packs: const <VocabPack>[pack],
+        progress: const <WordProgress>[],
+        sessions: const <QuizSessionResult>[],
+        favorites: const <BackupFavorite>[
+          BackupFavorite(packKey: 'p', entryId: 'a'),
+          BackupFavorite(packKey: 'p', entryId: 'b'),
+          BackupFavorite(packKey: 'q', entryId: 'a'),
+        ],
+      );
+
+      final decoded = BackupCodec.decode(BackupCodec.encode(document));
+
+      // The same word id in two packs is the case that matters: `favorites` is
+      // keyed `(packKey, entryId)`, so the pair has to survive intact.
+      expect(
+        decoded.favorites.map((f) => '${f.packKey}/${f.entryId}').toList(),
+        <String>['p/a', 'p/b', 'q/a'],
+      );
+    });
+
+    test('an absent favourites list is an empty one, not an error', () {
+      // A hand-written file, or one from a build before the version bump that
+      // carried them — except that one is refused by version, so this is about
+      // a *current-version* file that simply has nothing saved.
+      final decoded = BackupCodec.decode(
+          '{"kind":"backup","schemaVersion":'
+          '${BackupDocument.currentSchemaVersion},'
+          '"exportedAt":"2026-10-14T00:00:00Z",'
+          '"packs":[],"progress":[],"sessions":[]}');
+
+      expect(decoded.favorites, isEmpty);
+    });
+
+    test('a v1 file is refused by name rather than half-read', () {
+      // **The version bump that carried favourites in is inside the backup
+      // document only.** `databaseSchemaVersion` stayed 1; this constant moved to
+      // 2. A file written by an older build has no `favorites` key, so reading it
+      // as "no favourites" would silently wipe the new phone's list on the
+      // restore — which is the exact data loss this change exists to stop,
+      // reintroduced from the other direction. Refuse it, and say what version
+      // the app reads.
+      expect(
+        () => BackupCodec.decode(
+            '{"kind":"backup","schemaVersion":1,'
+            '"exportedAt":"2026-10-14T00:00:00Z",'
+            '"packs":[],"progress":[],"sessions":[]}'),
+        throwsA(isA<PackDecodeException>()
+            .having((e) => e.message, 'message', contains('version'))
+            .having((e) => e.message, 'message',
+                contains('${BackupDocument.currentSchemaVersion}'))),
+      );
+    });
+
+    test('the current version is 2, and it is not the database schema version',
+        () {
+      // Two different numbers with two different meanings, and the second one is
+      // the one a future task is most likely to confuse with the first.
+      expect(BackupDocument.currentSchemaVersion, 2);
+      expect(databaseSchemaVersion, 1,
+          reason: 'the app database ships as v1; only the backup file moved');
     });
   });
 }

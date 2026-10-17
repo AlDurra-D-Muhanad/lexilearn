@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lexilearn/domain/backup_codec.dart';
+import 'package:lexilearn/domain/backup_document.dart';
 import 'package:lexilearn/domain/pack_codec.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
@@ -418,6 +419,123 @@ void main() {
     expect(stats.totalCorrect, 1);
   });
 
+  test("a backup carries the user's favourites, and restores them", () async {
+    // **This test exists because a restore used to destroy them.**
+    //
+    // `importBackupJson` deletes every `packs` row inside its transaction, and
+    // `favorites.pack_key` carries `ON DELETE CASCADE` — so every favourite was
+    // destroyed by any restore, silently, and none came back because
+    // `BackupDocument` carried only packs, progress and sessions. A user who
+    // restored a backup to move to a new phone lost the one list they had
+    // curated by hand, with no warning and no error.
+    //
+    // `BackupDocument`'s own doc comment is the standard this is held to:
+    // restoring it *"puts a new phone back exactly where the old one was"*.
+    //
+    // Two packs, each saving a different word, because `favorites` is keyed
+    // `(packKey, entryId)` and a backup that lost the key's half would restore
+    // every saved word under the wrong pack — which a single-pack fixture cannot
+    // see. (`en_tr` holds `fever-1` too, so `en_tr`'s *unsaved* `fever-1` is the
+    // control: a real entry of the real pack that the file never mentions.)
+    final two = await twoPackHarness();
+    await two.repository.setFavorite(
+        packKey: 'en_ar', entryId: 'fever-1', isFavorite: true);
+    await two.repository.setFavorite(
+        packKey: 'en_tr', entryId: 'buried-1', isFavorite: true);
+    final json = await two.repository.exportBackupJson();
+
+    final fresh = await TestHarness.create();
+    addTearDown(fresh.dispose);
+    await fresh.repository.importBackupJson(json);
+
+    expect((await fresh.repository.favorites('en_ar')).map((e) => e.id),
+        <String>['fever-1']);
+    expect((await fresh.repository.favorites('en_tr')).map((e) => e.id),
+        <String>['buried-1'],
+        reason: 'the same word id is saved in one pack and not the other');
+    expect(await fresh.repository.isFavorite(
+        packKey: 'en_tr', entryId: 'fever-1'), isFalse,
+        reason: 'a real entry of the real pack that the file never mentions');
+  });
+
+  test('restoring onto a device that already had favourites replaces them',
+      () async {
+    // The restore is a replace, not a merge — for every table it touches. A
+    // favourite that was saved on the target device and is not in the file must
+    // therefore be gone afterwards, exactly like a progress row is.
+    final two = await twoPackHarness();
+    await two.repository.setFavorite(
+        packKey: 'en_tr', entryId: 'buried-1', isFavorite: true);
+    final json = await two.repository.exportBackupJson();
+
+    // A third device whose only saved word is one the file never mentions.
+    final target = await TestHarness.create(
+        packs: const <VocabPack>[secondPack]);
+    addTearDown(target.dispose);
+    await target.repository.setFavorite(
+        packKey: 'en_tr', entryId: 'fever-1', isFavorite: true);
+    expect(await target.repository.isFavorite(
+        packKey: 'en_tr', entryId: 'buried-1'), isFalse);
+
+    await target.repository.importBackupJson(json);
+
+    expect(await target.repository.isFavorite(
+        packKey: 'en_tr', entryId: 'buried-1'), isTrue);
+    expect(await target.repository.isFavorite(
+        packKey: 'en_tr', entryId: 'fever-1'), isFalse,
+        reason: 'a restore replaces; it does not merge onto whatever was there');
+  });
+
+  test('a backup with no favourites restores a device that had them to none',
+      () async {
+    // The other direction, and the one that used to be *silent* rather than
+    // wrong: a device with favourites, restored from a file that carries none,
+    // ends with none. Stated out loud here so the behaviour is a decision on the
+    // record instead of a surprise.
+    //
+    // A harness **with a pack**, because `setFavorite` on a pack that was never
+    // installed is rejected by the foreign key — measured, and the first draft of
+    // this test tripped it.
+    final target = await twoPackHarness();
+    await target.repository.setFavorite(
+        packKey: 'en_ar', entryId: 'fever-1', isFavorite: true);
+    expect(await target.repository.isFavorite(
+        packKey: 'en_ar', entryId: 'fever-1'), isTrue);
+
+    final json = '{"kind":"backup","schemaVersion":'
+        '${BackupDocument.currentSchemaVersion},'
+        '"exportedAt":"2026-10-14T12:00:00.000Z","packs":[],'
+        '"progress":[],"sessions":[],"favorites":[]}';
+    await target.repository.importBackupJson(json);
+
+    expect(await target.repository.favorites('en_ar'), isEmpty);
+  });
+
+  test('a v1 backup file is refused by name, and nothing on the device moves',
+      () async {
+    // The version bump that carried favourites in lives **inside the backup
+    // document only** — `databaseSchemaVersion` is untouched at 1. A file written
+    // by an older build therefore has to be refused, and refused in words a user
+    // can act on, rather than half-read.
+    final before = await _snapshot(harness);
+    await harness.repository.setFavorite(
+        packKey: 'en_ar', entryId: 'fever-1', isFavorite: true);
+    final json = '{"kind":"backup","schemaVersion":1,'
+        '"exportedAt":"2026-10-14T12:00:00.000Z","packs":[],'
+        '"progress":[],"sessions":[]}';
+
+    await expectLater(
+      harness.repository.importBackupJson(json),
+      throwsA(isA<PackDecodeException>()
+          .having((e) => e.message, 'message', contains('version'))),
+    );
+    expect(await _snapshot(harness), before,
+        reason: 'a rejected file must not reach the database at all');
+    expect(await harness.repository.isFavorite(
+        packKey: 'en_ar', entryId: 'fever-1'), isTrue,
+        reason: 'including the favourites the rejected file could not describe');
+  });
+
   test('a backup carries every pack, not only the one the shell is showing',
       () async {
     // `word_progress` is keyed on `(pack_key, entry_id)` and the repository has
@@ -508,9 +626,10 @@ void main() {
     // A file carrying only `en_ar`: `en_tr` is on the device and not in the
     // backup, so restoring must not silently keep it alongside a document that
     // does not mention it.
-    final backup = '{"kind":"backup","schemaVersion":1,'
+    final backup = '{"kind":"backup","schemaVersion":'
+        '${BackupDocument.currentSchemaVersion},'
         '"exportedAt":"2026-10-14T12:00:00.000Z","packs":[$json],'
-        '"progress":[],"sessions":[]}';
+        '"progress":[],"sessions":[],"favorites":[]}';
 
     expect(await two.repository.importBackupJson(backup), 1);
     expect((await two.repository.packs()).map((p) => p.packKey), <String>['en_ar']);
@@ -600,7 +719,7 @@ void main() {
     // **This is the guard for `docs/engineering-standards.md` §3, and it exists
     // because the failure it catches is a hang, not an error.**
     //
-    // `importBackupJson` makes seven DAO calls inside one `transaction()`. A call
+    // `importBackupJson` makes eight DAO calls inside one `transaction()`. A call
     // made **without** that transaction's handle does not fail and does not
     // return: it waits. Read out of `sqflite_common-2.5.14`, not assumed:
     //
@@ -637,11 +756,11 @@ void main() {
     // `TimeoutException after 0:00:05.000000: Future not completed`, and sqflite
     // prints its own `Warning database has been locked` twice behind it.
     //
-    // **What the fixture is actually for, measured rather than asserted.** Three
-    // of the seven are only *reached* at all if the file carries what they
+    // **What the fixture is actually for, measured rather than asserted.** Four
+    // of the eight are only *reached* at all if the file carries what they
     // iterate, and reaching them is the whole point — an unreached call is
     // silently uncovered, not red. Dropping each argument against a fixture with
-    // **zero** progress rows and **zero** sessions gives:
+    // **zero** progress rows, **zero** sessions and **zero** favourites gives:
     //
     // | site | reached by | caught with an empty fixture? |
     // |---|---|---|
@@ -650,14 +769,15 @@ void main() {
     // | 3 `sessions.deleteForPack` | the device having ≥1 pack | yes |
     // | 4 `packs.deletePack` | the device having ≥1 pack | yes |
     // | 5 `packs.insertPack` | the file having ≥1 pack | yes (1 is enough) |
-    // | 6 `progress.replace` | the file having ≥1 **progress row** | **no — missed** |
-    // | 7 `sessions.insert` | the file having ≥1 **session** | **no — missed** |
+    // | 6 `favorites.replace` | the file having ≥1 **favourite** | **no — missed** |
+    // | 7 `progress.replace` | the file having ≥1 **progress row** | **no — missed** |
+    // | 8 `sessions.insert` | the file having ≥1 **session** | **no — missed** |
     //
-    // So the progress row and the session are load-bearing and the second pack
-    // is not: one pack is enough for sites 1–5. Two are seeded anyway so each
-    // of the three loops runs its body more than once. The progress row and the
-    // session are the two that must not be removed without noticing — with them
-    // gone the guard still passes, at 5/7.
+    // So the progress row, the session **and the saved word** are load-bearing,
+    // and the second pack is not: one pack is enough for sites 1–5. Two are seeded
+    // anyway so each of the three loops runs its body more than once. The other
+    // three are what must not be removed without noticing — with any of them gone
+    // the guard still passes, at 5/8.
     //
     // The bound is 5 s against an in-memory sqflite round trip measured in
     // milliseconds, so it is slack rather than a tuning target: far below any
@@ -677,6 +797,12 @@ void main() {
       totalQuestions: 4,
       correctCount: 3,
     );
+    // A saved word as well, because `_favorites.replace` is the **sixth** call
+    // and it is only *reached* if the file carries one. Task 14's fix round added
+    // it, and a guard that went from 7/7 to 7/8 without this line would have
+    // reported itself complete while proving nothing about the eighth.
+    await two.repository.setFavorite(
+        packKey: 'en_ar', entryId: 'fever-1', isFavorite: true);
     final json = await two.repository.exportBackupJson();
 
     await expectLater(

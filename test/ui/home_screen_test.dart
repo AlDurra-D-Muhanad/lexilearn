@@ -78,23 +78,29 @@ Future<void> _pumpApp(WidgetTester tester, VocabRepository repository) =>
 /// fake-async clock, so it needs `pump(300ms)` — `pumpAndSettle` returns as soon
 /// as no frame is scheduled, and a pending timer schedules none. The read that
 /// follows is a real sqflite FFI future, which only completes on the real event
-/// loop, which is the same one-line reason `pumpShell` exists; the wait itself is
-/// the shared `shellDatabaseSettle`, not a copy of it.
+/// loop, which is the same one-line reason `pumpShell` exists.
+///
+/// **The second half is [realTurnThenSettle] and not `settleDatabase`, and the
+/// order is the whole point.** Home's results list shows an indeterminate
+/// `CircularProgressIndicator` while that read is in flight, and a
+/// `pumpAndSettle` that runs while one is on screen never returns. These two
+/// lines used to be written out privately here as well as in `golden_test.dart`,
+/// which is two copies of a dance whose ordering is the thing worth sharing.
 Future<void> _search(WidgetTester tester, String value) async {
   await tester.enterText(find.byType(TextField), value);
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 300));
-  await tester.runAsync(() => Future<void>.delayed(shellDatabaseSettle));
-  await tester.pumpAndSettle();
+  await realTurnThenSettle(tester);
 }
 
 /// Mounts [HomeScreen] on its own, with callbacks this test can observe.
 ///
-/// `HomeShell` wires `onOpenWord` to a deliberate no-op until Task 14 lands
-/// `WordDetailScreen`, so nothing observable reaches it through the app. This
-/// mounts the screen directly instead. `HomeScreen` reads its pack from SQLite in
-/// `initState`, so it needs the same one `runAsync` turn `pumpShell` gives the
-/// shell — shared constant, not a private copy of the helper.
+/// `HomeShell` wires `onOpenWord` to the real `Navigator.push` of
+/// `WordDetailRoute` — Task 14 landed it — so this file does not depend on that
+/// to observe the callback, and mounts the screen directly instead. `HomeScreen`
+/// reads its pack from SQLite in `initState`, so it needs the same one `runAsync`
+/// turn `pumpShell` gives the shell — shared constant, not a private copy of the
+/// helper.
 Future<void> _pumpHome(
   WidgetTester tester,
   TestHarness harness, {

@@ -216,7 +216,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: AppSpacing.m),
         ],
-        _QuickLaunchGrid(packKey: widget.packKey),
+        _QuickLaunchGrid(
+          packKey: widget.packKey,
+          onOpenWord: widget.onOpenWord,
+        ),
       ],
     );
   }
@@ -563,9 +566,18 @@ class _WordOfTheDayCard extends StatelessWidget {
 /// from `ShellTabScope`, which `HomeShell` publishes because this screen's
 /// constructor cannot take a callback.
 class _QuickLaunchGrid extends StatelessWidget {
-  const _QuickLaunchGrid({required this.packKey});
+  const _QuickLaunchGrid({
+    required this.packKey,
+    required this.onOpenWord,
+  });
 
   final String packKey;
+
+  /// Passed **into** the pushed `FavoritesScreen`, so tapping a saved word opens
+  /// it. `HomeScreen` owns this callback and the shell owns the handler behind
+  /// it; the grid only forwards, because its constructor is private and a third
+  /// indirection would hide where a tap ends up.
+  final ValueChanged<VocabEntry> onOpenWord;
 
   /// Switches the bar to [index] when a scope is present.
   ///
@@ -611,7 +623,13 @@ class _QuickLaunchGrid extends StatelessWidget {
           onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
             builder: (_) => FavoritesScreen(
               packKey: packKey,
-              onOpenWord: (_) {},
+              // The shell's handler, not a no-op. Task 14's fix round: this line
+              // was `onOpenWord: (_) {}`, so tapping a saved word did **nothing** -
+              // and this tile is the only place in the app that builds a
+              // `FavoritesScreen`. Pinned by
+              // `test/ui/favorites_screen_test.dart` -> *tapping a row from Home
+              // opens the word detail*.
+              onOpenWord: onOpenWord,
             ),
           )),
         ),

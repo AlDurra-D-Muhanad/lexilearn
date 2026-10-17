@@ -41,12 +41,22 @@ class _HomeShellState extends State<HomeShell> {
   ///
   /// **Favourites is not one of these four, and nothing was cut.** It is a
   /// shipped feature reached the way the artwork itself reaches it: from the
-  /// heart action on the word card (`Task 14` builds `WordDetailScreen` and
-  /// pushes `FavoritesScreen` from there) and from the `المفضلة` tile in Home's
-  /// 2×2 quick-launch grid (`Task 10` builds that grid). `FavoritesScreen`
-  /// already exists at `lib/ui/favorites/favorites_screen.dart`; it is simply
-  /// not a bar destination, so this file no longer imports it. See
+  /// `المفضلة` tile in Home's 2×2 quick-launch grid (`Task 10` builds that grid),
+  /// which is **the only place in `lib/` that constructs a `FavoritesScreen`**
+  /// (`home_screen.dart`, `_QuickLaunchGrid`). `FavoritesScreen` already exists
+  /// at `lib/ui/favorites/favorites_screen.dart`; it is simply not a bar
+  /// destination, so this file no longer imports it. See
   /// `docs/design/style-direction.md` → Navigation.
+  ///
+  /// **An earlier version of this comment claimed a second door that does not
+  /// exist** — that `Task 14` builds `WordDetailScreen` and *"pushes
+  /// `FavoritesScreen` from there"*, i.e. from the heart. It does not, and it
+  /// should not: the heart **writes** the favourite in place
+  /// (`WordDetailRoute._toggle`), which is what
+  /// `docs/design/brand-reference.md` §4ب specifies as an `أضف إلى المفضلة`
+  /// button on the word's own screen, and there is no artwork anywhere showing a
+  /// navigation from a heart to a list. Corrected in Task 14's fix round, after
+  /// counting the call sites: `FavoritesScreen(` appears in `lib/` exactly once.
   ///
   /// The icons are the artwork's too, verified glyph-by-glyph against the PNG
   /// rather than chosen by name:

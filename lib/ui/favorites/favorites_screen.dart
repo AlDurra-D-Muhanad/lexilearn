@@ -44,6 +44,24 @@ const String _cancel = 'إلغاء';
 /// `VocabRepository.favorites` walks the pack's entries and tests membership, so
 /// the favourites list reads the same way the search results and the flashcards
 /// deck do. See `FavoriteDao.favoritesIn` for why the DAO hands back a `Set`.
+///
+/// **THREE INFERENCES, MARKED AS INFERENCES**, because
+/// `docs/design/brand-reference.png` draws a favourites **tile** and no
+/// favourites **screen** at all:
+///
+/// 1. **The row layout** — a card per word, the term over its meanings, an
+///    un-favourite control on the far side — was designed here from the
+///    surrounding screens. The artwork has nothing to copy.
+/// 2. **The heart's placement and its shape.** It is on every row because the row
+///    *is* a favourite, so a control that reported state would be redundant; the
+///    filled amber heart therefore means "saved, tap to remove", and the
+///    artwork's single `أضف إلى المفضلة` pill on the word's own screen is the
+///    other end of the same action.
+/// 3. **The two-step confirmation** on un-favouriting follows Task 12's
+///    `PopScope`/`ModalBarrier` pattern for destructive actions, which
+///    `stats_screen.dart` and `more_screen.dart` established. No artwork
+///    specifies it. The choice is that removing a saved word is worth asking
+///    about: it is the one thing here a user cannot undo by looking.
 class FavoritesScreen extends StatefulWidget {
   const FavoritesScreen({
     super.key,

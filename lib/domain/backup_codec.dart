@@ -6,7 +6,8 @@ import 'quiz_session_result.dart';
 import 'vocab_pack.dart';
 import 'word_progress.dart';
 
-/// Reads and writes the one file that carries packs, progress and sessions.
+/// Reads and writes the one file that carries packs, progress, sessions and the
+/// user's saved words.
 ///
 /// **Every failure throws `PackDecodeException`**, not `FormatException` and not
 /// a bare `TypeError`. The UI renders `message` verbatim, so a malformed or
@@ -53,6 +54,13 @@ class BackupCodec {
               'correctCount': session.correctCount,
             },
         ],
+        'favorites': <Map<String, Object?>>[
+          for (final favorite in document.favorites)
+            <String, Object?>{
+              'packKey': favorite.packKey,
+              'entryId': favorite.entryId,
+            },
+        ],
       });
 
   static BackupDocument decode(String jsonText) {
@@ -89,12 +97,17 @@ class BackupCodec {
       for (final raw in _list(document, 'sessions'))
         _sessionFromJson((raw as Map<dynamic, dynamic>).cast<String, Object?>()),
     ];
+    final favorites = <BackupFavorite>[
+      for (final raw in _list(document, 'favorites'))
+        _favoriteFromJson((raw as Map<dynamic, dynamic>).cast<String, Object?>()),
+    ];
 
     return BackupDocument(
       exportedAt: DateTime.parse(exportedAtRaw),
       packs: packs,
       progress: progress,
       sessions: sessions,
+      favorites: favorites,
     );
   }
 
@@ -132,4 +145,20 @@ class BackupCodec {
         totalQuestions: (json['totalQuestions'] as num?)?.toInt() ?? 0,
         correctCount: (json['correctCount'] as num?)?.toInt() ?? 0,
       );
+
+  /// Both keys are required, not defaulted.
+  ///
+  /// A missing `packKey` would produce a favourite that restores under a pack
+  /// that does not exist, and the foreign key would reject the whole restore with
+  /// a raw SQLite error instead of a sentence — so a `null` is caught here, where
+  /// `BackupCodec` can throw the `PackDecodeException` its doc promises.
+  static BackupFavorite _favoriteFromJson(Map<String, Object?> json) {
+    final packKey = json['packKey'];
+    final entryId = json['entryId'];
+    if (packKey is! String || entryId is! String) {
+      throw const PackDecodeException(
+          'A saved word in the backup is missing its pack or its word id.');
+    }
+    return BackupFavorite(packKey: packKey, entryId: entryId);
+  }
 }

@@ -185,16 +185,28 @@ class VocabRepository {
   }
 
   /// Everything on this device, as one JSON document: every pack with all of its
-  /// entries, every word's progress, and the session history. This is the file a
-  /// user saves to Drive or Dropbox, and the file [importBackupJson] reads back.
+  /// entries, every word's progress, the session history, and **every word the
+  /// user saved by hand.** This is the file a user saves to Drive or Dropbox, and
+  /// the file [importBackupJson] reads back.
   ///
-  /// **Every pack is walked separately on purpose.** `word_progress` is keyed on
-  /// `(pack_key, entry_id)`, so a backup has to gather one pack's rows at a time
-  /// rather than assume there is a single active pack.
+  /// **The saved words are in here because without them a restore was data loss.**
+  /// `favorites.pack_key` carries `ON DELETE CASCADE` and [importBackupJson]
+  /// deletes every `packs` row inside its transaction, so restoring a file that
+  /// did not carry favourites wiped the user's whole list - silently, with no
+  /// error and no test. `BackupDocument`'s own contract is that restoring it puts
+  /// a new phone back where the old one was, and a curated list is part of where
+  /// the old phone was. Pinned by `test/data/vocab_repository_test.dart` ->
+  /// *a backup carries the user's favourites, and restores them*.
+  ///
+  /// **Every pack is walked separately on purpose.** `word_progress` and
+  /// `favorites` are both keyed on `(pack_key, entry_id)`, so a backup has to
+  /// gather one pack's rows at a time rather than assume there is a single active
+  /// pack.
   Future<String> exportBackupJson() async {
     final summaries = await _packs.listPacks();
     final packs = <VocabPack>[];
     final progress = <WordProgress>[];
+    final favorites = <BackupFavorite>[];
     for (final summary in summaries) {
       final pack = await _packs.getPack(summary.packKey);
       // A pack row whose entries have gone is skipped rather than exported as an
@@ -202,11 +214,18 @@ class VocabRepository {
       // searched, quizzed or studied.
       if (pack != null) packs.add(pack);
       progress.addAll(await _progress.allForPack(summary.packKey));
+      // Read *after* the `getPack` null check above, so a favourite is never
+      // exported for a pack this file does not contain - it would restore as an
+      // insert the foreign key rejects, failing the whole restore.
+      for (final entryId in await _favorites.favoritesIn(summary.packKey)) {
+        favorites.add(BackupFavorite(packKey: summary.packKey, entryId: entryId));
+      }
     }
     return BackupCodec.encode(BackupDocument(
       exportedAt: _clock(),
       packs: packs,
       progress: progress,
+      favorites: favorites,
       // Capped, deliberately: a year of daily quizzes is a few hundred rows and
       // the file is meant to be readable by a person. There is no screen in the
       // app that would notice the difference.
@@ -223,7 +242,7 @@ class VocabRepository {
   /// [importPack] uses, and for the same reason.
   ///
   /// **CRITICAL: every DAO call inside the transaction receives `executor: txn`,
-  /// and there are SEVEN of them.** A call made without the transaction's handle
+  /// and there are EIGHT of them.** A call made without the transaction's handle
   /// does not fail fast — **it waits**, with no exception, no log line and no
   /// timeout message you wrote. `docs/engineering-standards.md` §3, and the
   /// mechanism is read out of `sqflite_common-2.5.14` rather than recalled:
@@ -249,7 +268,7 @@ class VocabRepository {
   /// whether the table is empty. (Both of those were the wrong story in the first
   /// version of this comment.)
   ///
-  /// The seven, and why each one is easy to forget:
+  /// The eight, and why each one is easy to forget:
   ///
   /// | # | Call | Easy to forget because |
   /// |---|---|---|
@@ -258,13 +277,17 @@ class VocabRepository {
   /// | 3 | `_sessions.deleteForPack(..., executor: txn)` | already had it from Task 7 |
   /// | 4 | `_packs.deletePack(..., executor: txn)` | `PackDao` had no `executor` on any method until this task |
   /// | 5 | `_packs.insertPack(..., executor: txn)` | same |
-  /// | 6 | `_progress.replace(..., executor: txn)` | written by this task, in the same loop |
-  /// | 7 | `_sessions.insert(..., executor: txn)` | same |
+  /// | 6 | `_favorites.replace(..., executor: txn)` | `FavoriteDao` had no `executor` at all until Task 14's fix round added favourites to the backup |
+  /// | 7 | `_progress.replace(..., executor: txn)` | written by this task, in the same loop |
+  /// | 8 | `_sessions.insert(..., executor: txn)` | same |
   ///
   /// Because the failure mode is a hang and not an error, a missing argument is
   /// invisible to CI. `test/data/vocab_repository_test.dart` → *restore completes
   /// inside five seconds* is the guard: it bounds the future with
   /// `.timeout(Duration(seconds: 5))`, so the regression surfaces as a red test.
+  /// **Its fixture carries a saved word on purpose** — site 6 is only *reached*
+  /// when the file holds a favourite, so without one the guard would sit at 7/8
+  /// and look complete.
   Future<int> importBackupJson(String jsonText) async {
     final backup = BackupCodec.decode(jsonText);
     await _db.transaction((txn) async {
@@ -285,6 +308,14 @@ class VocabRepository {
       for (final pack in backup.packs) {
         await _packs.insertPack(pack,
             isBundled: false, importedAt: _clock(), executor: txn);
+      }
+      // Immediately after the packs, and before the other two loops, because
+      // `favorites.pack_key` is a foreign key onto `packs(pack_key)`: a saved
+      // word written before its pack exists is rejected by SQLite, which would
+      // roll the whole restore back with a raw constraint error rather than a
+      // sentence.
+      for (final favorite in backup.favorites) {
+        await _favorites.replace(favorite, addedAt: _clock(), executor: txn);
       }
       for (final row in backup.progress) {
         await _progress.replace(row, executor: txn);

@@ -1,20 +1,31 @@
+import 'package:lexilearn/domain/backup_document.dart';
 import 'package:sqflite/sqflite.dart';
 
 /// The saved words, scoped to the pack they were saved from.
 ///
-/// **No `executor` parameter, and that is a decision rather than an oversight.**
-/// `docs/engineering-standards.md` §3 asks that every DAO reachable from inside
-/// a transaction accept one, and the reason it asks is real: a DAO call made
-/// without the transaction's handle does not fail, it **waits**. But no caller
-/// reaches this DAO from a transaction today — checked by reading every call
-/// site in `lib/`, not by assuming.
+/// **[`replace`](replace) takes an `executor` and the other two do not, and the
+/// reason is a caller that arrived.** Round 1 of this DAO shipped with no
+/// `executor` anywhere, on the reasoning - recorded here, and correct at the time
+/// - that no call site reached it from inside a transaction.
+/// `docs/engineering-standards.md` section 3 asks for one on every such DAO
+/// because a call made without the handle does not fail, it **waits**. Then Task
+/// 14's fix round added favourites to the backup, and
+/// `VocabRepository.importBackupJson` reached this DAO from inside the
+/// transaction it already had. **That is the moment this comment said to add
+/// it.** Adding it to one method rather than to all three is deliberate: only
+/// [replace] is called from inside a transaction, and a parameter nobody
+/// exercises is untested surface pretending to be a guarantee.
 ///
-/// The one transaction that deletes packs, `VocabRepository.importBackupJson`,
-/// clears their favourites through SQLite's own `ON DELETE CASCADE` rather than
-/// through a call here, so it has no `FavoriteDao` call to miss an argument on.
-/// Adding an unused parameter would be untested surface pretending to be a
-/// guarantee, and a guarantee nobody exercises is the thing §3 is about. The
-/// caller that needs one is the moment to add it.
+/// **What the cascade destroys, stated here rather than only implied.** The
+/// `ON DELETE CASCADE` on `favorites.pack_key` means *deleting a pack deletes its
+/// favourites*. That is right when the user deletes a pack. It was a data-loss
+/// bug when `importBackupJson` deleted every `packs` row inside its transaction
+/// with no way to write them back - a user restoring a backup lost the whole
+/// list, silently. The fix is not to weaken the cascade; it is that
+/// `BackupDocument` now carries the favourites and [replace] puts them back
+/// inside the same transaction. Pinned by
+/// `test/data/vocab_repository_test.dart` -> *a backup carries the user's
+/// favourites, and restores them*.
 class FavoriteDao {
   const FavoriteDao(this._db);
 
@@ -54,6 +65,41 @@ class FavoriteDao {
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
+
+  /// Writes one saved word absolutely, used only by backup restore.
+  ///
+  /// **[executor] is NOT optional-by-omission here.** `importBackupJson` calls
+  /// this inside a transaction, and an insert made without the transaction's
+  /// handle does not fail - it **waits**, on the Dart-side `_rawLock` that
+  /// `transaction()` holds for its whole body. See
+  /// `docs/engineering-standards.md` section 3, and the class doc for why the
+  /// other two methods deliberately do not take one.
+  ///
+  /// **`addedAt` is passed in rather than stamped here**, for the same reason
+  /// `PackDao.insertPack` takes `importedAt`: every write in this repository
+  /// honours the injected `Clock`, so a restored favourite carries the harness's
+  /// timestamp instead of the wall clock. `toggle` stamps `DateTime.now()`
+  /// internally and does not - an inconsistency recorded in round 1 and left
+  /// alone here, because fixing it would change `toggle`'s published signature.
+  ///
+  /// The backup does **not** carry `added_at`. Nothing reads it: `favoritesIn`
+  /// hands back a `Set`, so the list's order comes from the pack's own
+  /// `sort_index`. Carrying a timestamp nothing consumes would be a second
+  /// source of truth for "when did the user save this" that nothing keeps honest.
+  Future<void> replace(
+    BackupFavorite favorite, {
+    required DateTime addedAt,
+    DatabaseExecutor? executor,
+  }) =>
+      (executor ?? _db).insert(
+        'favorites',
+        <String, Object?>{
+          'pack_key': favorite.packKey,
+          'entry_id': favorite.entryId,
+          'added_at': addedAt.toUtc().toIso8601String(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
 
   /// Whether one word in [packKey] is saved.
   ///

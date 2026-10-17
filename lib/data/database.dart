@@ -106,10 +106,24 @@ Future<void> _onCreate(Database db, int version) async {
   // afterwards would be a decision the user never made. The key onto `packs` is
   // the other way round and is what makes deleting a pack take its favourites
   // with it — [_onConfigure] already runs `PRAGMA foreign_keys = ON`, so the
-  // cascade needs nothing here. Pinned by
-  // `test/data/favorite_dao_test.dart` → *favourites are removed when the pack
-  // is deleted*, which also pins that the pragma really is on: with foreign keys
-  // off that test would still pass, because no favourite would be found either.
+  // cascade needs nothing here.
+  //
+  // **What the cascade destroys, and where that stopped being a bug.** Deleting a
+  // pack deletes the words the user saved from it. That is right when the user
+  // deletes a pack. It was **data loss** when `importBackupJson` deleted every
+  // `packs` row inside its transaction to restore a backup — the user's whole
+  // curated list went with it, silently, because `BackupDocument` carried only
+  // packs, progress and sessions. The cascade is unchanged; `BackupDocument` now
+  // carries `favorites` and the restore writes them back in the same
+  // transaction. Pinned by `test/data/vocab_repository_test.dart` →
+  // *a backup carries the user's favourites, and restores them*.
+  //
+  // Pinned by `test/data/favorite_dao_test.dart` → *favourites are removed when
+  // the pack is deleted*, **and that test is itself a guard on the pragma above.**
+  // It was once documented as passing with foreign keys off, on the reasoning
+  // that no favourite would be found either. Measured, that is backwards: with
+  // the pragma off the row survives the delete and `favoritesIn('p')` still
+  // returns `{a}`, so the test **fails** — which is what makes it load-bearing.
   batch.execute('''
     CREATE TABLE favorites (
       pack_key  TEXT NOT NULL,

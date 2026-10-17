@@ -145,6 +145,29 @@ Future<void> settleDatabase(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// One real turn **before** `pumpAndSettle` — the opposite order to
+/// [settleDatabase].
+///
+/// **Use this, not [settleDatabase], for anything that sits behind an
+/// indeterminate progress indicator.** `HomeScreen`'s results list shows a
+/// `CircularProgressIndicator` while its read is in flight (`_results()`), and
+/// that widget schedules frames forever, so a `pumpAndSettle` that runs while it
+/// is on screen **never returns**. [settleDatabase] pumps first and takes its
+/// real turn second, so it is the wrong helper there — and the failure is a
+/// `pumpAndSettle timed out` with no hint about which widget is animating.
+///
+/// Measured, in `test/goldens/golden_test.dart`: *word detail user shot* failed
+/// with `pumpAndSettle timed out` in both modes until the order was swapped.
+///
+/// Shared rather than copied: `home_screen_test.dart`'s `_search` was doing the
+/// identical two lines privately, so there were two copies of a dance whose
+/// ordering is the entire point. `docs/engineering-standards.md` §5 forbids the
+/// copy; a third arriving with Task 15 is what the copy invites.
+Future<void> realTurnThenSettle(WidgetTester tester) async {
+  await tester.runAsync(() => Future<void>.delayed(shellDatabaseSettle));
+  await tester.pumpAndSettle();
+}
+
 /// Fires [write] — an async call that is expected to reach the database — and
 /// gives it a real turn of the event loop before returning.
 ///

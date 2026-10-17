@@ -87,10 +87,26 @@ void main() {
 
   // The foreign key is declared ON DELETE CASCADE and `_onConfigure` already runs
   // `PRAGMA foreign_keys = ON`, so the cascade needs no extra work — but only if
-  // that pragma is really on for this connection. SQLite ships with foreign keys
-  // OFF, and a test that deleted the pack with the pragma off would pass the
-  // assertion above for the wrong reason: no favourites would be found either.
-  // This one fails if the pragma is ever dropped, which the delete test cannot.
+  // that pragma is really on for this connection, and SQLite ships with foreign
+  // keys OFF.
+  //
+  // **Measured, and the comment this replaces said the opposite.** It claimed the
+  // delete test "would still pass" with the pragma off, because no favourite would
+  // be found either. That is backwards. With the pragma off the cascade does not
+  // run, so the row **survives** the delete of its pack and `favoritesIn('p')`
+  // still returns `{a}` — so *favourites are removed when the pack is deleted*
+  // **FAILS**, which is exactly what makes it a guard on the pragma. Measured by
+  // a throwaway probe against this shipped sequence:
+  //
+  //   PROBE pragma as opened by _onConfigure: [{foreign_keys: 1}]
+  //   PROBE pragma after the explicit OFF:   [{foreign_keys: 0}]
+  //   PROBE before delete: {a}
+  //   PROBE after delete:  {a}
+  //   PROBE shipped assertion `isEmpty` holds: false
+  //
+  // So the delete test **is** the guard, and this sixth test is not redundant
+  // with it: it pins the *other* half — that a favourite for a pack that does
+  // not exist is rejected at write time rather than silently queued forever.
   test('the foreign key is enforced, not merely declared', () async {
     await _insertPack(db, packKey: 'p');
     await expectLater(
@@ -98,5 +114,41 @@ void main() {
       throwsA(isA<DatabaseException>()),
       reason: 'a favourite for a pack that does not exist must be rejected',
     );
+  });
+
+  // `isFavorite` is the method Task 14 added *beyond* the plan, and its
+  // `pack_key` predicate was untested: mutating
+  //   where: 'pack_key = ? AND entry_id = ?'   ->   where: 'entry_id = ?'
+  // left the whole suite green. `favoritesIn` above has an explicit scoping test
+  // for exactly this dimension; `isFavorite` did not, so
+  // `WordDetailRoute.packKey`'s doc comment — "favourites are scoped to a pack,
+  // so the heart cannot be answered without it" — was a claim with nothing
+  // behind it. Two packs, the **same entry id** in both, so only the pack key can
+  // tell them apart.
+  test('isFavorite is scoped to its pack, not just to the entry id', () async {
+    await _insertPack(db, packKey: 'p1');
+    await _insertPack(db, packKey: 'p2');
+    await dao.toggle(packKey: 'p1', entryId: 'a', isFavorite: true);
+
+    expect(await dao.isFavorite(packKey: 'p1', entryId: 'a'), isTrue);
+    expect(
+      await dao.isFavorite(packKey: 'p2', entryId: 'a'),
+      isFalse,
+      reason: 'p2 holds the same entry id and it is not saved there',
+    );
+    expect(
+      await dao.isFavorite(packKey: 'p1', entryId: 'b'),
+      isFalse,
+      reason: 'and p1 holds a word that was never saved',
+    );
+
+    // And it follows the same write the list reads, both ways.
+    await dao.toggle(packKey: 'p2', entryId: 'a', isFavorite: true);
+    expect(await dao.isFavorite(packKey: 'p2', entryId: 'a'), isTrue);
+    expect(await dao.isFavorite(packKey: 'p1', entryId: 'a'), isTrue,
+        reason: 'saving in one pack must not unsave the other');
+    await dao.toggle(packKey: 'p1', entryId: 'a', isFavorite: false);
+    expect(await dao.isFavorite(packKey: 'p1', entryId: 'a'), isFalse);
+    expect(await dao.isFavorite(packKey: 'p2', entryId: 'a'), isTrue);
   });
 }

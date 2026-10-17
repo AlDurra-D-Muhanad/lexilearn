@@ -9,8 +9,10 @@
   render the real app, so every change to the bottom bar, the header, the theme
   or a screen's own colours silently invalidates them and nothing says so.
 
-  This script is the guard. For each image it asserts, from
-  `docs/design/style-direction.md`:
+  ## WHAT THIS ACTUALLY GUARANTEES, AND WHAT IT DOES NOT
+
+  **It guarantees that the committed pixels are colour-clean.** For each image it
+  asserts, from `docs/design/style-direction.md`:
 
     * `#000000` must be 0 pixels  — a phantom black keyline from a `Card` or a
       Material elevation shadow, the defect that put 29,111 of them here once and
@@ -25,18 +27,87 @@
   It then prints the full brand-token table, so a colour that has quietly moved is
   visible in the same run.
 
+  **It does NOT guarantee that an image is of the screen its filename claims.**
+  Every property above is a *pixel* property, and **no pixel property
+  distinguishes one screen's render from another's.** Measured, both ways:
+
+    * the favourites screen's bytes written to
+      `word_detail_user_shot_light.png`, left uncommitted  -> exit **1**, caught,
+      but only by the staleness proxy below;
+    * the same bytes written to that path and **committed**, so the tree was
+      clean  -> exit **0**, `CENSUS PASSED`.
+
+  Both screens are a light mode with an `#F8F7F5` background, `#1F2937` ink and
+  no `#000000`. **A stale image, or a correct image of the wrong screen, is
+  indistinguishable from a good one once it is committed.**
+
+  That cannot be fixed here. Currency would mean regenerating the image, and
+  regenerating is precisely what is impossible on this platform by construction
+  (the font rasteriser). **Judging a reference image is a reviewer's job** — open
+  the PNG and look at it. What the tool can do is stop the *set* of images and
+  the *list* of images from drifting apart, which it now checks both ways.
+
+  ## THE SET-EQUALITY GUARD
+
+  Every `*.png` in `test/goldens/goldens/` must appear in `$ImagePath`, and every
+  entry in `$ImagePath` must be one of those files. Both directions fail.
+
+  Without it, an eighth image sitting on disk that no list mentions was unguarded
+  — measured: `CENSUS PASSED`, exit 0 — because an image the census does not read
+  is an image nothing checks. This is what a screen task that ships a new
+  reference image would otherwise have to remember by hand.
+
+  **The guard runs on the DEFAULT list only.** Passing `-ImagePath` replaces the
+  list wholesale and is a deliberate narrowing — the `.EXAMPLE` below asks for one
+  image on purpose — so the tool does not second-guess it. The consequence is
+  stated rather than hidden: **a run that passes `-ImagePath` proves nothing
+  about list coverage**, which is why every canary that tests coverage has to go
+  through the default list.
+
+  ## THE STALENESS PROXY
+
+  On the default list, one more cheap check: if the reference images are dirty in
+  git while `test/goldens/golden_test.dart` is clean, they were rewritten by
+  something other than the test that writes them.
+
+  **This is a proxy and it is weak.** It catches a hand-edited or copied-over
+  PNG — measured above, exit 1 on the uncommitted doctored image. It does **not**
+  catch a wrong-but-committed image: committing the same doctored bytes leaves
+  `git status --porcelain` empty and the run returns exit 0, also measured above.
+  It is here because it is nearly free, not because it is sufficient. The reverse
+  direction (test changed, images not) is deliberately **not** checked: editing a
+  comment in the test file would alarm on every such edit.
+
+  ## VERDICTS ARE BUFFERED
+
+  A run that dies part-way through the list used to exit 1 correctly but had
+  already printed `CENSUS PASSED` for every image it reached before the throw —
+  so a reader scanning the log rather than the exit code read green. Per-image
+  verdicts are now buffered and printed **only** in the final summary, after the
+  exit code has been decided. The per-image measurements still print as they go;
+  those are data, not verdicts.
+
+  An unreadable file — zero bytes, or a text file wearing a `.png` name — used to
+  abort the whole run with a GDI+ exception and print no summary at all. It is now
+  one failed image, and the run continues so every other verdict is still printed.
+  Both cases still exit 1, loudly.
+
+  ## REGENERATING
+
   It reads committed pixels; it does not regenerate anything. Regenerating is the
   test's job, and only on purpose:
 
-    # comment out the `skip:` line in test/goldens/golden_test.dart, then
+    # comment out the `skip:` lines in test/goldens/golden_test.dart, then
     flutter test test/goldens/golden_test.dart --update-goldens
-    # put the skip back, then run this script and read the numbers
+    # put the skip: lines back, then run this script and read the numbers
+    # and OPEN the new PNGs and look at them — the census cannot.
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File tool\golden_census.ps1
 
 .EXAMPLE
-  # One image only
+  # One image only. This REPLACES the list, so the set-equality and staleness
+  # guards do not run and the result says nothing about coverage.
   powershell -ExecutionPolicy Bypass -File tool\golden_census.ps1 `
     -ImagePath test/goldens/goldens/stats_screen_user_shot_dark.png
 #>
@@ -49,11 +120,10 @@ param(
   # and the script reports "no golden at <path>" and exits 1. That failure is
   # loud rather than silent, but it reads like a missing file rather than a
   # bad argument.
-  # Every golden `test/goldens/golden_test.dart` writes. A screen task that
-  # ships a new reference image adds its two shots here **and** regenerates them,
-  # because an image the census does not read is an image nothing guards: the
-  # pass condition below is per-image, so an image left off this list is not
-  # checked at all rather than checked and found clean.
+  #
+  # A screen task that ships a new reference image adds its shots here. The
+  # set-equality guard below then **fails the run** if that is forgotten, in
+  # either direction.
   [string[]]$ImagePath = @(
     'test/goldens/goldens/home_shell_user_shot.png',
     'test/goldens/goldens/stats_screen_user_shot_light.png',
@@ -69,6 +139,14 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 
 $root = Split-Path -Parent $PSScriptRoot
+
+# The one directory the default list is allowed to cover.
+$goldenDirRelative = 'test/goldens/goldens'
+$goldenDirFull = Join-Path $root ($goldenDirRelative -replace '/', '\')
+
+# Whether the caller narrowed the list. Everything scope-related below is gated
+# on this, and the `.DESCRIPTION` says so in as many words.
+$callerNarrowedTheList = $PSBoundParameters.ContainsKey('ImagePath')
 
 # `H` is the built-in alias for Get-History and aliases outrank functions in
 # PowerShell's resolution order, so this must not be called `H`.
@@ -95,17 +173,121 @@ function Get-ColorCounts($bitmap) {
 
 $allFailures = @()
 
+# Buffered. A run that dies part-way cannot have already printed a green verdict
+# for the images it reached.
+$verdicts = @()
+
+# --------------------------------------------------------------------------------
+# The set-equality guard, both directions.
+# --------------------------------------------------------------------------------
+if (-not $callerNarrowedTheList) {
+  $onDisk = @()
+  if (Test-Path -LiteralPath $goldenDirFull) {
+    $onDisk = @(Get-ChildItem -LiteralPath $goldenDirFull -Filter '*.png' -File |
+      ForEach-Object { "$goldenDirRelative/$($_.Name)" })
+  }
+  # Normalise both sides to forward slashes, so a caller who typed a backslash is
+  # not told the list is wrong when it is not.
+  $listed = @($ImagePath | ForEach-Object { $_ -replace '\\', '/' })
+
+  $unlisted = @($onDisk | Where-Object { $listed -notcontains $_ })
+  $absent = @($listed | Where-Object { $onDisk -notcontains $_ })
+
+  Write-Host ''
+  Write-Host 'List coverage (default list only)'
+  Write-Host ("    images on disk : {0}" -f $onDisk.Count)
+  Write-Host ("    images listed  : {0}" -f $listed.Count)
+  if ($unlisted.Count -gt 0) {
+    Write-Host '    UNGUARDED: on disk but not in $ImagePath:' -ForegroundColor Red
+    foreach ($orphan in $unlisted) { Write-Host "      $orphan" -ForegroundColor Red }
+    $allFailures += @(
+      $unlisted | ForEach-Object {
+        "list coverage: $_ exists on disk but is not in the ImagePath list, so no pixel check has ever looked at it"
+      }
+    )
+  }
+  if ($absent.Count -gt 0) {
+    Write-Host '    LISTED BUT NOT ON DISK:' -ForegroundColor Red
+    foreach ($phantom in $absent) { Write-Host "      $phantom" -ForegroundColor Red }
+    $allFailures += @(
+      $absent | ForEach-Object {
+        "list coverage: $_ is in the ImagePath list but no such PNG is on disk"
+      }
+    )
+  }
+  if ($unlisted.Count -eq 0 -and $absent.Count -eq 0) {
+    Write-Host '    ok: the list and the directory are the same set' -ForegroundColor Green
+  }
+
+  # --------------------------------------------------------------------------------
+  # The staleness proxy. Weak on purpose; the .DESCRIPTION says exactly how.
+  # --------------------------------------------------------------------------------
+  Write-Host ''
+  Write-Host 'Staleness proxy'
+  $gitError = $null
+  $status = @()
+  try {
+    # `-C` rather than `Push-Location`, so nothing can leave the caller's location
+    # moved. A non-zero exit is handled: the output is what is read.
+    $status = @(& git -C $root status --porcelain -- $goldenDirRelative 'test/goldens/golden_test.dart' 2>&1)
+    if ($LASTEXITCODE -ne 0) { $gitError = ($status -join ' ') }
+  } catch {
+    $gitError = $_.Exception.Message
+  }
+
+  if ($gitError) {
+    # A missing or broken git must not fail the census. It is a developer tool with
+    # a git dependency for one optional check, and a false alarm here teaches people
+    # to ignore the output.
+    Write-Host ("    SKIPPED: git could not report status ({0})" -f $gitError)
+  } else {
+    $pngLines = @($status | Where-Object { $_ -match [regex]::Escape($goldenDirRelative) })
+    $testLines = @($status | Where-Object { $_ -match 'golden_test\.dart$' })
+    Write-Host ("    modified PNGs : {0}" -f $pngLines.Count)
+    Write-Host ("    modified test : {0}" -f $testLines.Count)
+    if ($pngLines.Count -gt 0 -and $testLines.Count -eq 0) {
+      Write-Host '    FAIL: reference images are modified but golden_test.dart is not' -ForegroundColor Red
+      Write-Host '          — they were rewritten by something other than the test that writes them.' -ForegroundColor Red
+      $allFailures += @(
+        'staleness: the reference images are modified in git while ' +
+        'test/goldens/golden_test.dart is clean, so no test wrote them (weak proxy: ' +
+        'it would NOT catch a wrong-but-committed image)'
+      )
+    } elseif ($pngLines.Count -eq 0 -and $testLines.Count -eq 0) {
+      Write-Host '    ok: nothing modified' -ForegroundColor Green
+    } else {
+      Write-Host '    (images and/or test modified; run `flutter test --update-goldens` and inspect the PNGs)'
+    }
+  }
+} else {
+  Write-Host ''
+  Write-Host 'List coverage: SKIPPED - -ImagePath was supplied, which replaces the default list.'
+  Write-Host 'A narrowed run says NOTHING about coverage. Re-run with no arguments for that.'
+}
+
 foreach ($relative in $ImagePath) {
   $full = Join-Path $root $relative
 
-  if (-not (Test-Path $full)) {
+  if (-not (Test-Path -LiteralPath $full)) {
     Write-Host ''
     Write-Host "  FAIL: no golden at $relative. Regenerate it before running the census." -ForegroundColor Red
     $allFailures += "missing image $relative"
+    $verdicts += [pscustomobject]@{ Image = $relative; Verdict = 'FAIL'; Why = 'no such file' }
     continue
   }
 
-  $bitmap = [System.Drawing.Bitmap]::FromFile($full)
+  $bitmap = $null
+  try {
+    $bitmap = [System.Drawing.Bitmap]::FromFile($full)
+  } catch {
+    $why = "unreadable as a PNG: $($_.Exception.Message)"
+    Write-Host ''
+    Write-Host "  FAIL: $relative is $why" -ForegroundColor Red
+    $allFailures += "$relative : $why"
+    $verdicts += [pscustomobject]@{ Image = $relative; Verdict = 'FAIL'; Why = 'unreadable as a PNG' }
+    continue
+  }
+
   try {
     $counts = Get-ColorCounts $bitmap
 
@@ -216,22 +398,40 @@ foreach ($relative in $ImagePath) {
     if ($failures.Count -gt 0) {
       foreach ($failure in $failures) { Write-Host "  FAIL: $failure" -ForegroundColor Red }
       $allFailures += $failures | ForEach-Object { "$relative : $_" }
+      $verdicts += [pscustomobject]@{ Image = $relative; Verdict = 'FAIL'; Why = ($failures -join '; ') }
     } else {
-      Write-Host ''
-      Write-Host '  CENSUS PASSED' -ForegroundColor Green
+      $verdicts += [pscustomobject]@{ Image = $relative; Verdict = 'PASS'; Why = '' }
     }
   } finally {
     $bitmap.Dispose()
   }
 }
 
+# --------------------------------------------------------------------------------
+# The summary. Every verdict is printed HERE and nowhere else, so a run that dies
+# part-way cannot have already printed a green line for the images it reached.
+# --------------------------------------------------------------------------------
+Write-Host ''
+Write-Host 'Verdicts (printed only now, after the exit code is decided)'
+foreach ($v in $verdicts) {
+  if ($v.Verdict -eq 'PASS') {
+    Write-Host ("    PASS  {0}" -f $v.Image)
+  } else {
+    Write-Host ("    FAIL  {0}  -- {1}" -f $v.Image, $v.Why) -ForegroundColor Red
+  }
+}
+$passCount = @($verdicts | Where-Object { $_.Verdict -eq 'PASS' }).Count
+Write-Host ("    ---- {0} of {1} images passed" -f $passCount, $verdicts.Count)
+
 Write-Host ''
 if ($allFailures.Count -gt 0) {
   foreach ($failure in $allFailures) { Write-Host "FAIL: $failure" -ForegroundColor Red }
   Write-Host ''
-  Write-Host "CENSUS FAILED ($($allFailures.Count) problem(s) across $($ImagePath.Count) image(s))" -ForegroundColor Red
+  Write-Host "CENSUS FAILED ($($allFailures.Count) problem(s) across $($verdicts.Count) image(s))" -ForegroundColor Red
   exit 1
 }
-Write-Host "CENSUS PASSED for all $($ImagePath.Count) image(s)" -ForegroundColor Green
+Write-Host "CENSUS PASSED for all $($verdicts.Count) image(s)" -ForegroundColor Green
+Write-Host 'This says the pixels are colour-clean. It does NOT say each image is of'
+Write-Host 'the screen its filename claims - nothing here can tell. Open the PNGs.'
 Write-Host ''
 exit 0

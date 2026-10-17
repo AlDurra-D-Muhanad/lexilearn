@@ -447,6 +447,40 @@ void main() {
         reason: 'favourites is not a bottom-bar destination',
       );
     });
+
+    testWidgets('tapping a row from Home opens the word detail', (tester) async {
+      // **This is the test that pins the callback.** The `المفضلة` tile is the
+      // only place in `lib/` that builds a `FavoritesScreen`, and it used to pass
+      // `onOpenWord: (_) {}` — so tapping a saved word from Home did nothing at
+      // all, and every other test in this file kept passing because they mount
+      // the screen with their own recorder.
+      //
+      // Driven through the real app on purpose: a test that pumped
+      // `FavoritesScreen` directly with a recording callback would pass whatever
+      // the tile passes, which is exactly what was wrong.
+      await _favorite(tester, harness.repository, packKey: 'p', entryId: 'a');
+      await _favorite(tester, harness.repository, packKey: 'other', entryId: 'a');
+
+      useAPhone(tester);
+      await pumpShell(tester, harness.repository);
+      await tester.tap(find.descendant(
+        of: find.byType(HomeScreen),
+        matching: find.text(_tileFavorites),
+      ));
+      await tester.pumpAndSettle();
+      await settleDatabase(tester);
+      expect(find.byType(FavoritesScreen), findsOneWidget);
+      expect(inFav(_alpha), findsOneWidget);
+
+      await tester.tap(inFav(_alpha));
+      await tester.pumpAndSettle();
+      await settleDatabase(tester);
+
+      expect(find.byType(WordDetailScreen), findsOneWidget,
+          reason: 'the row handed its entry to the shell, which pushed the detail');
+      expect(find.byType(FavoritesScreen), findsNothing,
+          reason: 'the detail replaced the list rather than stacking under it');
+    });
   });
 
   group('a failed read', () {
