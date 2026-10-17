@@ -49,10 +49,19 @@ param(
   # and the script reports "no golden at <path>" and exits 1. That failure is
   # loud rather than silent, but it reads like a missing file rather than a
   # bad argument.
+  # Every golden `test/goldens/golden_test.dart` writes. A screen task that
+  # ships a new reference image adds its two shots here **and** regenerates them,
+  # because an image the census does not read is an image nothing guards: the
+  # pass condition below is per-image, so an image left off this list is not
+  # checked at all rather than checked and found clean.
   [string[]]$ImagePath = @(
     'test/goldens/goldens/home_shell_user_shot.png',
     'test/goldens/goldens/stats_screen_user_shot_light.png',
-    'test/goldens/goldens/stats_screen_user_shot_dark.png'
+    'test/goldens/goldens/stats_screen_user_shot_dark.png',
+    'test/goldens/goldens/favorites_screen_user_shot_light.png',
+    'test/goldens/goldens/favorites_screen_user_shot_dark.png',
+    'test/goldens/goldens/word_detail_user_shot_light.png',
+    'test/goldens/goldens/word_detail_user_shot_dark.png'
   )
 )
 

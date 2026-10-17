@@ -7,6 +7,7 @@ import 'flashcards/flashcards_screen.dart';
 import 'home/home_screen.dart';
 import 'more/more_screen.dart';
 import 'quiz/quiz_setup_screen.dart';
+import 'word_detail/word_detail_screen.dart';
 
 /// The bottom-bar shell: one destination at a time, and the pack they share.
 ///
@@ -130,12 +131,34 @@ class _HomeShellState extends State<HomeShell> {
 
   /// Opens the word detail view for [entry].
   ///
-  /// Deliberately empty until Task 14 lands: `WordDetailScreen` does not exist
-  /// yet and this task must not import a path that does not exist. Its only
-  /// caller is Home's quick-launch grid, which is itself a Task 10 placeholder
-  /// that never fires it. Task 14 replaces this body with the `Navigator.push`
-  /// of `WordDetailScreen(entry: entry)`.
-  void _openWordDetail(VocabEntry entry) {}
+  /// **A pushed route, not a bar destination**, for the same reason statistics
+  /// and favourites are: the artwork's bar draws exactly four items and none of
+  /// them is a word. Both of Home's doors into a word arrive here — the
+  /// word-of-the-day card's `معرفة المعنى` and a search result row.
+  ///
+  /// `WordDetailRoute` and not `WordDetailScreen`: the screen's own signature
+  /// takes `isFavorite` and `onToggleFavorite`, so the truth about whether this
+  /// word is saved has to live in something that owns it. The route does.
+  ///
+  /// The repository is not handed to the route explicitly — it comes from the
+  /// `Provider` `LexiLearnApp` installs above this shell, which is where every
+  /// other screen reads it from.
+  ///
+  /// **Task 14 wrote this body.** It was an empty method with a comment saying
+  /// Task 14 would replace it, and Task 14's own file list does not name this
+  /// file — but a no-op that documents the thing that is supposed to do it is
+  /// precisely the false comment `docs/engineering-standards.md` §1 is about, and
+  /// `onOpenWord` reaching nothing is the artefact the artwork draws. Pinned by
+  /// `test/ui/word_detail_screen_test.dart` → *the معرفة المعنى button opens it
+  /// and leaves the bar where it was*, which taps the real card through the real
+  /// app.
+  void _openWordDetail(VocabEntry entry) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => WordDetailRoute(entry: entry, packKey: _activePackKey),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

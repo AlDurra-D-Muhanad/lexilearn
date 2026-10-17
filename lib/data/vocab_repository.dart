@@ -10,6 +10,7 @@ import 'package:lexilearn/domain/vocab_pack.dart';
 import 'package:lexilearn/domain/word_progress.dart';
 import 'package:sqflite/sqflite.dart';
 
+import 'favorite_dao.dart';
 import 'pack_dao.dart';
 import 'progress_dao.dart';
 import 'session_dao.dart';
@@ -21,12 +22,14 @@ class VocabRepository {
         _packs = PackDao(database),
         _progress = ProgressDao(database),
         _sessions = SessionDao(database),
+        _favorites = FavoriteDao(database),
         _clock = clock ?? DateTime.now;
 
   final Database _db;
   final PackDao _packs;
   final ProgressDao _progress;
   final SessionDao _sessions;
+  final FavoriteDao _favorites;
   final Clock _clock;
 
   Future<List<PackSummary>> packs() => _packs.listPacks();
@@ -61,6 +64,56 @@ class VocabRepository {
   }
 
   Future<void> deletePack(String packKey) => _packs.deletePack(packKey);
+
+  /// Saves or removes one word, per [isFavorite].
+  ///
+  /// Sets the state rather than inverting it; see
+  /// [FavoriteDao.toggle] for why that is the shape worth having.
+  Future<void> setFavorite({
+    required String packKey,
+    required String entryId,
+    required bool isFavorite,
+  }) =>
+      _favorites.toggle(
+        packKey: packKey,
+        entryId: entryId,
+        isFavorite: isFavorite,
+      );
+
+  /// Whether one word in [packKey] is saved.
+  ///
+  /// What the word detail screen's heart needs on opening, and the only reason
+  /// [FavoriteDao] has a method beyond the two the favourites list itself uses.
+  Future<bool> isFavorite({
+    required String packKey,
+    required String entryId,
+  }) =>
+      _favorites.isFavorite(packKey: packKey, entryId: entryId);
+
+  /// Every saved word in [packKey], as entries, in the pack's own order.
+  ///
+  /// **Two round trips, and the second is skipped when there is nothing to
+  /// resolve.** `favoritesIn` answers with ids; the entries themselves live in
+  /// `entries`, which this repository already reads for search and for the home
+  /// screen. Resolving here rather than joining in SQL keeps `FavoriteDao` from
+  /// needing to know the `entries` table at all.
+  ///
+  /// The order is `sort_index` — the same order a search result and the
+  /// flashcards deck use — because the loop walks [all] and tests membership,
+  /// rather than walking the id set. A favourites list that ordered itself by
+  /// `added_at` would be the only list in the app doing so.
+  ///
+  /// An empty pack key answers with nothing rather than querying for it, for the
+  /// reason `HomeScreen._loadPack` gives: an empty key is `HomeShell`'s start-up
+  /// window, not a missing pack, and asking would turn a normal frame into an
+  /// error state.
+  Future<List<VocabEntry>> favorites(String packKey) async {
+    if (packKey.isEmpty) return const <VocabEntry>[];
+    final ids = await _favorites.favoritesIn(packKey);
+    if (ids.isEmpty) return const <VocabEntry>[];
+    final all = await _packs.entriesOf(packKey);
+    return all.where((entry) => ids.contains(entry.id)).toList();
+  }
 
   /// Installs the bundled asset on first launch, and after the user deletes it.
   /// Returns false when the pack is already present, so it is safe to call on

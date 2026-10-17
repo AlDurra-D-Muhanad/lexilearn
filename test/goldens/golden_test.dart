@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
+import 'package:lexilearn/design/design_tokens.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
 import 'package:lexilearn/ui/home/home_screen.dart';
+import 'package:lexilearn/ui/word_detail/word_detail_screen.dart';
 
 import '../helpers/test_env.dart';
 
@@ -17,16 +19,47 @@ import '../helpers/test_env.dart';
 /// to. See `lib/ui/home/home_screen.dart` → `_QuickLaunchGrid`.
 const _statsTile = 'إحصائياتك';
 
+/// The other tile that pushes rather than switching a tab. Favourites is not a
+/// bottom-bar destination either, for the reason `home_shell.dart` documents.
+///
+/// `FavoritesScreen` itself is deliberately **not** imported here even though the
+/// favourites shot below pushes it. Nothing in these images is asserted by type —
+/// the shots are compared as pixels — and an unused import is an analyzer warning.
+/// `test/ui/favorites_screen_test.dart` is where that screen is pinned.
+const _favoritesTile = 'المفضلة';
+
+/// The query that drives the search field, so the reference image shows a
+/// **named** word rather than whichever one the calendar picked.
+const _searchQuery = 'serenity';
+
 /// `pumpShell` mounts `LexiLearnApp(repository:)` — the real app — so this file
 /// does not import `app.dart` itself; it mounts through the shared helper like
 /// every other screen test, for the same fake-async reason.
 
-/// The pack the reference image is drawn from.
+/// The pack the reference images are drawn from.
 ///
-/// The artwork's own words, so the committed PNG can be put next to
+/// The artwork's own words, so the committed PNGs can be put next to
 /// `docs/design/brand-reference.png` and compared without translating anything
 /// first. Deterministic and in-memory — the golden depends on the entries, not on
 /// whatever `assets/packs/` happens to hold.
+///
+/// **Task 14 added three fields to `serenity-1`, and they touch nothing already
+/// captured.** The word detail screen is the first thing in the app to render a
+/// part of speech, synonyms and examples, and a reference image that cannot show
+/// its own optional sections is not one. The Home card draws only the term and
+/// the phonetic, so `home_shell_user_shot.png` is unaffected by the data.
+///
+/// **Verified, and the first version of this comment was wrong about it.**
+/// Regenerating the shell shot alongside the new four *did* rewrite the file —
+/// 13,176 differing pixels, confined to logical `x 189–318, y 217–264`, which is
+/// the card's term line. Cropping both showed the reason: the committed PNG reads
+/// `fervour /fɜːvə/` and today's render reads `clarity /klærəti/`. That is
+/// `WordOfTheDay.pick` moving with the calendar, which the shell shot's own
+/// comment calls out as "the screen behaving correctly … not a reason to
+/// regenerate" — so the file was restored with `git checkout` and left alone.
+/// `stats_screen_user_shot_{light,dark}.png` came back byte-identical from the
+/// same run, which is the part that says the three new fields really are inert
+/// on Home: statistics reads no entry fields at all.
 const _goldenPack = VocabPack(
   schemaVersion: 1,
   packId: 'en_ar',
@@ -39,6 +72,9 @@ const _goldenPack = VocabPack(
       term: 'serenity',
       translations: <String>['الهدوء والسكينة', 'السكينة'],
       phonetic: '/səˈrenəti/',
+      partOfSpeech: 'noun',
+      synonyms: <String>['peace', 'tranquility'],
+      examples: <String>['The room was filled with serenity.'],
     ),
     VocabEntry(
       id: 'ambition-1',
@@ -168,6 +204,68 @@ void main() {
       skip: _goldenSkipReason,
     );
   });
+
+  // --- favourites and the word detail ------------------------------------------
+  //
+  // Four images, and both screens get a light and a dark one for the reason the
+  // statistics shots do: each names a different set of brand tokens per
+  // brightness — the card hairlines, the neutral surface, the text ink and the
+  // amber heart — so a single image would leave half of them unrendered.
+  //
+  // Both are **pushed routes reached through the real app**, not mounted in a
+  // stand-in, for the reason `[_statsTile]` gives: a reference image captured any
+  // other way would be a picture of something the user cannot get to.
+  testWidgets('favorites screen user shot, light', (tester) async {
+    useAPhone(tester);
+    await _seedFavorites(tester, harness.repository);
+    await _openFavorites(tester, harness.repository);
+
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('goldens/favorites_screen_user_shot_light.png'),
+      skip: _goldenSkipReason,
+    );
+  });
+
+  testWidgets('favorites screen user shot, dark', (tester) async {
+    useAPhone(tester);
+    tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+    addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+
+    await _seedFavorites(tester, harness.repository);
+    await _openFavorites(tester, harness.repository);
+
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('goldens/favorites_screen_user_shot_dark.png'),
+      skip: _goldenSkipReason,
+    );
+  });
+
+  testWidgets('word detail user shot, light', (tester) async {
+    useAPhone(tester);
+    await _openWordDetail(tester, harness.repository);
+
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('goldens/word_detail_user_shot_light.png'),
+      skip: _goldenSkipReason,
+    );
+  });
+
+  testWidgets('word detail user shot, dark', (tester) async {
+    useAPhone(tester);
+    tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+    addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+
+    await _openWordDetail(tester, harness.repository);
+
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('goldens/word_detail_user_shot_dark.png'),
+      skip: _goldenSkipReason,
+    );
+  });
 }
 
 /// Why every golden in this file is `skip:`-ed, and how to regenerate one.
@@ -244,6 +342,103 @@ Future<void> _openStats(WidgetTester tester, VocabRepository repository) async {
   // The pushed screen issues its own read from `initState`, and `pumpShell`'s
   // two turns happened before it existed.
   await settleDatabase(tester);
+}
+
+/// Saves two words, so the favourites screen has a list rather than an empty
+/// state to photograph.
+///
+/// `tester.runAsync`, not a bare `await`: a `testWidgets` body runs in a
+/// fake-async zone where a real sqflite future never answers. The write is
+/// awaited inside `runAsync` rather than fired and delayed the way
+/// `commitAndSettle` does, because the tree is mounted but the screen has not
+/// been pushed yet and there is nothing for pumps to be useful to.
+Future<void> _seedFavorites(
+  WidgetTester tester,
+  VocabRepository repository,
+) =>
+    tester.runAsync(() async {
+      await repository.setFavorite(
+          packKey: 'en_ar', entryId: 'serenity-1', isFavorite: true);
+      await repository.setFavorite(
+          packKey: 'en_ar', entryId: 'ambition-1', isFavorite: true);
+    });
+
+/// Taps the `المفضلة` tile and lets the screen it pushes finish reading.
+///
+/// `useAPhone` first, from the caller, for the same reason as `_openStats`.
+Future<void> _openFavorites(
+  WidgetTester tester,
+  VocabRepository repository,
+) async {
+  await pumpShell(tester, repository);
+  await tester.tap(
+    find.descendant(
+      of: find.byType(HomeScreen),
+      matching: find.text(_favoritesTile),
+    ),
+  );
+  await tester.pumpAndSettle();
+  await settleDatabase(tester);
+}
+
+/// One real turn **before** `pumpAndSettle` — the opposite order to
+/// [settleDatabase], and for a measured reason.
+///
+/// `HomeScreen`'s results list shows an indeterminate
+/// `CircularProgressIndicator` while its read is in flight (`_results()`), and
+/// that widget schedules frames forever, so a `pumpAndSettle` that runs while it
+/// is on screen never returns. [settleDatabase] pumps first and takes its real
+/// turn second, so it is the wrong helper for anything behind a spinner.
+///
+/// Measured: with `settleDatabase` here, *word detail user shot* failed with
+/// `pumpAndSettle timed out`, in both modes. Every other screen in the app
+/// avoids this by never drawing a spinner for its loading state —
+/// `stats_screen.dart` and `more_screen.dart` both say so on the record — and
+/// Home's search is the one that still does.
+Future<void> _realTurnThenSettle(WidgetTester tester) async {
+  await tester.runAsync(() => Future<void>.delayed(shellDatabaseSettle));
+  await tester.pumpAndSettle();
+}
+
+/// Searches for one word and taps its result, so the reference image shows a
+/// **named** word.
+///
+/// **Not the word-of-the-day card**, and that is the point. The card shows
+/// whichever entry `WordOfTheDay.pick` lands on for today's date, so a golden
+/// captured through it changes with the calendar — the shell shot documents that
+/// and accepts it, because the card is *about* the calendar. The word detail
+/// screen is not, and a reference image that reads `ambition` on one day and
+/// `serenity` on the next is a reference nobody can compare against. The search
+/// row is the app's other real door into a word: `_EntryRow` → `onOpenWord` →
+/// `HomeShell._openWordDetail`.
+Future<void> _openWordDetail(
+  WidgetTester tester,
+  VocabRepository repository,
+) async {
+  await pumpShell(tester, repository);
+
+  await tester.enterText(find.byType(TextField), _searchQuery);
+  // `HomeScreen`'s debounce is `AppDurations.standard`, 250 ms — the same
+  // constant the implementation reads, so this is not a magic sleep.
+  await tester.pump(AppDurations.standard);
+  // The search is a database query of its own, issued once the debounce fires,
+  // and it sits behind that spinner. See [_realTurnThenSettle].
+  await _realTurnThenSettle(tester);
+
+  // Scoped to the results list, **not** a bare `find.text`. Measured: a bare one
+  // matches twice — the `EditableText` in the search field now holds the same
+  // string, because the test typed it — and `tap` rejects an ambiguous target.
+  await tester.tap(find.descendant(
+    of: find.byType(ListView),
+    matching: find.text(_searchQuery),
+  ));
+  await tester.pumpAndSettle();
+  // The pushed route issues its own read from `initState`, and it draws no
+  // spinner, so [settleDatabase] is the right helper here.
+  await settleDatabase(tester);
+
+  expect(find.byType(WordDetailScreen), findsOneWidget,
+      reason: 'the result row opens the word detail route');
 }
 
 /// Registers both bundled families with the test text engine.

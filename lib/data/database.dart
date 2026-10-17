@@ -1,6 +1,12 @@
 import 'package:sqflite/sqflite.dart';
 
 /// v1. Every future migration adds a branch to [_onUpgrade] and bumps this.
+///
+/// `favorites` is part of this v1, not a v2. It ships in the first release, so
+/// nothing anywhere has ever opened a v1 database that lacked the table and
+/// there is no install a migration could be written for. The first schema change
+/// *after* a release is the thing that bumps this — and that release is also the
+/// first time `if (from < 2)` in [_onUpgrade] becomes reachable.
 const int databaseSchemaVersion = 1;
 
 /// Opens the app database, creating or migrating the schema as needed.
@@ -93,6 +99,26 @@ Future<void> _onCreate(Database db, int version) async {
   ''');
   batch.execute(
       'CREATE INDEX idx_sessions_started ON quiz_sessions (started_at DESC)');
+  // Favourites: one row per saved word, scoped to the pack it was saved from.
+  //
+  // **No foreign key to `entries`, on the same grounds as `word_progress` above:**
+  // a pack re-import replaces its entry rows, and re-favouriting every word
+  // afterwards would be a decision the user never made. The key onto `packs` is
+  // the other way round and is what makes deleting a pack take its favourites
+  // with it — [_onConfigure] already runs `PRAGMA foreign_keys = ON`, so the
+  // cascade needs nothing here. Pinned by
+  // `test/data/favorite_dao_test.dart` → *favourites are removed when the pack
+  // is deleted*, which also pins that the pragma really is on: with foreign keys
+  // off that test would still pass, because no favourite would be found either.
+  batch.execute('''
+    CREATE TABLE favorites (
+      pack_key  TEXT NOT NULL,
+      entry_id  TEXT NOT NULL,
+      added_at  TEXT NOT NULL,
+      PRIMARY KEY (pack_key, entry_id),
+      FOREIGN KEY (pack_key) REFERENCES packs (pack_key) ON DELETE CASCADE
+    )
+  ''');
   await batch.commit(noResult: true);
 }
 
