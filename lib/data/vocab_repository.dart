@@ -170,10 +170,31 @@ class VocabRepository {
   /// [importPack] uses, and for the same reason.
   ///
   /// **CRITICAL: every DAO call inside the transaction receives `executor: txn`,
-  /// and there are SEVEN of them.** A DAO on its own connection opens a second
-  /// handle while this transaction holds the write lock. It does not fail fast —
-  /// **it hangs**, with no exception, no log line and no timeout message you
-  /// wrote. `docs/engineering-standards.md` §3.
+  /// and there are SEVEN of them.** A call made without the transaction's handle
+  /// does not fail fast — **it waits**, with no exception, no log line and no
+  /// timeout message you wrote. `docs/engineering-standards.md` §3, and the
+  /// mechanism is read out of `sqflite_common-2.5.14` rather than recalled:
+  ///
+  /// * `transaction()` (`:894-902`) wraps its whole body in `txnWriteSynchronized`,
+  ///   which takes `_rawLock` — a **Dart-side non-reentrant `Lock`** declared at
+  ///   `:496`.
+  /// * `txnSynchronized` (`:549-592`) runs straight through when it is handed
+  ///   the transaction, and otherwise queues on `_rawLock.synchronized(…)`. Its
+  ///   own comment reads *"synchronized call to the database / not re-entrant"*.
+  /// * after `utils.lockWarningDuration` — 10 s, `constant.dart:174` —
+  ///   `utils.dart:43-49` prints `Warning database has been locked … Make sure
+  ///   you always use the transaction object for database operations during a
+  ///   transaction`.
+  /// * `sqflite_common_ffi-2.4.4/lib/src/sqflite_ffi_impl.dart:275-315` queues
+  ///   them on the FFI side as well: `handleTransactionId`, *"If a transaction is
+  ///   in progress and we are not in it, queue for later"*.
+  ///
+  /// **It is the same `Database` object, not a second connection, and this has
+  /// nothing to do with a SQLite file lock.** `:423` opens with `BEGIN IMMEDIATE`
+  /// rather than a deferred `BEGIN`, and the block is not data-dependent: the
+  /// first call inside the transaction blocks whether it reads or writes and
+  /// whether the table is empty. (Both of those were the wrong story in the first
+  /// version of this comment.)
   ///
   /// The seven, and why each one is easy to forget:
   ///
@@ -194,6 +215,15 @@ class VocabRepository {
   Future<int> importBackupJson(String jsonText) async {
     final backup = BackupCodec.decode(jsonText);
     await _db.transaction((txn) async {
+      // **A LANDMINE, and this comment is the only thing standing in front of
+      // it.** Sites 2 and 3 below look redundant: `PackDao.deletePack` already
+      // deletes `word_progress` and `quiz_sessions` for the pack
+      // (`pack_dao.dart:121-124`), so a "simplification" that drops the two
+      // explicit deletes is *semantically* correct and *silently* drops the guard
+      // from 7/7 to 5/7 — sites 2 and 3 become unreachable, nothing fails, and
+      // `test/data/vocab_repository_test.dart`'s executor guard stops proving
+      // anything about them. Kept, and asserted on, so that "it was redundant" is
+      // a reading of this comment rather than a change somebody makes.
       for (final summary in await _packs.listPacks(executor: txn)) {
         await _progress.reset(summary.packKey, executor: txn);
         await _sessions.deleteForPack(summary.packKey, executor: txn);

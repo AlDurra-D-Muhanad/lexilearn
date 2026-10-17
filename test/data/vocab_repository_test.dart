@@ -595,27 +595,64 @@ void main() {
     // **This is the guard for `docs/engineering-standards.md` §3, and it exists
     // because the failure it catches is a hang, not an error.**
     //
-    // `importBackupJson` makes seven DAO calls inside one transaction. A DAO on
-    // its own connection opens a second handle and waits on the write lock the
-    // transaction holds; that never fails and never returns, so an ordinary
-    // `expectLater(..., completes)` would sit there until the ten-minute test
-    // timeout and CI would report a suite that simply stopped, with nothing
-    // pointing at the cause. Bounding the future with `.timeout` converts that
-    // hang into a red test naming the restore. Measured by dropping one argument
-    // at a time: sqflite itself then prints `Warning database has been locked …
-    // Make sure you always use the transaction object for database operations
-    // during a transaction`, and this test fails at exactly 5.0 s with
-    // `TimeoutException after 0:00:05.000000: Future not completed`.
+    // `importBackupJson` makes seven DAO calls inside one `transaction()`. A call
+    // made **without** that transaction's handle does not fail and does not
+    // return: it waits. Read out of `sqflite_common-2.5.14`, not assumed:
     //
-    // **Two packs, not one, and that is the whole trick.** `transaction` opens a
-    // *deferred* transaction, so SQLite does not take the write lock until the
-    // first write. With one pack installed, `_progress.reset` — the first call in
-    // the delete loop — runs before anything on the transaction has written, so
-    // it takes the lock first and a missing `executor: txn` there is *silent*:
-    // dropping it left this test green. With two, the first pack's
-    // `_sessions.deleteForPack` has already taken the lock by the time the second
-    // pack's `_progress.reset` runs, so that regression deadlocks too. Measured,
-    // not assumed.
+    // * `database_mixin.dart:894-902` — `transaction()` wraps its whole body in
+    //   `txnWriteSynchronized`, which takes `_rawLock`, a **Dart-side
+    //   non-reentrant `Lock` declared at `:496`**.
+    // * `database_mixin.dart:549-592` — `txnSynchronized` runs immediately when
+    //   `txn != null`; otherwise it queues on `_rawLock.synchronized(…)`. The
+    //   comment above it reads *"synchronized call to the database / not
+    //   re-entrant"*.
+    // * after `utils.lockWarningDuration` — **10 seconds**,
+    //   `constant.dart:174` — `utils.dart:43-49` prints
+    //   `Warning database has been locked for … Make sure you always use the
+    //   transaction object for database operations during a transaction`.
+    // * `sqflite_common_ffi-2.4.4/lib/src/sqflite_ffi_impl.dart:275-315` —
+    //   `handleTransactionId`, whose own doc comment is *"If a transaction is in
+    //   progress and we are not in it, queue for later"*: a statement issued with
+    //   no transaction id is parked in `_noTransactionHandlerQueue` and only run
+    //   by `_runQueuedHandlers()` once the transaction closes.
+    //
+    // **It is the same `Database` object, not a second connection, and nothing
+    // here is about SQLite taking a file lock.** `database_mixin.dart:423` opens
+    // with `BEGIN IMMEDIATE`, not a deferred `BEGIN`, and the block does not
+    // depend on whether any rows exist — the *first* call inside the transaction
+    // blocks whether it reads or writes and whether the table is empty. (Both of
+    // those were the wrong story in the first draft of this comment; see §Fix
+    // round 1 of the report.)
+    //
+    // So an ordinary `expectLater(…, completes)` would sit there until the
+    // ten-minute test timeout and CI would report a suite that simply stopped,
+    // with nothing pointing at the cause. Bounding the future with `.timeout`
+    // converts the hang into a red test naming the restore. Measured by dropping
+    // one argument at a time: every one of the seven fails at exactly 5.0 s with
+    // `TimeoutException after 0:00:05.000000: Future not completed`, and sqflite
+    // prints its own `Warning database has been locked` twice behind it.
+    //
+    // **What the fixture is actually for, measured rather than asserted.** Three
+    // of the seven are only *reached* at all if the file carries what they
+    // iterate, and reaching them is the whole point — an unreached call is
+    // silently uncovered, not red. Dropping each argument against a fixture with
+    // **zero** progress rows and **zero** sessions gives:
+    //
+    // | site | reached by | caught with an empty fixture? |
+    // |---|---|---|
+    // | 1 `listPacks` | the device having ≥1 pack | yes |
+    // | 2 `progress.reset` | the device having ≥1 pack | yes |
+    // | 3 `sessions.deleteForPack` | the device having ≥1 pack | yes |
+    // | 4 `packs.deletePack` | the device having ≥1 pack | yes |
+    // | 5 `packs.insertPack` | the file having ≥1 pack | yes (1 is enough) |
+    // | 6 `progress.replace` | the file having ≥1 **progress row** | **no — missed** |
+    // | 7 `sessions.insert` | the file having ≥1 **session** | **no — missed** |
+    //
+    // So the progress row and the session are load-bearing and the second pack
+    // is not: one pack is enough for sites 1–5. Two are seeded anyway so each
+    // of the three loops runs its body more than once. The progress row and the
+    // session are the two that must not be removed without noticing — with them
+    // gone the guard still passes, at 5/7.
     //
     // The bound is 5 s against an in-memory sqflite round trip measured in
     // milliseconds, so it is slack rather than a tuning target: far below any
@@ -628,7 +665,7 @@ void main() {
     // A finished session as well, because `_sessions.insert` is the seventh
     // call and it is only *reached* if the file carries one: with no sessions in
     // the backup the loop body never runs, and dropping its `executor: txn` left
-    // this test **green**. Measured.
+    // this test **green**. Measured, not assumed — see the table above.
     await two.repository.finishSession(
       packKey: 'en_ar',
       startedAt: DateTime.utc(2026, 10, 14, 9),

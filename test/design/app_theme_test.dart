@@ -119,6 +119,64 @@ void main() {
     expect(AppTheme.dark().cardTheme.elevation, 0);
   });
 
+  test('every button family is pinned at zero elevation, hovered included',
+      () {
+    // Amendment 6's defect, fixed a second time and now prevented rather than
+    // patched. The defaults these replace, read out of this SDK's
+    // `packages/flutter/lib/src/material/` and not from a blog post:
+    //
+    // | Widget           | resting | hovered | pressed | source |
+    // |------------------|---------|---------|---------|--------|
+    // | `ElevatedButton` | **1.0** | **3.0** | 1.0     | `elevated_button.dart:570-585` |
+    // | `FilledButton`   | 0.0     | **1.0** | 0.0     | `filled_button.dart:588-603`   |
+    // | `OutlinedButton` | 0.0     | 0.0     | 0.0     | `outlined_button.dart:512-513` |
+    // | `Chip`           | 0.0     | --      | 0.0     | `chip.dart:1350-1352` `?? 0`  |
+    //
+    // **`hovered` is the half that matters and the half that is easy to leave
+    // out.** `FilledButton` rests at 0, so an assertion that resolves only the
+    // resting state passes against an unmodified theme while a mouse-over still
+    // paints the keyline — and no golden can catch it, because a screenshot is
+    // taken with no pointer over anything.
+    //
+    // **Per-widget opt-out did not hold, and this is the evidence.** Measured
+    // across `lib/ui/`: three widgets shipped with no elevation override at all
+    // — `quiz_result_screen.dart`'s `FilledButton`, `stats_screen.dart`'s
+    // `_Notice` `OutlinedButton`, and `quiz_setup_screen.dart`'s
+    // `ActionChip`. Only the ones somebody happened to remember were safe.
+    const hovering = <WidgetState>{WidgetState.hovered};
+    const pressed = <WidgetState>{WidgetState.pressed};
+
+    for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+      final families = <String, ButtonStyle?>{
+        'elevated': theme.elevatedButtonTheme.style,
+        'filled': theme.filledButtonTheme.style,
+        'outlined': theme.outlinedButtonTheme.style,
+      };
+      families.forEach((name, style) {
+        for (final entry in <String, Set<WidgetState>>{
+          'resting': const <WidgetState>{},
+          'hovered': hovering,
+          'pressed': pressed,
+        }.entries) {
+          expect(
+            style?.elevation?.resolve(entry.value),
+            0.0,
+            reason: 'the $name button paints elevation in its ${entry.key} state',
+          );
+        }
+      });
+
+      // `ChipThemeData.elevation` is a plain `double?`, not a
+      // `WidgetStateProperty`: `chip.dart:1350` reads it straight into a
+      // `?? 0` chain, so there is nothing to resolve and pretending otherwise
+      // would be inventing an API. Pinned because a reader cannot otherwise see
+      // that a chip is already safe — and `cardTheme.elevation` says nothing
+      // about a chip at all.
+      expect(theme.chipTheme.elevation, 0.0);
+      expect(theme.chipTheme.pressElevation, 0.0);
+    }
+  });
+
   test('cards use the brand surface colour and a rounded outline', () {
     final light = AppTheme.light();
     expect(light.cardTheme.color, AppColors.surfaceLight);

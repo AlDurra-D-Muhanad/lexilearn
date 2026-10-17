@@ -42,14 +42,16 @@ class PackDao {
   /// wrapped in another: its atomicity *is* the caller's atomicity, and
   /// `write(txn)` simply joins it.
   ///
-  /// **Why this exists at all.** Before Task 13 this DAO had no `executor`
-  /// parameter on any method and held `_db` privately, so `importBackupJson`
-  /// could not tell it to join the transaction it had opened. Every call it made
-  /// inside that transaction opened a second connection and waited on the write
-  /// lock the first one held — which does not fail, it hangs, with no exception
-  /// and no log line. `docs/engineering-standards.md` §3; the guard-timeout test
-  /// in `test/data/vocab_repository_test.dart` is what makes a regression of this
-  /// visible.
+  /// **Before Task 13 this DAO had no `executor` parameter on any method and
+  /// held `_db` privately**, so `importBackupJson` could not tell it to join the
+  /// transaction it had opened. Every call it made inside that transaction went
+  /// in without the handle, and that does not fail — it **waits**, on the
+  /// Dart-side `_rawLock` that `transaction()` holds for its whole body
+  /// (`sqflite_common-2.5.14/lib/src/database_mixin.dart:496`, taken at `:894`
+  /// and waited on at `:549-592`), and on the FFI layer's queue behind it
+  /// (`sqflite_common_ffi-2.4.4/lib/src/sqflite_ffi_impl.dart:275-315`).
+  /// `docs/engineering-standards.md` §3; the guard-timeout test in
+  /// `test/data/vocab_repository_test.dart` is what makes a regression visible.
   Future<T> _atomic<T>(
     DatabaseExecutor? executor,
     Future<T> Function(Transaction txn) action,
@@ -114,8 +116,8 @@ class PackDao {
   /// Stats cannot read rows for a pack that no longer exists.
   ///
   /// [executor] joins a caller's transaction; see [_atomic]. `importBackupJson`
-  /// deletes through here while restoring, and on its own connection that call
-  /// would hang rather than fail.
+  /// deletes through here while restoring, and a call without the handle would
+  /// wait rather than fail.
   Future<void> deletePack(String packKey, {DatabaseExecutor? executor}) async {
     await _atomic(executor, (txn) async {
       await txn.delete('word_progress',
@@ -145,15 +147,20 @@ class PackDao {
         .toList();
   }
 
-  /// The three read helpers below deliberately carry **no** [executor].
+  /// **An explicit decision, not an oversight.** This departs from the letter of
+  /// `docs/engineering-standards.md` §3, which asks that *every* DAO reachable
+  /// from a transaction take an executor. The departure is recorded here so a
+  /// reviewer reads "chosen" rather than "missed", and so the next caller who
+  /// needs them inside a transaction knows to add them then.
   ///
-  /// Unlike the three methods above they are single-statement reads, and no
-  /// caller reaches them from inside a transaction: `exportBackupJson` walks
-  /// them before it opens one, and nothing else in `lib/` passes a `Transaction`
-  /// to this DAO. Adding an unused parameter would be an untested surface
-  /// pretending to be a guarantee; if a future caller needs them inside a
-  /// transaction, that caller is the moment to add it — and this paragraph is
-  /// what tells them to.
+  /// The reason is narrow: these three are single-statement reads, and **no
+  /// caller reaches them from inside a transaction.** `exportBackupJson` walks
+  /// them *before* it opens one, and nothing else in `lib/` passes a
+  /// `Transaction` to this DAO — checked by reading every call site, not by
+  /// assuming. Adding an unused parameter would be untested surface pretending
+  /// to be a guarantee, and a guarantee nobody exercises is the thing §3 is
+  /// about. If a future caller needs them inside a transaction, that caller is
+  /// the moment to add it.
   Future<VocabPack?> getPack(String packKey) async {
     final rows = await _db.query('packs',
         where: 'pack_key = ?', whereArgs: <Object?>[packKey], limit: 1);

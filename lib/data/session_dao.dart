@@ -7,9 +7,14 @@ class SessionDao {
   final Database _db;
 
   /// [executor] joins a caller's transaction. `importBackupJson` restores the
-  /// whole session history through here while holding the write lock, and a
-  /// call on this DAO's own connection in that state does not fail — it hangs
-  /// forever. See `docs/engineering-standards.md` §3.
+  /// whole session history through here, and a call made without the
+  /// transaction's handle does not fail — it **waits**, on the Dart-side
+  /// `_rawLock` `transaction()` holds for its whole body
+  /// (`sqflite_common-2.5.14/lib/src/database_mixin.dart:496`, taken at `:894`
+  /// and waited on at `:549-592`) and on the FFI layer's queue behind it
+  /// (`sqflite_common_ffi-2.4.4/lib/src/sqflite_ffi_impl.dart:275-315`). Same
+  /// `Database` object, not a second connection. See
+  /// `docs/engineering-standards.md` §3.
   Future<int> insert(QuizSessionResult result, {DatabaseExecutor? executor}) =>
       (executor ?? _db).insert('quiz_sessions', <String, Object?>{
         'pack_key': result.packKey,

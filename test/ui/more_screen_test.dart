@@ -345,6 +345,112 @@ void main() {
       expect(inMore(_title), findsOneWidget);
     });
 
+    testWidgets('no button or chip on this page paints an elevation shadow',
+        (tester) async {
+      // **The resolved style, not the source text.** `elevation: 0` written at
+      // the call site is invisible to a reader of this assertion, and the
+      // failure mode it exists for is not "someone forgot to type it here" —
+      // it is "a Material default is 1 and this rasteriser strokes that as an
+      // opaque black keyline". Measured out of this SDK's
+      // `packages/flutter/lib/src/material/`: `ElevatedButton` rests at **1.0**
+      // (`elevated_button.dart:570-585`), `Chip` resolves through a `?? 0`
+      // fallback and is already safe (`chip.dart:1350`), and `FilledButton` —
+      // which rests at 0.0 — **jumps to 1.0 on hover**
+      // (`filled_button.dart:588-603`).
+      //
+      // **`hovered` is asserted for that last reason.** A resting-only check
+      // would pass on a completely unmodified theme for the filled buttons, and
+      // a golden would never see the difference, because a screenshot is taken
+      // with no pointer over anything.
+      //
+      // **Two layers supply this, and each one is caught by a different test.**
+      // Measured, deleting each in turn:
+      //
+      // | mutation | this test | `app_theme_test.dart` |
+      // |---|---|---|
+      // | the three theme entries removed | **green** | **red** |
+      // | the six per-widget opt-outs removed | **red** | unaffected |
+      // | both layers removed | **red** | **red** |
+      //
+      // So neither layer's regression is silent, which is the property worth
+      // having — but the first row also means this test must **not** claim to
+      // guard the theme. It guards the screen: the local `elevation: 0` at each
+      // of the four call sites and the `Chip`, with the theme as a second line of
+      // defence for every *other* screen that never remembered to opt out. That
+      // second line is what `app_theme_test.dart` pins, and only it can.
+      await _pumpMore(tester, harness.repository);
+
+      const resting = <WidgetState>{};
+      const hovering = <WidgetState>{WidgetState.hovered};
+      const pressed = <WidgetState>{WidgetState.pressed};
+
+      Future<void> expectNoElevation(
+        Finder finder,
+        String what,
+      ) async {
+        // **Two layers are checked, because two layers supply the value**, and
+        // neither check alone catches both regressions.
+        //
+        // * The widget's **declared** `style` — catches someone deleting the
+        //   local `elevation: 0` at the call site.
+        // * The **`Material` the button actually builds**, whose `elevation` is
+        //   the resolved value (`button_style_button.dart:600` passes
+        //   `elevation: resolvedElevation!` into it). This is the "does it
+        //   *paint* a keyline" half, and it is what would catch a widget that
+        //   relied on the theme alone.
+        final button = tester.widget<ButtonStyleButton>(finder);
+        final material = tester.widget<Material>(
+          find.descendant(of: finder, matching: find.byType(Material)).first,
+        );
+        for (final entry in <String, Set<WidgetState>>{
+          'resting': resting,
+          'hovered': hovering,
+          'pressed': pressed,
+        }.entries) {
+          expect(
+            button.style?.elevation?.resolve(entry.value),
+            0.0,
+            reason: '$what declares an elevation in its ${entry.key} state',
+          );
+        }
+        expect(material.elevation, 0.0,
+            reason: '$what paints a Material at elevation '
+                '${material.elevation}, which is a keyline');
+      }
+
+      await expectNoElevation(
+        find.widgetWithText(FilledButton, _importPack),
+        'the import button',
+      );
+      await expectNoElevation(
+        find.widgetWithText(OutlinedButton, _exportBackup),
+        'the export button',
+      );
+      await expectNoElevation(
+        find.widgetWithText(OutlinedButton, _restoreBackup),
+        'the restore button',
+      );
+      await expectNoElevation(
+        find.widgetWithText(OutlinedButton, _reset),
+        'the reset pill',
+      );
+
+      // `ChipThemeData.elevation` and `Chip.elevation` are plain `double?`s, not
+      // `WidgetStateProperty`s — `chip.dart:1350` reads the widget's value
+      // straight into a `?? 0` chain — so there is no state to resolve, and
+      // calling `resolve` on it would be inventing an API. `Chip` has no hover
+      // state and no `pressElevation` getter of its own (`RawChip` has it, and
+      // `Chip` does not), so the resting value is the whole of what this widget
+      // can be asked. The press value is pinned on the theme in
+      // `test/design/app_theme_test.dart`, where `ChipThemeData` does expose it.
+      final chip = tester.widget<Chip>(
+        find.ancestor(of: inMore(_bundledChip), matching: find.byType(Chip)).first,
+      );
+      expect(chip.elevation, 0.0, reason: 'the bundled chip rests raised');
+
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('the dark theme reaches the dark tokens', (tester) async {
       await answer(tester, packKey: 'en_ar', entryId: 'fever-1', attempts: 2);
       await _pumpMore(tester, harness.repository, brightness: Brightness.dark);

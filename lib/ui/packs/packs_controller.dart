@@ -130,6 +130,15 @@ class PacksController extends ChangeNotifier {
   /// Not in the plan's interface list, and it has to be: `restoreBackup` takes
   /// the text as a parameter, so without this there is no way for a user to
   /// reach a backup file at all.
+  ///
+  /// **One `_guard` for this one action, not a `_guard` inside a `_guard`.** The
+  /// first version called `restoreBackup` from inside its own guarded body, which
+  /// was wrong twice over and measurably so: the inner guard's `finally` cleared
+  /// `isBusy` while the outer action was still unwinding, and because the inner
+  /// guard caught first, a non-`PackDecodeException` failure was always reported
+  /// as the generic `حدث خطأ غير متوقع.` rather than the sentence for the device
+  /// it actually failed on. The restore's work is inlined here instead, so there
+  /// is exactly one place that catches and one place that restores `isBusy`.
   Future<void> restoreFromPicker() async {
     await _guard(() async {
       final json = await _pick();
@@ -137,7 +146,9 @@ class PacksController extends ChangeNotifier {
         _message = _nothingChosen;
         return;
       }
-      await restoreBackup(json);
+      final count = await _repository.importBackupJson(json);
+      _message = 'تمت الاستعادة — $count حزمة.';
+      await load();
     });
   }
 
@@ -146,6 +157,12 @@ class PacksController extends ChangeNotifier {
   /// The text is a parameter rather than something this class fetches, so the
   /// restore path is testable without a dialog and so the same bytes can be
   /// replayed: a user who restores twice must get the same device twice.
+  ///
+  /// The one duplicated line with [restoreFromPicker] is the `importBackupJson`
+  /// call and its message. It is duplicated rather than shared through a private
+  /// helper precisely so that neither path can end up nesting a guard in a guard;
+  /// the alternative — a `_restore` helper that both call — is one line shorter
+  /// and reintroduces the nesting when someone adds a second guard to it.
   Future<int?> restoreBackup(String jsonText) => _guard(() async {
         final count = await _repository.importBackupJson(jsonText);
         _message = 'تمت الاستعادة — $count حزمة.';

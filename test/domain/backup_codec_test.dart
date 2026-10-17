@@ -177,6 +177,49 @@ void main() {
       expect(decoded.exportedAt, DateTime.utc(2026, 10, 14));
     });
 
+    test('rejects a non-list where a list belongs, for every list key', () {
+      // **The one test that distinguishes `_list` from the plan's
+      // `(document[key] as List<dynamic>? ?? const [])`, and it was missing.**
+      //
+      // The plan's version was in place and the whole file stayed 11/11 green
+      // with it — so "the codec's three improvements are verified" was a claim
+      // about a behaviour nothing tested. Both versions treat an *absent* key as
+      // an empty list, and both treat `null` as empty; they differ only on a
+      // non-list value, where the plan's version throws a **raw `TypeError`**.
+      //
+      // That matters because `PacksController` catches `PackDecodeException` and
+      // renders `message` verbatim. A raw `TypeError` escapes that handler, so a
+      // hand-edited file with `"packs": {}` would reach the user as an
+      // unhandled exception instead of a sentence — which is the entire reason
+      // `BackupCodec` documents that every failure throws `PackDecodeException`.
+      //
+      // All three list keys are checked, not just this one, because `_list` is
+      // called three times and a fix applied to one call site is not a fix.
+      //
+      // The document names the malformed key **once**. A hand-written literal
+      // that also carried `"packs":[]` would hand `jsonDecode` a duplicate key,
+      // and Dart keeps the last one — so the object would parse cleanly as a
+      // list and the test would fail for a reason that has nothing to do with
+      // `_list`. Measured: that is exactly what the first draft of this test did.
+      String documentWith(String malformedKey) {
+        final rest = <String>['packs', 'progress', 'sessions']
+            .where((key) => key != malformedKey)
+            .map((key) => '"$key":[]')
+            .join(',');
+        return '{"kind":"backup","schemaVersion":1,'
+            '"exportedAt":"2026-10-14T00:00:00Z",'
+            '"$malformedKey":{},$rest}';
+      }
+
+      for (final key in <String>['packs', 'progress', 'sessions']) {
+        expect(
+          () => BackupCodec.decode(documentWith(key)),
+          throwsA(isA<PackDecodeException>()),
+          reason: 'a non-list "$key" must be a PackDecodeException, not a TypeError',
+        );
+      }
+    });
+
     test('a decoded document is itself re-encodable without loss', () {
       // Two round trips, not one. `encode(decode(encode(x))) == encode(x)` is
       // what makes a backup that has been through the app's own decoder still

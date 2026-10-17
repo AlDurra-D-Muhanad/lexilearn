@@ -69,9 +69,15 @@ class ProgressDao {
   /// Writes an absolute value, used only by backup restore. Never increments.
   ///
   /// [executor] is NOT optional-by-omission here: `importBackupJson` calls this
-  /// inside a transaction, and a `replace` that opens its own connection while
-  /// that transaction holds the write lock **hangs forever** — no exception, no
-  /// log line, no timeout you wrote. See `docs/engineering-standards.md` §3.
+  /// inside a transaction, and a `replace` made without the transaction's handle
+  /// does not fail — it **waits**, on the Dart-side `_rawLock` that
+  /// `transaction()` holds for its whole body
+  /// (`sqflite_common-2.5.14/lib/src/database_mixin.dart:496`, taken at `:894`
+  /// and waited on at `:549-592`) and on the FFI layer's queue behind it
+  /// (`sqflite_common_ffi-2.4.4/lib/src/sqflite_ffi_impl.dart:275-315`). Same
+  /// `Database` object, no second connection, and nothing to do with a SQLite
+  /// file lock — `:423` opens `BEGIN IMMEDIATE`. See
+  /// `docs/engineering-standards.md` §3.
   Future<void> replace(WordProgress progress, {DatabaseExecutor? executor}) =>
       (executor ?? _db).insert(
         'word_progress',

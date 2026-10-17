@@ -79,9 +79,9 @@ class AppTheme {
       textTheme: textTheme,
       primaryTextTheme: textTheme,
       // A `Card` is the surface colour and the hairline, nothing more.
-      // `CardThemeData` has no shadow field — only clipBehavior, color,
-      // shadowColor, surfaceTintColor, elevation, margin and shape — so the
-      // brand's `0 4px 12px rgba(0,0,0,0.05)` cannot be expressed here at all.
+      // `CardThemeData` has no shadow field — only `clipBehavior`, `color`,
+      // `shadowColor`, `surfaceTintColor`, `elevation`, `margin` and `shape` — so
+      // the brand's `0 4px 12px rgba(0,0,0,0.05)` cannot be expressed here at all.
       // Material's own elevation shadow is not a substitute: at elevation 1 it
       // is roughly 4x the brand's umbra alpha and geometrically unrelated, and
       // the test rasteriser strokes it as an opaque black keyline. Elevation
@@ -166,6 +166,43 @@ class AppTheme {
           ),
         ),
       ),
+      // Every button family is zeroed here, and this is the second half of
+      // Amendment 6. The first half was `cardTheme.elevation` above; the second
+      // was one `ElevatedButton`'s own `elevation: 0`, and **the per-widget
+      // opt-out did not hold** — measured over `lib/ui/`, three widgets shipped
+      // with no elevation override at all: `quiz_result_screen.dart`'s
+      // `FilledButton`, `stats_screen.dart`'s `_Notice` `OutlinedButton`, and
+      // `quiz_setup_screen.dart`'s `ActionChip`. Only the ones somebody happened
+      // to remember were safe.
+      //
+      // The defaults these replace, read out of this SDK rather than assumed:
+      //
+      // | Widget | resting | hovered | pressed | source |
+      // |---|---|---|---|---|
+      // | `ElevatedButton` | **1.0** | **3.0** | 1.0 | `elevated_button.dart:570-585` |
+      // | `FilledButton` | 0.0 | **1.0** | 0.0 | `filled_button.dart:588-603` |
+      // | `OutlinedButton` | 0.0 | 0.0 | 0.0 | `outlined_button.dart:512-513` |
+      //
+      // `ElevatedButton` is the Amendment-6 defect outright. **`FilledButton` is
+      // the one a resting-state assertion would have missed**: it rests at 0 and
+      // jumps to 1.0 on hover, which is `canvas.drawShadow` again — and a golden
+      // cannot catch it, because a screenshot is taken with no pointer over
+      // anything. `test/design/app_theme_test.dart` therefore resolves `hovered`
+      // as well as the resting state.
+      //
+      // Three entries for one value because M3 gives each widget family its own
+      // defaults and no single `buttonTheme` covers them. Pinned at two levels:
+      // here by the theme test, and per screen by the *resolved* `ButtonStyle`
+      // assertions in each screen's own test.
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: const ButtonStyle(elevation: WidgetStatePropertyAll<double>(0.0)),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: const ButtonStyle(elevation: WidgetStatePropertyAll<double>(0.0)),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: const ButtonStyle(elevation: WidgetStatePropertyAll<double>(0.0)),
+      ),
       chipTheme: ChipThemeData(
         shape: const StadiumBorder(),
         side: BorderSide(
@@ -175,6 +212,16 @@ class AppTheme {
           fontFamily: 'Tajawal',
           color: isDark ? AppColors.textDark : AppColors.textLight,
         ),
+        // **A `Chip` is not a `Card`, so `cardTheme.elevation` says nothing
+        // about it.** It is also already safe: `chip.dart:1350-1352` resolves
+        // `widget.elevation ?? chipTheme.elevation ?? chipDefaults.elevation ??
+        // 0`, so the last fallback is zero and M3 sets nothing above it. So these
+        // two lines **pin an existing value rather than fix a defect**, and they
+        // are here because the value is invisible in `cardTheme` and a reader has
+        // no way to know it is already right. `pressElevation` resolves through
+        // the same `?? 0` fallback.
+        elevation: 0.0,
+        pressElevation: 0.0,
       ),
     );
   }
