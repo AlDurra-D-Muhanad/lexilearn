@@ -36,6 +36,20 @@ hits instead of one.
 
 **Derive prose from what you ran.** Not from what you expect.
 
+### A line number is a claim about a file
+
+**The rule.** A `file.dart:123` citation deserves the same suspicion as a claim about a mechanism.
+Open the file and look.
+
+**Why.** In Task 13's second fix round, **two of the citations in the review brief itself were wrong**:
+`icon_button.dart:308` is `this.focusNode`, not an elevation line (the real one is `:1112-1113`), and
+"one pack executes all three delete-loop sites" held only for sites 1–4 — site 5 needed two packs too.
+The implementer had already found three wrong citations of its own. **Four out of seven citations in one
+round were wrong, from two different authors.**
+
+A wrong citation is more damaging than a missing one: it looks verified, so the next reader does not
+open the file either.
+
 ---
 
 ## 2. Assert tree state after a pop, never the return value
