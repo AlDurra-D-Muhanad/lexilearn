@@ -491,6 +491,26 @@ void main() {
       await _pumpApp(tester, harness.repository);
       await tester.tap(inHome(_tiles[0][0]));
       await tester.pumpAndSettle();
+      // **Task 15, and a timing assumption this test made implicitly.**
+      // `_tiles[0][0]` is `بطاقات التعلم`, the one grid tile that is a **bar
+      // destination**, and as of Task 15 it is the one that mounts a database
+      // read of its own: `FlashcardsScreen` reads the pack to learn how many
+      // cards the deck has. `pumpAndSettle` does not drive the real event loop —
+      // only `runAsync` does — so without this turn the read is still in flight
+      // when the test body ends, and the run fails with `A Timer is still pending
+      // even after the widget tree was disposed` followed by
+      // `SqfliteFfiException(error, Bad state: This database has already been
+      // closed)`, thrown *after* the test had completed.
+      //
+      // Measured, not assumed: with `_DeckOwner` issuing **no read at all** this
+      // test passes, and with the read restored and this line removed it fails.
+      // So the read is what the wait is for — and the read is not optional, since
+      // a deck cannot be dealt without the pack's words.
+      //
+      // This is the same helper, and the same reason, as `_openDestination` in
+      // `home_shell_test.dart`, whose own doc comment names this situation: "a
+      // destination or widget that mounts its own read needs only this".
+      await settleDatabase(tester);
       expect(find.byType(HomeScreen, skipOffstage: false), findsNothing);
 
       // Back through the bar, not through the navigator: the user is changing

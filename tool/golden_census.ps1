@@ -50,16 +50,16 @@
   ## THE DISTINCT-COLOUR BASELINE — the one signal that does exist
 
   Every image is compared against a recorded count of its distinct colours, and
-  a mismatch fails. All seven committed images have **seven different counts**
-  (772 / 1203 / 1243 / 177 / 190 / 361 / 373), so the favourites bytes written
-  over `word_detail_user_shot_light.png` reported 177 where the honest value is
-  361.
+  a mismatch fails. All nine committed images have **nine different counts**
+  (772 / 1203 / 1243 / 177 / 190 / 361 / 373 / 569 / 667), so the favourites bytes
+  written over `word_detail_user_shot_light.png` reported 177 where the honest
+  value is 361.
 
   **This does not close the gap above, and it is not an identity oracle.** What it
   adds, precisely:
 
     * it catches a swapped or stale image **whose colour histogram differs**,
-      which today is every pairing among the seven;
+      which today is every pairing among the nine;
     * it gives a second, independent signal that an image was rewritten without a
       regeneration, complementing the git staleness proxy below — which only
       fires while the tree is dirty.
@@ -73,8 +73,8 @@
       `$ExpectedColourCount` from the `distinct colours` line this run prints —
       that is the intended maintenance, not a defect to route around.
 
-  Dimensions carry no signal (all seven are 1080x2340) and mtime is
-  unimplementable (git does not track it, and `--update-goldens` writes all seven
+  Dimensions carry no signal (all nine are 1080x2340) and mtime is
+  unimplementable (git does not track it, and `--update-goldens` writes all nine
   within a few milliseconds of each other).
 
   ## THE SET-EQUALITY GUARD
@@ -161,7 +161,9 @@ param(
     'test/goldens/goldens/favorites_screen_user_shot_light.png',
     'test/goldens/goldens/favorites_screen_user_shot_dark.png',
     'test/goldens/goldens/word_detail_user_shot_light.png',
-    'test/goldens/goldens/word_detail_user_shot_dark.png'
+    'test/goldens/goldens/word_detail_user_shot_dark.png',
+    'test/goldens/goldens/flashcards_screen_user_shot_light.png',
+    'test/goldens/goldens/flashcards_screen_user_shot_dark.png'
   )
 )
 
@@ -172,11 +174,11 @@ $root = Split-Path -Parent $PSScriptRoot
 
 # --- the distinct-colour baseline ------------------------------------------------
 #
-# The one cheap signal that exists against a swapped image. **All seven committed
-# images have seven different counts**, so a file replaced with another file's
+# The one cheap signal that exists against a swapped image. **All nine committed
+# images have nine different counts**, so a file replaced with another file's
 # bytes reports a count that belongs to some other image:
 #
-#   772 / 1203 / 1243 / 177 / 190 / 361 / 373
+#   772 / 1203 / 1243 / 177 / 190 / 361 / 373 / 569 / 667
 #
 # and doctoring `word_detail_user_shot_light.png` with the favourites bytes
 # reported **177 where the honest value is 361**. The script already computes
@@ -194,9 +196,9 @@ $root = Split-Path -Parent $PSScriptRoot
 #     `distinct colours` line the run prints.
 #   * It does **not** close the gap named above. No pixel property distinguishes
 #     one screen's render from another's in general; this catches the cases where
-#     the colour histograms happen to differ, which today is all seven of them.
-#   * **Dimensions carry no signal** - all seven are 1080x2340 - and **mtime is
-#     unimplementable**: git does not track it, and all seven files are written
+#     the colour histograms happen to differ, which today is all nine of them.
+#   * **Dimensions carry no signal** - all nine are 1080x2340 - and **mtime is
+#     unimplementable**: git does not track it, and all nine files are written
 #     within a few milliseconds of each other by `--update-goldens`.
 #
 # Measured independently rather than read out of this script: a plain
@@ -209,6 +211,8 @@ $ExpectedColourCount = [ordered]@{
   'test/goldens/goldens/favorites_screen_user_shot_dark.png'  = 190
   'test/goldens/goldens/word_detail_user_shot_light.png'      = 361
   'test/goldens/goldens/word_detail_user_shot_dark.png'       = 373
+  'test/goldens/goldens/flashcards_screen_user_shot_light.png' = 569
+  'test/goldens/goldens/flashcards_screen_user_shot_dark.png'  = 667
 }
 
 # The one directory the default list is allowed to cover.

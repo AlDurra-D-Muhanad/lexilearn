@@ -1,12 +1,18 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lexilearn/app.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/design/design_tokens.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
+import 'package:lexilearn/ui/flashcards/flashcard_controller.dart';
+import 'package:lexilearn/ui/flashcards/flashcards_screen.dart';
 import 'package:lexilearn/ui/home/home_screen.dart';
 import 'package:lexilearn/ui/word_detail/word_detail_screen.dart';
+import 'package:provider/provider.dart';
 
 import '../helpers/test_env.dart';
 
@@ -266,6 +272,50 @@ void main() {
       skip: _goldenSkipReason,
     );
   });
+
+  // --- the flashcard deck -------------------------------------------------------
+  //
+  // Two images, and **both are seeded**, which is the difference from every shot
+  // above it and the reason this pair is worth having at all.
+  //
+  // The deck is dealt unseeded on the app's path, and it must be — a fixed seed
+  // inside `FlashcardsScreen` would give every user the identical deck, which is
+  // the opposite of what a vocabulary app is for. But the light and the dark shot
+  // are **separate runs with separate harnesses**, so unseeded they would show
+  // *different words*, and a reviewer comparing them to check the one thing this
+  // screen's artwork actually specifies — `أعرف` purple in light, **amber in
+  // dark** (`docs/design/brand-reference.md` §4ج) — would be comparing two
+  // screens rather than two modes. So the controller is handed in already dealt,
+  // which `FlashcardsScreen` reads exactly the way `StatsScreen` reads an optional
+  // `StatsController`.
+  //
+  // The state captured is the artwork's own frame: the counter at `3/10`, the
+  // term `serenity` with its pronunciation, the meaning shown, and all three
+  // controls present — which is what `brand-reference.png` draws on both phones.
+  testWidgets('flashcards screen user shot, light', (tester) async {
+    useAPhone(tester);
+    await _openDeck(tester);
+
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('goldens/flashcards_screen_user_shot_light.png'),
+      skip: _goldenSkipReason,
+    );
+  });
+
+  testWidgets('flashcards screen user shot, dark', (tester) async {
+    useAPhone(tester);
+    tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+    addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+
+    await _openDeck(tester);
+
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('goldens/flashcards_screen_user_shot_dark.png'),
+      skip: _goldenSkipReason,
+    );
+  });
 }
 
 /// Why every golden in this file is `skip:`-ed, and how to regenerate one.
@@ -455,3 +505,200 @@ Future<void> _loadBundledFonts() async {
     await loader.load();
   }
 }
+
+/// Opens the flashcard deck through the real app, at the artwork's own state.
+///
+/// **Why this is not [pumpShell].** `pumpShell` mounts
+/// `LexiLearnApp(repository:)` and nothing else, and the only way to hand the
+/// screen a *dealt* controller is to provide one above the app — so the mount
+/// differs and the helper cannot be called verbatim. It is still the same
+/// screen through the same shell and the same bar; only the mount is wider.
+///
+/// **No copy of the fake-async dance.** Every *wait* below is the shared
+/// [settleDatabase] helper, which is the primitive
+/// `docs/engineering-standards.md` §5 sanctions. This file has exactly two
+/// `tester.runAsync` calls, both of them the `runAsync`-to-*seed* pattern
+/// `more_screen_test.dart` already documents — one opening this shot's own
+/// harness, one dealing and advancing the deck — and both **await** rather than
+/// fire-and-delay, because there is no tree mounted yet for pumps to be useful
+/// to. That is the opposite situation from a wait, and it is the reason
+/// `commitAndSettle` is the wrong helper here.
+///
+/// The waits, in order, and why each exists:
+/// * two [settleDatabase] for the shell's start-up read and Home's, which cannot
+///   begin until the shell has resolved the pack key — the same two reads
+///   [pumpShell] serves;
+/// * the bar tap, which is a rebuild;
+/// * **three** [settleDatabase] for the deck, whose own single read is issued
+///   from `initState`: `FlashcardsScreen` reads the pack once and hands the words
+///   to `FlashcardController.start`, so this was **two** sequential round trips
+///   until Task 15's fix round. See `FlashcardController.entries` — the reason it
+///   matters is `home_screen_test.dart`, whose only bar-destination tap mounts
+///   this screen and which cannot finish while a read is still in flight.
+Future<void> _openDeck(WidgetTester tester) async {
+  // **Its own harness, not the shared one.** `HomeShell` resolves its active pack
+  // from `PackDao.listPacks()`, which orders by `is_bundled DESC, imported_at
+  // DESC`; this project's clock is pinned, so every pack in one harness shares one
+  // `imported_at` and "first" is whichever SQLite happens to return. Installing
+  // [_flashcardPack] into the shared harness would make the active pack a coin
+  // toss for the **six shots already committed from it**, which read
+  // `_activePackKey` off the shell. A harness of its own removes the tie.
+  //
+  // `runAsync` because `TestHarness.create` opens a real database, and a
+  // `testWidgets` body runs in a fake-async zone where a real future never
+  // answers — the same one-line reason the shared harness is built in `setUp`.
+  final deckHarness = await tester.runAsync(
+    () => TestHarness.create(packs: const <VocabPack>[_flashcardPack]),
+  );
+  addTearDown(deckHarness!.dispose);
+  final repository = deckHarness.repository;
+
+  final controller = FlashcardController(
+    repository: repository,
+    packKey: _flashcardPack.packId,
+    // Ten, so the counter reads the artwork's `3/10` denominator rather than the
+    // fixture's four words.
+    cardCount: 10,
+    random: Random(_flashcardSeed),
+  );
+  addTearDown(controller.dispose);
+
+  // The deck is dealt and advanced **before** the tree is mounted, so each of
+  // these real sqflite futures can be awaited rather than fired-and-delayed.
+  // Asserted afterwards, because a silently different deal would photograph the
+  // wrong card and the reference image would still look plausible.
+  await tester.runAsync(() async {
+    await controller.start();
+    await controller.answer(knewIt: true);
+    await controller.answer(knewIt: false);
+    await controller.reveal();
+  });
+  expect(controller.index, 2, reason: 'the counter must read 3/10');
+  expect(controller.total, 10);
+  expect(controller.revealed, isTrue, reason: 'the artwork shows the meaning');
+  expect(controller.current?.term, 'serenity',
+      reason: 'seed $_flashcardSeed deals serenity-1 third off '
+          '[_flashcardPack]');
+
+  await tester.pumpWidget(
+    ChangeNotifierProvider<FlashcardController>.value(
+      value: controller,
+      child: LexiLearnApp(repository: repository),
+    ),
+  );
+  await settleDatabase(tester); // the shell's own start-up read
+  await settleDatabase(tester); // Home's read, issued by the rebuild above
+
+  await tester.tap(
+    find.descendant(
+      of: find.byType(NavigationBar),
+      matching: find.text(_flashcardsBarLabel),
+    ),
+  );
+  await tester.pumpAndSettle();
+  for (var turn = 0; turn < 3; turn++) {
+    await settleDatabase(tester);
+  }
+
+  // Asserting the tree rather than trusting the exit code: a deck that never
+  // arrived would photograph `HomeScreen` and the census could not tell — it is
+  // a pixel census, not an identity oracle. `docs/engineering-standards.md` §6.
+  expect(find.byType(FlashcardsScreen), findsOneWidget);
+  expect(find.text('3/10'), findsOneWidget);
+}
+
+/// The bottom bar's label for this destination, as `home_shell.dart` spells it.
+const String _flashcardsBarLabel = 'البطاقات';
+
+/// The seed that deals `serenity-1` **third** off [_flashcardPack].
+///
+/// Measured, not guessed: 60 seeds were run against this exact entry order and
+/// the third card's id printed for each. Twelve of them reach `serenity-1` on
+/// the third draw (12, 41, 51, 58 among them) and 12 is the first.
+const int _flashcardSeed = 12;
+
+/// The deck's own fixture, separate from [_goldenPack].
+///
+/// **Twelve words so the cap at ten cards is exercised**, and so the artwork's
+/// `3/10` is reachable at all: four entries would cap at four and the counter
+/// would read `3/4`.
+///
+/// **Separate rather than shared because [_goldenPack] must not move.** Six
+/// committed reference images are drawn from it. Growing it would change which
+/// word `WordOfTheDay.pick` lands on for `home_shell_user_shot.png`, and
+/// `search('serenity')` would then match a different number of rows for
+/// `word_detail_user_shot_*.png` — `golden_test.dart` records both as
+/// deliberate. A pack only this screen uses costs nothing and touches none of
+/// them.
+const VocabPack _flashcardPack = VocabPack(
+  schemaVersion: 1,
+  packId: 'deck',
+  title: 'Deck',
+  sourceLanguage: 'en',
+  targetLanguage: 'ar',
+  entries: <VocabEntry>[
+    VocabEntry(
+      id: 'serenity-1',
+      term: 'serenity',
+      translations: <String>['الهدوء والسكينة'],
+      phonetic: '/səˈrenəti/',
+    ),
+    VocabEntry(
+      id: 'ambition-1',
+      term: 'ambition',
+      translations: <String>['طموح'],
+      phonetic: '/æmˈbɪʃən/',
+    ),
+    VocabEntry(
+      id: 'clarity-1',
+      term: 'clarity',
+      translations: <String>['وضوح'],
+      phonetic: '/klærəti/',
+    ),
+    VocabEntry(
+      id: 'courage-1',
+      term: 'courage',
+      translations: <String>['شجاعة'],
+    ),
+    VocabEntry(
+      id: 'wisdom-1',
+      term: 'wisdom',
+      translations: <String>['حكمة'],
+    ),
+    VocabEntry(
+      id: 'patience-1',
+      term: 'patience',
+      translations: <String>['صبر'],
+    ),
+    VocabEntry(
+      id: 'mercy-1',
+      term: 'mercy',
+      translations: <String>['رحمة'],
+    ),
+    VocabEntry(
+      id: 'honesty-1',
+      term: 'honesty',
+      translations: <String>['صدق'],
+    ),
+    VocabEntry(
+      id: 'gratitude-1',
+      term: 'gratitude',
+      translations: <String>['امتنان'],
+    ),
+    VocabEntry(
+      id: 'resolve-1',
+      term: 'resolve',
+      translations: <String>['عزم'],
+    ),
+    VocabEntry(
+      id: 'grace-1',
+      term: 'grace',
+      translations: <String>['نعمة'],
+    ),
+    VocabEntry(
+      id: 'trust-1',
+      term: 'trust',
+      translations: <String>['ثقة'],
+    ),
+  ],
+);
