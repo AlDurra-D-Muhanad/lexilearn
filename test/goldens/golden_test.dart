@@ -410,7 +410,9 @@ Future<void> _openWordDetail(
   // constant the implementation reads, so this is not a magic sleep.
   await tester.pump(AppDurations.standard);
   // The search is a database query of its own, issued once the debounce fires,
-  // and it sits behind that spinner. See [_realTurnThenSettle].
+  // and it sits behind that spinner. See `realTurnThenSettle` in
+  // `test/helpers/test_env.dart` — **not a symbol in this file**, which is what
+  // this comment used to point at, after that copy was deleted in the fix round.
   await realTurnThenSettle(tester);
 
   // Scoped to the results list, **not** a bare `find.text`. Measured: a bare one

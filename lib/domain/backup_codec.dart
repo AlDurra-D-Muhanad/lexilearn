@@ -101,6 +101,7 @@ class BackupCodec {
       for (final raw in _list(document, 'favorites'))
         _favoriteFromJson((raw as Map<dynamic, dynamic>).cast<String, Object?>()),
     ];
+    _checkFavoritesResolve(packs, favorites);
 
     return BackupDocument(
       exportedAt: DateTime.parse(exportedAtRaw),
@@ -109,6 +110,45 @@ class BackupCodec {
       sessions: sessions,
       favorites: favorites,
     );
+  }
+
+  /// Every saved word must name a pack **this file carries**.
+  ///
+  /// `favorites.pack_key` is a real foreign key onto `packs(pack_key)`, so a file
+  /// whose `favorites` block names a pack the document does not contain cannot be
+  /// restored at all. Left uncaught it failed deep inside the restore with a raw
+  /// `SqfliteFfiException(sqlite_error: 787)` — SQLite's constraint, not a
+  /// message. The transaction rolled back and the device was untouched, so it was
+  /// never data loss; but this codec advertises the file as one a user is told
+  /// they can hand-edit, and **every other malformed input here becomes a
+  /// sentence.** This one was the exception, and it is now not.
+  ///
+  /// **Checked here rather than caught around the transaction**, for the reason
+  /// `importBackupJson` decodes before it opens one: the pack ids are in hand, and
+  /// refusing before any write means the device is never touched at all.
+  ///
+  /// **Only the pack is checked. An unknown `entry_id` is deliberately allowed**
+  /// — see `_checkFavoritesResolve`'s caller in
+  /// `test/data/vocab_repository_test.dart` →
+  /// *a saved word whose entry the pack no longer has is KEPT, and shown as none*.
+  /// There is no foreign key onto `entries` on purpose, so a row may outlive the
+  /// word it names; dropping it would destroy a curation for a pack whose entries
+  /// could come back.
+  static void _checkFavoritesResolve(
+    List<VocabPack> packs,
+    List<BackupFavorite> favorites,
+  ) {
+    if (favorites.isEmpty) return;
+    final packIds = <String>{for (final pack in packs) pack.packId};
+    for (final favorite in favorites) {
+      if (packIds.contains(favorite.packKey)) continue;
+      // The **first** offender, named specifically: a user with a 300-word file
+      // needs to know which line to fix, not that favourites are involved.
+      throw PackDecodeException(
+          'The backup\'s "favorites" saves "${favorite.entryId}" under a pack called '
+          '"${favorite.packKey}", and this file has no pack by that name. Either the '
+          'pack was removed before it was exported, or the file was edited.');
+    }
   }
 
   /// A missing list is an **empty** list, not an error.

@@ -511,6 +511,91 @@ void main() {
     expect(await target.repository.favorites('en_ar'), isEmpty);
   });
 
+  test('a saved word whose entry the pack no longer has is KEPT, and shown as '
+      'none', () async {
+    // **This is a ruling, written down because the silent option was not on the
+    // table.** `favorites` carries no foreign key onto `entries` — deliberately,
+    // for the same reason `word_progress` does not: re-importing a pack replaces
+    // its entry rows, and a key here would make re-importing a pack delete the
+    // words the user saved from it. So a favourite can name an entry that is not
+    // there, by hand-editing or by a pack whose entries changed between export
+    // and restore.
+    //
+    // **The row is kept and it is NOT counted as a favourite.**
+    //
+    // Discarding it on import was the option considered first and rejected: a
+    // pack whose entries were trimmed between two restores would silently lose a
+    // curated list, and re-importing the fuller pack would not bring it back.
+    // Refusing the whole import was rejected too — one stale row should not block
+    // restoring an otherwise perfect backup. And "render them as orphaned in the
+    // UI" needs a row shape with no word behind it, which the artwork does not
+    // draw and which would be inventing content.
+    //
+    // What is left is the honest version of the truth: **the row survives, and
+    // the app does not pretend it is a favourite.** Read at the RAW table, not
+    // through the accessor — this test exists to prove the row is present, which
+    // the accessor by definition cannot show.
+    final target = await twoPackHarness();
+    final backup = '{"kind":"backup","schemaVersion":'
+        '${BackupDocument.currentSchemaVersion},'
+        '"exportedAt":"2026-10-14T12:00:00.000Z",'
+        '"packs":[{"schemaVersion":1,"packId":"en_ar","title":"English to Arabic",'
+        '"sourceLanguage":"en","targetLanguage":"ar",'
+        '"entries":[{"id":"fever-1","term":"fever","translations":["حمى"]}]}],'
+        '"progress":[],"sessions":[],'
+        '"favorites":[{"packKey":"en_ar","entryId":"fever-1"},'
+        '{"packKey":"en_ar","entryId":"ghost-1"}]}';
+
+    await target.repository.importBackupJson(backup);
+
+    // The raw row is there, and was not silently dropped on the way in.
+    final rows = await target.database.query('favorites',
+        where: 'pack_key = ?', whereArgs: <Object?>['en_ar']);
+    expect(rows.map((row) => row['entry_id']).toList()..sort(),
+        <String>['fever-1', 'ghost-1']);
+
+    // And the accessor shows only what has a word behind it.
+    expect((await target.repository.favorites('en_ar')).map((e) => e.id),
+        <String>['fever-1']);
+    // While `isFavorite` — which is a question about the row, not about a
+    // word — still answers truthfully. That difference is the whole ruling.
+    expect(await target.repository.isFavorite(
+        packKey: 'en_ar', entryId: 'ghost-1'), isTrue);
+  });
+
+  test('a saved word naming a pack the file does not carry is refused as a '
+      'sentence', () async {
+    // The other half of the ruling above, and deliberately the opposite of it: an
+    // unknown **pack** is a corrupt file, because `favorites.pack_key` really is a
+    // foreign key and the restore could not honour it. An unknown **entry** is a
+    // legitimate row with nothing to show. So: pack refused, entry kept.
+    //
+    // Measured before this was converted: the restore threw
+    // `SqfliteFfiException(sqlite_error: 787)` — SQLite's constraint, not a
+    // message. The transaction rolled back and the device was unchanged, so it
+    // was never data loss, but `BackupCodec` promises a sentence for every
+    // failure and this was the one it missed.
+    final target = await twoPackHarness();
+    final before = await _snapshot(target);
+    final backup = '{"kind":"backup","schemaVersion":'
+        '${BackupDocument.currentSchemaVersion},'
+        '"exportedAt":"2026-10-14T12:00:00.000Z",'
+        '"packs":[{"schemaVersion":1,"packId":"en_ar","title":"English to Arabic",'
+        '"sourceLanguage":"en","targetLanguage":"ar",'
+        '"entries":[{"id":"fever-1","term":"fever","translations":["حمى"]}]}],'
+        '"progress":[],"sessions":[],'
+        '"favorites":[{"packKey":"not-a-pack","entryId":"fever-1"}]}';
+
+    await expectLater(
+      target.repository.importBackupJson(backup),
+      throwsA(isA<PackDecodeException>()
+          .having((e) => e.message, 'message', contains('not-a-pack'))
+          .having((e) => e.message, 'message', contains('favorites'))),
+    );
+    expect(await _snapshot(target), before,
+        reason: 'a rejected file never reaches the database at all');
+  });
+
   test('a v1 backup file is refused by name, and nothing on the device moves',
       () async {
     // The version bump that carried favourites in lives **inside the backup

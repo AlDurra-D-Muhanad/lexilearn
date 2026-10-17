@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lexilearn/data/database.dart';
 import 'package:lexilearn/domain/backup_codec.dart';
@@ -29,12 +31,35 @@ const VocabPack pack = VocabPack(
   ],
 );
 
+/// A second pack, so "favourites across two packs" can mean it.
+///
+/// Added in fix round 2: the round-1 version of that test declared a saved word
+/// in a pack the file never carried, which no restore could have honoured.
+const VocabPack secondPack = VocabPack(
+  schemaVersion: 1,
+  packId: 'q',
+  title: 'English to Turkish',
+  sourceLanguage: 'en',
+  targetLanguage: 'tr',
+  entries: <VocabEntry>[
+    VocabEntry(id: 'a', term: 'alpha', translations: <String>['alfa']),
+  ],
+);
+
 // NOT `const`: `DateTime.utc` is a factory constructor, not a const one, so
 // `const DateTime exportedAt = DateTime.utc(...)` fails to compile and — being
 // the one bad `const` — poisons every `const` list literal that mentions it.
 // `pack` above stays `const` because `VocabPack` and `VocabEntry` genuinely
 // are const-constructible; only the timestamps are not.
 final DateTime exportedAt = DateTime.utc(2026, 10, 14, 12);
+
+/// The same pack as the literal above, as the **object** the file carries.
+///
+/// Needed because the favourites checks below are about **hand-written files**,
+/// and those embed a pack. `BackupCodec.encode` writes `pack.toJson()` for each
+/// pack, so the fixture is built from that rather than typed out by hand — which
+/// also means it cannot drift from what the encoder actually writes.
+String jsonFor(VocabPack value) => jsonEncode(value.toJson());
 
 BackupDocument sample() => BackupDocument(
       exportedAt: exportedAt,
@@ -259,9 +284,16 @@ void main() {
     });
 
     test('round-trips several favourites across two packs', () {
+      // **This fixture was wrong when it was written in round 1**, and the codec
+      // was right to refuse it. It declared a saved word in a pack called `q`
+      // while carrying only the pack `p` — a file that could never be restored,
+      // because `favorites.pack_key` really is a foreign key. The round-1 codec
+      // read it happily and the round-1 test passed, which is the tell: a fixture
+      // no restore can honour is a fixture testing nothing. A real second pack
+      // is what the claim "across two packs" needs.
       final document = BackupDocument(
         exportedAt: exportedAt,
-        packs: const <VocabPack>[pack],
+        packs: const <VocabPack>[pack, secondPack],
         progress: const <WordProgress>[],
         sessions: const <QuizSessionResult>[],
         favorites: const <BackupFavorite>[
@@ -321,6 +353,79 @@ void main() {
       expect(BackupDocument.currentSchemaVersion, 2);
       expect(databaseSchemaVersion, 1,
           reason: 'the app database ships as v1; only the backup file moved');
+    });
+
+    test('a favourite naming a pack the file does not carry is refused by name',
+        () {
+      // **This one was missed.** `BackupCodec` advertises this file as one a user
+      // is told they can hand-edit, and every other malformed input is turned
+      // into a sentence here on purpose. A `favorites` block naming a pack the
+      // file has no row for used to decode cleanly and then fail deep inside
+      // `importBackupJson` with a raw
+      // `SqfliteFfiException(sqlite_error: 787)` — SQLite's foreign key, not a
+      // message. The transaction rolled back and the device was untouched, so it
+      // was never data loss, but the user got a code where the rest of this file
+      // gives them a sentence.
+      //
+      // It is refused **here** rather than caught around the transaction because
+      // the decode is a pure function of the document: the pack ids are right
+      // there, and refusing before the transaction opens means the device is
+      // never touched at all.
+      expect(
+        () => BackupCodec.decode(
+            '{"kind":"backup","schemaVersion":'
+            '${BackupDocument.currentSchemaVersion},'
+            '"exportedAt":"2026-10-14T00:00:00Z",'
+            '"packs":[],"progress":[],"sessions":[],'
+            '"favorites":[{"packKey":"ghost","entryId":"a"}]}'),
+        throwsA(isA<PackDecodeException>()
+            .having((e) => e.message, 'message', contains('ghost'))
+            .having((e) => e.message, 'message', contains('favorites'))),
+      );
+    });
+
+    test('one bad saved word fails the file, and names that row', () {
+      // The message has to be about **this** row, not about the version and not
+      // about favourites in general: a user hand-editing a file needs to know
+      // which line to fix. And the file is refused **whole** rather than
+      // half-read, because a restore that skipped the bad row would silently
+      // drop a saved word — the exact data loss `favorites` was added to the
+      // backup to stop.
+      expect(
+        () => BackupCodec.decode(
+            '{"kind":"backup","schemaVersion":'
+            '${BackupDocument.currentSchemaVersion},'
+            '"exportedAt":"2026-10-14T00:00:00Z",'
+            '"packs":[${jsonFor(pack)}],"progress":[],"sessions":[],'
+            '"favorites":[{"packKey":"p","entryId":"a"},'
+            '{"packKey":"not-a-pack","entryId":"b"}]}'),
+        throwsA(isA<PackDecodeException>()
+            // The offending row's own pair, not "some" saved word.
+            .having((e) => e.message, 'message', contains('not-a-pack'))
+            .having((e) => e.message, 'message', contains('"b"'))
+            // And not the other word, which was fine.
+            .having((e) => e.message, 'message', isNot(contains('"a"')))),
+      );
+    });
+
+    test('a saved word missing its pack or its id is refused', () {
+      for (final row in <String>[
+        '{"entryId":"a"}',
+        '{"packKey":"p"}',
+        '{"packKey":"p","entryId":7}',
+        '{"packKey":"p","entryId":null}',
+      ]) {
+        expect(
+          () => BackupCodec.decode(
+              '{"kind":"backup","schemaVersion":'
+              '${BackupDocument.currentSchemaVersion},'
+              '"exportedAt":"2026-10-14T00:00:00Z",'
+              '"packs":[${jsonFor(pack)}],"progress":[],"sessions":[],'
+              '"favorites":[$row]}'),
+          throwsA(isA<PackDecodeException>()),
+          reason: 'a row of $row must be a sentence, not a raw TypeError',
+        );
+      }
     });
   });
 }

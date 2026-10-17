@@ -98,9 +98,10 @@ Future<void> _search(WidgetTester tester, String value) async {
 /// `HomeShell` wires `onOpenWord` to the real `Navigator.push` of
 /// `WordDetailRoute` — Task 14 landed it — so this file does not depend on that
 /// to observe the callback, and mounts the screen directly instead. `HomeScreen`
-/// reads its pack from SQLite in `initState`, so it needs the same one `runAsync`
-/// turn `pumpShell` gives the shell — shared constant, not a private copy of the
-/// helper.
+/// reads its pack from SQLite in `initState`, so it needs the same one real turn
+/// `pumpShell` gives the shell — **[realTurnThenSettle], not a copy of it.** The
+/// two lines this used to spell out *were* that helper's body, line for line,
+/// under a doc comment that claimed they were not a copy.
 Future<void> _pumpHome(
   WidgetTester tester,
   TestHarness harness, {
@@ -123,8 +124,7 @@ Future<void> _pumpHome(
       ),
     ),
   );
-  await tester.runAsync(() => Future<void>.delayed(shellDatabaseSettle));
-  await tester.pumpAndSettle();
+  await realTurnThenSettle(tester);
 }
 
 /// The pack under test, as literals.
@@ -358,8 +358,7 @@ void main() {
       await tester.tap(find.byIcon(Icons.close));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
-      await tester.runAsync(() => Future<void>.delayed(shellDatabaseSettle));
-      await tester.pumpAndSettle();
+      await realTurnThenSettle(tester);
 
       expect(tester.widget<TextField>(find.byType(TextField)).controller?.text,
           isEmpty);

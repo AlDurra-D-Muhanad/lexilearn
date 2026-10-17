@@ -43,9 +43,39 @@
 
   That cannot be fixed here. Currency would mean regenerating the image, and
   regenerating is precisely what is impossible on this platform by construction
-  (the font rasteriser). **Judging a reference image is a reviewer's job** — open
-  the PNG and look at it. What the tool can do is stop the *set* of images and
-  the *list* of images from drifting apart, which it now checks both ways.
+  (the font rasteriser). **Judging a reference image is a reviewer's job** —
+  open the PNG and look at it. What the tool can do is stop the *set* of images
+  and the *list* of images from drifting apart, which it now checks both ways.
+
+  ## THE DISTINCT-COLOUR BASELINE — the one signal that does exist
+
+  Every image is compared against a recorded count of its distinct colours, and
+  a mismatch fails. All seven committed images have **seven different counts**
+  (772 / 1203 / 1243 / 177 / 190 / 361 / 373), so the favourites bytes written
+  over `word_detail_user_shot_light.png` reported 177 where the honest value is
+  361.
+
+  **This does not close the gap above, and it is not an identity oracle.** What it
+  adds, precisely:
+
+    * it catches a swapped or stale image **whose colour histogram differs**,
+      which today is every pairing among the seven;
+    * it gives a second, independent signal that an image was rewritten without a
+      regeneration, complementing the git staleness proxy below — which only
+      fires while the tree is dirty.
+
+  What it does **not** add:
+
+    * it cannot say *which* image the bytes belong to;
+    * two images sharing a count would both pass;
+    * **it is rasteriser-dependent, so it also fires on a legitimate
+      regeneration** on another platform. When you regenerate on purpose, update
+      `$ExpectedColourCount` from the `distinct colours` line this run prints —
+      that is the intended maintenance, not a defect to route around.
+
+  Dimensions carry no signal (all seven are 1080x2340) and mtime is
+  unimplementable (git does not track it, and `--update-goldens` writes all seven
+  within a few milliseconds of each other).
 
   ## THE SET-EQUALITY GUARD
 
@@ -139,6 +169,47 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 
 $root = Split-Path -Parent $PSScriptRoot
+
+# --- the distinct-colour baseline ------------------------------------------------
+#
+# The one cheap signal that exists against a swapped image. **All seven committed
+# images have seven different counts**, so a file replaced with another file's
+# bytes reports a count that belongs to some other image:
+#
+#   772 / 1203 / 1243 / 177 / 190 / 361 / 373
+#
+# and doctoring `word_detail_user_shot_light.png` with the favourites bytes
+# reported **177 where the honest value is 361**. The script already computes
+# this number to print it, so comparing it costs one line.
+#
+# **WHAT THIS IS NOT, and the limits are load-bearing:**
+#
+#   * It is a **currency detector, not an identity oracle.** It catches a swap
+#     whose count differs. Two images with the same count would still pass, and
+#     it cannot say *which* image the bytes belong to.
+#   * **It is rasteriser-dependent, so it also fires on any legitimate
+#     regeneration** - the counts are whatever this machine's font rasteriser
+#     produced. A regeneration on another platform reds here with no defect
+#     present. When you regenerate on purpose, update the numbers below from the
+#     `distinct colours` line the run prints.
+#   * It does **not** close the gap named above. No pixel property distinguishes
+#     one screen's render from another's in general; this catches the cases where
+#     the colour histograms happen to differ, which today is all seven of them.
+#   * **Dimensions carry no signal** - all seven are 1080x2340 - and **mtime is
+#     unimplementable**: git does not track it, and all seven files are written
+#     within a few milliseconds of each other by `--update-goldens`.
+#
+# Measured independently rather than read out of this script: a plain
+# `HashSet[string]` sweep over each committed PNG returns exactly these numbers.
+$ExpectedColourCount = [ordered]@{
+  'test/goldens/goldens/home_shell_user_shot.png'              = 772
+  'test/goldens/goldens/stats_screen_user_shot_light.png'     = 1203
+  'test/goldens/goldens/stats_screen_user_shot_dark.png'      = 1243
+  'test/goldens/goldens/favorites_screen_user_shot_light.png' = 177
+  'test/goldens/goldens/favorites_screen_user_shot_dark.png'  = 190
+  'test/goldens/goldens/word_detail_user_shot_light.png'      = 361
+  'test/goldens/goldens/word_detail_user_shot_dark.png'       = 373
+}
 
 # The one directory the default list is allowed to cover.
 $goldenDirRelative = 'test/goldens/goldens'
@@ -333,6 +404,23 @@ foreach ($relative in $ImagePath) {
       $failures += "#1D1B20 is $tonal px, must be 0 (Material text, not brand ink)"
     }
 
+    # --- the distinct-colour baseline ---------------------------------------------
+    # A currency detector, not an identity oracle. See $ExpectedColourCount above
+    # for what it does not catch; the short version is that two images with the
+    # same count would still both pass.
+    $normalised = $relative -replace '\\', '/'
+    if ($ExpectedColourCount.Contains($normalised)) {
+      $expected = $ExpectedColourCount[$normalised]
+      if ($counts.Count -ne $expected) {
+        $failures += ("distinct colours: $($counts.Count), baseline for this path is $expected " +
+          "(a swapped or stale image; OR you regenerated this one on purpose, in which case " +
+          'update $ExpectedColourCount in tool/golden_census.ps1)')
+      }
+    } else {
+      $failures += ("no distinct-colour baseline for $normalised - add one, or the path is " +
+        'wrong; a path with no baseline is an image nothing can date')
+    }
+
     # --- report -----------------------------------------------------------------
     Write-Host ("  Mode: {0}  (#F8F7F5 {1} px, #0F172A {2} px)" -f $mode, $lightBg, $darkBg)
     Write-Host ''
@@ -341,6 +429,7 @@ foreach ($relative in $ImagePath) {
     Write-Host ("    #1D1B20        : {0,-10} {1}" -f $tonal, $(if ($tonal -eq 0) { 'ok' } else { 'FAIL' }))
     Write-Host ("    mode           : {0,-10} {1}" -f $mode, $(if ($mode -ne 'unidentified') { 'ok' } else { 'FAIL' }))
     Write-Host ("    #{0} (ink) : {1,-10} {2}" -f $expectedInk, $ink, $(if ($ink -gt 0) { 'ok' } else { 'FAIL' }))
+    Write-Host ("    distinct       : {0,-10} {1}" -f $counts.Count, $(if ($ExpectedColourCount.Contains($normalised) -and $counts.Count -eq $ExpectedColourCount[$normalised]) { 'ok' } else { 'FAIL' }))
 
     Write-Host ''
     Write-Host '  Brand tokens'
