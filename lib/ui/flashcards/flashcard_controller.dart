@@ -178,6 +178,31 @@ class FlashcardController extends ChangeNotifier {
   /// The counters and the next card are settled **before** the write, so the
   /// screen is never waiting on SQLite to redraw. A deck that is already over,
   /// or that has not been dealt a card yet, records nothing.
+  ///
+  /// **The write cannot fail the caller, and that is a deliberate contract.**
+  /// `recordAnswer` is an uncaught async database call, and a tap on «أعرف»
+  /// followed by an immediate teardown — switching bar destinations, pressing
+  /// back, or a test ending — leaves it in flight against a database that is then
+  /// closed underneath it. Measured on this project: that surfaces as
+  /// `SqfliteFfiException(error, Bad state: This database has already been
+  /// closed)` **thrown after the test had already passed**, which is a test that
+  /// reports a failure it did not cause and a reviewer cannot reproduce.
+  ///
+  /// So the write is swallowed, and what is lost is bounded and stated: a deck
+  /// torn down mid-answer loses **at most one progress row**, and only for the
+  /// card that was on screen when the screen went away. The alternative — letting
+  /// it propagate — buys nothing a user could act on and costs a real class of
+  /// spurious red.
+  ///
+  /// **What this deliberately does NOT do is gate the next answer.** An earlier
+  /// draft of the task report proposed a `canAnswer` flag that would refuse an
+  /// answer while a write was in flight, and that is the wrong shape: it silently
+  /// **drops a legitimate fast answer**, trading a rare mis-count for a routine
+  /// lost tap — the user taps «لا أعرف» fast and nothing is recorded, with no
+  /// indication anything happened. If the double-tap hazard is ever fixed it wants
+  /// a **per-deal token plus a debounce**: identity, not a lock, so the second tap
+  /// is recognised as belonging to a card already consumed rather than refused as
+  /// arriving too soon.
   Future<void> answer({required bool knewIt}) async {
     final card = _current;
     if (card == null) return;
@@ -192,11 +217,19 @@ class FlashcardController extends ChangeNotifier {
     }
     _notifyIfAlive();
 
-    await repository.recordAnswer(
-      packKey: packKey,
-      entryId: card.id,
-      wasCorrect: knewIt,
-    );
+    try {
+      await repository.recordAnswer(
+        packKey: packKey,
+        entryId: card.id,
+        wasCorrect: knewIt,
+      );
+    } on Object {
+      // At most one progress row, for the card that was on screen — see above.
+      // Deliberately `on Object` and not `on Exception`: the failure being
+      // swallowed here is a `StateError` from a closed database, not an
+      // `Exception`, and a narrower catch would not catch it. The same broad
+      // catch is what `StatsController.load` already uses for its read.
+    }
   }
 
   @override

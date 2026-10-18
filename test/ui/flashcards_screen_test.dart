@@ -27,6 +27,7 @@ const _knowIt = 'أعرف';
 const _dontKnowIt = 'لا أعرف';
 const _reveal = 'عرض المعنى';
 const _swipeHint = 'السحب للتالي';
+const _loading = 'جارٍ التحميل…';
 const _finished = 'انتهت الجلسة';
 const _emptyPack = 'لا توجد بطاقات بعد';
 
@@ -205,6 +206,36 @@ Future<void> _settleDeck(WidgetTester tester) async {
   }
 }
 
+/// The three controls the artwork draws together, in its order.
+///
+/// Shared rather than inlined, because the assertion now runs twice — against an
+/// unrevealed card and against a revealed one — and it is the *pair* that says
+/// something: a version of this screen that gated the answer buttons behind
+/// `revealed` would pass the first and fail the second.
+Future<void> _expectAllThreeControls(WidgetTester tester, String state) async {
+  expect(find.widgetWithText(FilledButton, _knowIt), findsOneWidget,
+      reason: 'أعرف is missing on $state');
+  expect(find.widgetWithText(OutlinedButton, _dontKnowIt), findsOneWidget,
+      reason: 'لا أعرف is missing on $state');
+  expect(find.widgetWithText(TextButton, _reveal), findsOneWidget,
+      reason: 'عرض المعنى is missing on $state');
+  // And in the artwork's order, top to bottom. A `Row` would satisfy the three
+  // `findsOneWidget` above while drawing them side by side.
+  expect(
+    _findCentreY(tester, find.widgetWithText(FilledButton, _knowIt)),
+    lessThan(_findCentreY(tester, find.widgetWithText(OutlinedButton, _dontKnowIt))),
+    reason: 'the answer buttons are stacked, not side by side',
+  );
+  expect(
+    _findCentreY(tester, find.widgetWithText(OutlinedButton, _dontKnowIt)),
+    lessThan(_findCentreY(tester, find.widgetWithText(TextButton, _reveal))),
+  );
+}
+
+/// The vertical centre of [finder], so two can be compared for order.
+double _findCentreY(WidgetTester tester, Finder finder) =>
+    tester.getCenter(finder).dy;
+
 /// A tap on one of the three card actions, followed by [_settleDeck].
 ///
 /// `أعرف` and `لا أعرف` each write through `recordAnswer`, so a tap here is a
@@ -381,14 +412,21 @@ void main() {
 
     testWidgets('both buttons are on screen at once, as the artwork draws them',
         (tester) async {
+      // **Both states, and the revealed one is the artwork's own frame.** §4ج and
+      // the PNG draw all three controls together with the meaning already visible.
+      // That frame is what the reference image captures, and it was unpinned: the
+      // first version of this test only ever saw an *unrevealed* controller, so
+      // nothing would have noticed the three controls disappearing on reveal — the
+      // exact failure the plan's `revealed`-gated version of this screen ships.
       await _pumpDeck(tester, controller: await _dealt(tester));
+      await _expectAllThreeControls(tester, 'an unrevealed card');
 
-      // The artwork shows أعرف, لا أعرف **and** the عرض المعنى link together, in
-      // that order, on one card. Gating the two answer buttons behind `revealed`
-      // would be a tidier interaction and a different screen.
-      expect(find.widgetWithText(FilledButton, _knowIt), findsOneWidget);
-      expect(find.widgetWithText(OutlinedButton, _dontKnowIt), findsOneWidget);
-      expect(find.widgetWithText(TextButton, _reveal), findsOneWidget);
+      final controller = await _dealt(tester, revealed: true);
+      await _pumpDeck(tester, controller: controller);
+      await _expectAllThreeControls(tester, 'a revealed card');
+      expect(inDeck(_meaning), findsOneWidget,
+          reason: '…and the meaning is on screen with them, which is the '
+              'artwork\'s frame');
     });
 
     testWidgets('عرض المعنى is a link in the brand primary, not a button',
@@ -556,6 +594,152 @@ void main() {
 
       expect(inDeck(_swipeHint), findsOneWidget);
       expect(tester.widget<Text>(inDeck(_swipeHint)).style?.fontFamily, 'Tajawal');
+    });
+
+    testWidgets('the Arabic face, not the brand Latin, on every Arabic string here',
+        (tester) async {
+      // **The class, not one string.** The screen shipped with «السحب للتالي» set
+      // in `AppText.latin`, which rasterised as a row of tofu boxes — and
+      // `find.text('السحب للتالي')` matched it happily, because a tofu row is
+      // still a `Text` whose `data` is that string. Every assertion on it passed.
+      // Only opening the generated PNG showed it: §1's shape from the other side,
+      // a claim nothing could fail.
+      //
+      // So this walks **every** Arabic string the screen draws, in **each of its
+      // states**. Adding `AppText.latin` to `_knowIt`, `_title` or any of the
+      // other six now fails here. See `arabicRunsIn` in
+      // `test/helpers/test_env.dart` for why this is a shared helper rather than
+      // another per-string assertion.
+      //
+      // **Every state is visited deliberately**, because the strings are not all
+      // on screen at once: the meaning and the controls together only while
+      // revealed, the summary only once the deck is over, and `_loading` only
+      // while the owner's read is in flight.
+      const brandedLatin = 'Inter';
+      Future<void> expectNoTofu(String state) async {
+        final offenders = arabicRunsIn(tester, FlashcardsScreen)
+            .where((run) => run.family == brandedLatin)
+            .toList();
+        expect(
+          offenders,
+          isEmpty,
+          reason: '$state draws Arabic in $brandedLatin, whose cmap carries no '
+              'Arabic — it rasterises as tofu',
+        );
+      }
+
+      // While the owner's read is in flight: «جارٍ التحميل…». No settle, which is
+      // the only way to see this state at all.
+      await tester.pumpWidget(
+        _DeckApp(
+          repository: harness.repository,
+          packKey: 'en_ar',
+          brightness: Brightness.light,
+        ),
+      );
+      await tester.pump();
+      expect(inDeck(_loading), findsOneWidget,
+          reason: 'this is the state the next line guards');
+      await expectNoTofu('the loading state');
+
+      final controller = await _dealt(tester);
+      await _pumpDeck(tester, controller: controller);
+      await expectNoTofu('a card before it is revealed');
+
+      // **Through the real buttons, and never by awaiting the controller.**
+      // `answer()` awaits `recordAnswer`, and a `testWidgets` body runs in a
+      // fake-async zone where a real sqflite future never answers on its own —
+      // awaited bare it hangs to the ten-minute timeout with nothing naming the
+      // cause (`docs/engineering-standards.md` §5). `_tapAction` fires and gives
+      // the write a real turn, which is the sanctioned shape.
+      await _tapAction(tester, find.widgetWithText(TextButton, _reveal));
+      expect(controller.revealed, isTrue,
+          reason: 'this is the state the next line guards');
+      await expectNoTofu('a card after it is revealed');
+
+      await _tapAction(tester, find.widgetWithText(FilledButton, _knowIt));
+      await _tapAction(tester, find.widgetWithText(OutlinedButton, _dontKnowIt));
+      await _tapAction(tester, find.widgetWithText(FilledButton, _knowIt));
+      expect(inDeck(_finished), findsOneWidget);
+      await expectNoTofu('the finished deck');
+
+      // And the empty pack, the only state that names `_emptyPack`.
+      await tester.pumpWidget(
+        _DeckApp(
+          repository: harness.repository,
+          packKey: '',
+          brightness: Brightness.light,
+        ),
+      );
+      await tester.pump();
+      await expectNoTofu('the empty-pack state');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the counter sits at the left end and the bar fills from the right',
+        (tester) async {
+      // **A deliberate divergence from the artwork, so it is pinned.** The PNG
+      // draws this row left-to-right on both phones — `3/10` at the *right* and
+      // the fill at the track's *left* end — while the same phone's title and back
+      // arrow are laid out RTL. The row is the inconsistent part and not the
+      // screen, so this screen follows the app's direction, as `_Header` in
+      // `home_screen.dart` does for the same reason.
+      //
+      // Two halves, and both are load-bearing. The **positions** say which end the
+      // counter is on. The **ambient direction** is what makes the *fill* grow
+      // from the right, because `LinearProgressIndicator` reverses with it —
+      // reading only the positions would leave "and the fill grows from the right"
+      // as an unmeasured claim, which is §1's whole subject.
+      final controller = await _dealt(tester, cardCount: 4);
+      await _pumpDeck(tester, controller: controller);
+
+      final bar = find.byType(LinearProgressIndicator);
+      expect(bar, findsOneWidget);
+
+      final counterX = tester.getTopLeft(inDeck('1/4')).dx;
+      final barLeftX = tester.getTopLeft(bar).dx;
+      final barRightX = tester.getBottomRight(bar).dx;
+
+      expect(counterX, lessThan(barLeftX),
+          reason: 'the counter is at the LEFT end of the row');
+      expect(counterX, lessThan(barRightX));
+      expect(
+        Directionality.of(tester.element(bar)),
+        TextDirection.rtl,
+        reason: '…and the fill grows from the RIGHT because the indicator '
+            'reverses with the ambient direction',
+      );
+    });
+
+    testWidgets('the speaker sits at the right of the word, as the artwork draws it',
+        (tester) async {
+      // **The second divergence, and the one that was simply wrong.** Both speaker
+      // glyphs were on the *left* of their word, because `Row` lays its first
+      // child out at the start — the right, in RTL — and the word was first.
+      //
+      // Verified off the raster rather than taken on trust: scanning the light
+      // phone's word row for the purple glyph against the dark word ink returns
+      // dark ink at `x 495..577` and then an isolated purple block carrying **no**
+      // dark ink at `x 585..599` — the speaker, to the *right* of the word. At 9x
+      // it is unmistakable.
+      await _pumpDeck(tester, controller: await _dealt(tester));
+
+      final speakers = find.byIcon(Icons.volume_up_rounded);
+      expect(speakers, findsNWidgets(2),
+          reason: 'the artwork draws one beside the word and one beside the '
+              'phonetic');
+
+      expect(
+        tester.getTopLeft(speakers.at(0)).dx,
+        greaterThan(tester.getTopLeft(inDeck(_term)).dx),
+        reason: 'the term speaker is at the RIGHT of the term',
+      );
+      expect(
+        tester.getTopLeft(speakers.at(1)).dx,
+        greaterThan(tester.getTopLeft(inDeck(_phonetic)).dx),
+        reason: 'the phonetic speaker is at the RIGHT of the phonetic, as the '
+            'artwork draws it',
+      );
     });
 
     testWidgets('the title is on the background, not on a raised surface',

@@ -471,6 +471,23 @@ class _Card extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: <Widget>[
+                      // **First child, so it draws at the START — the right, in
+                      // RTL — and the artwork puts the speaker on that side.**
+                      // It was last, which put it left of the word, and nothing
+                      // noticed: the glyph is decoration, so no assertion failed
+                      // and the committed reference image showed the mirror of
+                      // what `brand-reference.png` draws. Verified off the raster
+                      // rather than taken on trust — scanning the light phone's
+                      // word row for the purple glyph against the dark word ink
+                      // returns dark ink at `x 495..577` and then an isolated
+                      // purple block carrying **no** dark ink at `x 585..599`.
+                      //
+                      // Static, never played: text-to-speech is out of scope by
+                      // user decision, so the artwork's speaker is a glyph and not
+                      // a control. Same as the one on the word-detail screen and
+                      // on Home's card.
+                      Icon(Icons.volume_up_rounded, color: _speakerColour(isDark)),
+                      const SizedBox(width: AppSpacing.s),
                       Flexible(
                         child: Text(
                           entry.term,
@@ -481,12 +498,6 @@ class _Card extends StatelessWidget {
                               .copyWith(fontSize: _termSize, color: ink),
                         ),
                       ),
-                      const SizedBox(width: AppSpacing.s),
-                      // Static, never played: text-to-speech is out of scope by
-                      // user decision, so the artwork's speaker is a glyph and not
-                      // a control. Same as the one on the word-detail screen and
-                      // on Home's card.
-                      Icon(Icons.volume_up_rounded, color: _speakerColour(isDark)),
                     ],
                   ),
                   // A word with no phonetic omits the row rather than stranding
@@ -497,6 +508,11 @@ class _Card extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: <Widget>[
+                        // First child, so it draws at the start — the right — as
+                        // the artwork draws it. See the term row above for why
+                        // this was worth measuring.
+                        Icon(Icons.volume_up_rounded, size: 16, color: secondary),
+                        const SizedBox(width: AppSpacing.s),
                         Flexible(
                           child: Text(
                             entry.phonetic,
@@ -510,8 +526,6 @@ class _Card extends StatelessWidget {
                             ),
                           ),
                         ),
-                        const SizedBox(width: AppSpacing.s),
-                        Icon(Icons.volume_up_rounded, size: 16, color: secondary),
                       ],
                     ),
                   ],

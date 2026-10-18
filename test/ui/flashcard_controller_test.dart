@@ -1,9 +1,11 @@
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
 import 'package:lexilearn/ui/flashcards/flashcard_controller.dart';
+import 'package:sqflite/sqflite.dart' show Database;
 
 import '../helpers/test_env.dart';
 
@@ -22,6 +24,35 @@ const VocabPack _pack = VocabPack(
     VocabEntry(id: 'c', term: 'gamma', translations: <String>['جاما']),
   ],
 );
+
+/// A repository whose progress writes always fail.
+///
+/// **Why the guard is pinned this way and not by a teardown race.** The failure
+/// the `try`/`on Object` in [FlashcardController.answer] exists for is a database
+/// closed *underneath* a write still in flight — a **teardown ordering** race, not
+/// a value. A first attempt at a test for it tapped «أعرف», deliberately did not
+/// settle, unmounted, and then waited 200 ms of real time for the abandoned write
+/// to land. **That test stayed green with the wrapper deleted**, because the
+/// 200 ms was enough for the write to finish before anything closed: a weak test
+/// rather than a guard, which `docs/engineering-standards.md` §9 puts down to the
+/// test's own design. Reproducing the real race needs teardown ordering a unit
+/// test does not control.
+///
+/// So the same code path is exercised with the timing removed: the write fails, and
+/// [FlashcardController.answer] must still complete normally. `StateError` is the
+/// type the real failure carries — a closed database is a bad *state*, not an
+/// `Exception` — so the fixture would not pass against an `on Exception` either.
+class _FailingWriteRepository extends VocabRepository {
+  _FailingWriteRepository(Database database) : super(database: database);
+
+  @override
+  Future<void> recordAnswer({
+    required String packKey,
+    required String entryId,
+    required bool wasCorrect,
+  }) async =>
+      throw StateError('This database has already been closed.');
+}
 
 void main() {
   late TestHarness harness;
@@ -288,6 +319,88 @@ test('an empty supplied list finishes the deck without reading', () async {
 
   expect(controller.current, isNull);
   expect(controller.isFinished, isTrue);
+});
+
+/// The `reveal()` twin of *answering on a finished deck changes nothing*.
+///
+/// `answer()` was pinned and `reveal()` was not, which left a gap in the one
+/// state machine this task exists to get right. Both guards return before
+/// mutating anything, and both are reachable: `reveal()` is bound to a `TextButton`
+/// in the body, and the body's three cases mean the button is **not** on screen
+/// before the first card is dealt or after the last one is answered — so a future
+/// edit that leaves the button live in those states gets nothing instead of an
+/// exception, and this is what says so.
+test('revealing before the first card is dealt changes nothing', () async {
+  final controller = build();
+
+  await controller.reveal();
+
+  expect(controller.revealed, isFalse);
+  expect(controller.current, isNull);
+  expect(controller.isFinished, isFalse);
+  final stats = await harness.repository.stats('p');
+  expect(stats.totalAttempts, 0);
+});
+
+test('revealing on a finished deck changes nothing', () async {
+  final controller = build(count: 1);
+  await controller.start();
+  await controller.reveal();
+  expect(controller.revealed, isTrue);
+
+  await controller.answer(knewIt: true);
+  expect(controller.isFinished, isTrue);
+
+  await controller.reveal();
+
+  // `_current` is null, so the guard returns without touching `_revealed`. A
+  // missing guard here would leave the flag reading `true` on a deck with no
+  // card, which is what the finished summary would then have to explain away.
+  expect(controller.current, isNull);
+  final stats = await harness.repository.stats('p');
+  expect(stats.totalAttempts, 1);
+});
+
+/// A repository whose progress writes always fail.
+///
+/// **Why the guard is pinned this way and not by a teardown race.** The failure
+/// the `try`/`on Object` in [FlashcardController.answer] exists for is a database
+/// closed *underneath* a write still in flight — a **teardown ordering** race,
+/// not a value. A first attempt at a test for it tapped «أعرف», deliberately did
+/// not settle, unmounted, and then waited 200 ms of real time for the abandoned
+/// write to land. **That test stayed green with the wrapper deleted**, because
+/// the 200 ms was enough for the write to finish before anything closed: it was
+/// a weak test, not a guard, and §9 calls that out as the fault of the test's own
+/// design. Reproducing the real race needs teardown ordering this file cannot
+/// control.
+///
+/// So the same code path is exercised with the timing removed: the write fails,
+/// and [FlashcardController.answer] must still complete normally. `StateError` is
+/// the type the real failure carries — a closed database is a bad *state*, not an
+/// `Exception` — so the fixture would not catch an `on Exception` either.
+test('a failing progress write does not fail the caller', () async {
+  final controller = FlashcardController(
+    repository: _FailingWriteRepository(harness.database),
+    packKey: 'p',
+    cardCount: 2,
+    random: Random(1),
+    entries: _pack.entries,
+  );
+
+  await controller.start();
+  await controller.answer(knewIt: true);
+
+  // The counters and the next card are settled *before* the write, so none of this
+  // depends on it having succeeded — which is exactly why losing one progress row
+  // is the whole of the cost.
+  expect(controller.index, 1);
+  expect(controller.knownCount, 1);
+  expect(controller.current, isNotNull, reason: 'and the next card was dealt');
+
+  // A second answer fails the same way, so the guard is not one-shot.
+  await controller.answer(knewIt: false);
+  expect(controller.isFinished, isTrue);
+  expect(controller.index, 2);
 });
 
 test('notifies once per state change and never after dispose', () async {

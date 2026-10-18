@@ -210,3 +210,56 @@ Future<T> readOutsideFakeAsync<T>(
   Future<T> Function() read,
 ) async =>
     (await tester.runAsync(read)) as T;
+
+/// Arabic runs — U+0600 to U+06FF — in a string.
+///
+/// The range is **Arabic and nothing else on purpose**: it is the block Tajawal
+/// covers and the block Inter does not, so it is exactly the set of codepoints
+/// where picking the wrong family produces tofu. Widening it would add codepoints
+/// whose absence from Inter is not a defect.
+final RegExp _arabicRun = RegExp('[\u0600-\u06FF]');
+
+/// Every Arabic string drawn under [screenType], with the font family it would
+/// **actually render in**.
+///
+/// **The resolved family, not `Text.style.fontFamily`.** A bare `Text('…')` has a
+/// null style and inherits Tajawal from the theme, so reading `style?.fontFamily`
+/// would report null for a correctly-set string and would not notice if the theme
+/// itself were wrong. This merges the ambient `DefaultTextStyle` at the widget's
+/// own element with the widget's style, which is what the engine paints.
+///
+/// **Why it lives here and not in a screen's test file.** The defect it catches is
+/// a *class*, not a string. It arrived on this project as one Arabic string set in
+/// `AppText.latin`, which rasterised as a row of tofu boxes — and
+/// `find.text('السحب للتالي')` matched it happily, because a tofu row is still a
+/// `Text` whose `data` is that string. Every assertion on the string passed; only
+/// opening the generated PNG showed it. A per-string assertion cannot prevent the
+/// next one, because the next one is a different string. So the guard is stated
+/// over *every* Arabic string on a screen, and this is the shared shape of it that
+/// the next screen will want.
+///
+/// Callers assert the families themselves, so the failure names the string:
+///
+/// ```dart
+/// final offenders = arabicRunsIn(tester, MyScreen)
+///     .where((run) => run.family == 'Inter')
+///     .toList();
+/// expect(offenders, isEmpty);
+/// ```
+List<({String text, String? family})> arabicRunsIn(
+  WidgetTester tester,
+  Type screenType,
+) {
+  final found = <({String text, String? family})>[];
+  for (final widget in tester.widgetList<Text>(
+    find.descendant(of: find.byType(screenType), matching: find.byType(Text)),
+  )) {
+    final data = widget.data;
+    // `Text.rich` and `TextSpan` carry no `data`, and neither is used for a
+    // sentence of UI copy in this app; skipped rather than guessed at.
+    if (data == null || !_arabicRun.hasMatch(data)) continue;
+    final ambient = DefaultTextStyle.of(tester.element(find.byWidget(widget))).style;
+    found.add((text: data, family: ambient.merge(widget.style).fontFamily));
+  }
+  return found;
+}
