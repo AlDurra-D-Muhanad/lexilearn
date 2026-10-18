@@ -96,12 +96,16 @@ jobs:
       # $ANDROID_HOME/cmdline-tools/12266719 -- a version-named directory, which
       # is the second layout `AndroidSdk.getCmdlineToolsPath` tries when there is
       # no `latest` one -- and it runs `sdkmanager --licenses`, which is what
-      # lets the Android Gradle Plugin fetch the build-tools and the NDK
-      # (28.2.13676358, Flutter 3.44.6's default) itself during the Gradle build.
-      # Those two are deliberately left to AGP rather than pinned here: the AGP
-      # version in android/settings.gradle.kts decides which build-tools it
-      # wants, and naming a revision that AGP 9 does not use is a way to fail
-      # this step for no reason.
+      # lets the Android Gradle Plugin install the NDK itself instead of the
+      # build failing for want of it. It did, on the run that verified this file:
+      # "Install NDK (Side by side) 28.2.13676358 v.28.2.13676358" complete,
+      # then the same for CMake 3.22.1.
+      #
+      # Build-tools is deliberately NOT named here. The AGP version in
+      # android/settings.gradle.kts decides which revision it wants, the
+      # ubuntu-24.04 image already ships the one it wants -- no build-tools line
+      # appears anywhere in the verified run -- and naming a revision AGP 9 does
+      # not use is a way to fail this step for no reason.
       - uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools platforms;android-36'
