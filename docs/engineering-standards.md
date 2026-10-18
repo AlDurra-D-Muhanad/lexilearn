@@ -281,7 +281,7 @@ colours, not glyphs.
 
 ## 11. Release size: measure, never estimate
 
-**Verified figure: 17.26 MB** for
+**Baseline: 17.27 MiB / 18.11 MB** (Task 16, with the launcher icon in). An earlier figure of 17.26 MB did not reproduce -- the same command on the unmodified tree measured 17.45 MiB. **Use the Task 16 report's numbers.** Measured with
 `flutter build apk --release --target-platform android-arm64 --analyze-size`, against a 20 MB budget.
 
 | | MB |
@@ -291,12 +291,18 @@ colours, not glyphs.
 | fonts + MaterialIcons (tree-shaken to 4.9 KB from 1.61 MB) | ~1.05 |
 | `classes.dex` | 0.27 compressed / **0.58 uncompressed** |
 
-> **Correction, and it was mine.** An earlier version of this table claimed R8 took `classes.dex` from
-> 8.53 MB to 271 KB. **That was false.** `android/app/build.gradle.kts` sets **no** `isMinifyEnabled` and
-> **no** `isShrinkResources` — R8 was never running. The 271 KB is the **ZIP-compressed** size of a 596 KB
-> dex; the debug figure was an unstripped multidex set.
-> **The 17.26 MB baseline was therefore measured WITHOUT R8.** Task 16 turns R8 on, so it will re-measure
-> and the number will move — probably down. Record the new number as the baseline.
+> **Correction, and it was mine — TWICE.** An earlier version of this table claimed R8 took classes.dex
+> from 8.53 MB to 271 KB. That was false. I then "corrected" it to say R8 had never run, so the baseline
+> was measured without it. **That second correction was also false.** R8 **was** already running: Flutter's
+> Gradle plugin sets isMinifyEnabled and isShrinkResources on the release build type itself
+> (FlutterPlugin.kt:215-227), and lutter_command.dart:988 says the shrink flag "has no effect".
+> The proof is that outputs/mapping/release/usage.txt exists, and only R8 writes it.
+>
+> Like-for-like on the identical command: **18,295,222 -> 18,305,778 B = +10,556 B (+0.06%)**, with
+> classes.dex **271 KB compressed in both**. The whole delta is the launcher icon's es/ PNGs.
+>
+> **Two corrections in a row, both wrong, and the second was more confident than the first** — it carried
+> a file path as evidence and still did not open it. **A correction is not evidence. Only a measurement is.**
 
 **A prediction of 21-28 MB from itemised arithmetic was wrong by ~20%**, in three ways: `libapp.so`
 was never given its own row, tree-shaking was not credited, and R8 was underestimated 4×.
