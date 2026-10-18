@@ -289,7 +289,14 @@ colours, not glyphs.
 | `libflutter.so` | 11.05 |
 | `libapp.so` (the app's own AOT code) | 4.94 |
 | fonts + MaterialIcons (tree-shaken to 4.9 KB from 1.61 MB) | ~1.05 |
-| `classes.dex` (R8: 8.53 MB → 271 KB) | 0.27 |
+| `classes.dex` | 0.27 compressed / **0.58 uncompressed** |
+
+> **Correction, and it was mine.** An earlier version of this table claimed R8 took `classes.dex` from
+> 8.53 MB to 271 KB. **That was false.** `android/app/build.gradle.kts` sets **no** `isMinifyEnabled` and
+> **no** `isShrinkResources` — R8 was never running. The 271 KB is the **ZIP-compressed** size of a 596 KB
+> dex; the debug figure was an unstripped multidex set.
+> **The 17.26 MB baseline was therefore measured WITHOUT R8.** Task 16 turns R8 on, so it will re-measure
+> and the number will move — probably down. Record the new number as the baseline.
 
 **A prediction of 21-28 MB from itemised arithmetic was wrong by ~20%**, in three ways: `libapp.so`
 was never given its own row, tree-shaking was not credited, and R8 was underestimated 4×.
