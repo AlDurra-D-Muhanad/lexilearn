@@ -39,7 +39,19 @@ permissions:
 jobs:
   verify:
     name: analyze, test, bundle
-    runs-on: ubuntu-latest
+    # PINNED, not `ubuntu-latest`, for the same reason the Flutter and Java
+    # versions are pinned. The first run of this workflow reported
+    # "Image: ubuntu-24.04", and the run that verified it carried this warning:
+    #
+    #   The ubuntu-latest label will migrate to Ubuntu 26 beginning
+    #   October 19, 2026.
+    #
+    # So `ubuntu-latest` is a moving target with a migration date, and a new OS
+    # means a different preinstalled Android SDK, NDK and JDK -- exactly the
+    # class of silent drift the Flutter pin exists to stop. `ubuntu-24.04` is
+    # the image this workflow was actually verified against, so the label only
+    # moves when someone deliberately moves it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
 
     steps:
@@ -52,10 +64,15 @@ jobs:
           channel: stable
           cache: true
 
+      # v5, not v4: the run that verified this workflow printed
+      # "setup-java v4 is deprecated and will no longer receive updates.
+      #  Please migrate to actions/setup-java@v5." v4 was working; it has simply
+      # been retired, and there is no reason to keep a step on a dead major.
+      #
       # Placed after flutter-action deliberately: setup-java writes JAVA_HOME
       # to the environment last, so Gradle is guaranteed to run on Temurin 17
       # rather than on whatever JDK flutter-action happened to set up.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
