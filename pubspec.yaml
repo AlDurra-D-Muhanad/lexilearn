@@ -60,6 +60,7 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
   sqflite_common_ffi: ^2.4.4
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -125,3 +126,23 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Launcher icon.
+#
+# assets/icon/app_icon.png is a generated 1024x1024 opaque PNG: a gold open book on the
+# brand purple (#F59E0B on #885CF6), no rounded corners and no transparency, because
+# Android applies the mask itself. The glyph is drawn inside the adaptive-icon safe zone
+# (the central 66% of the 108dp canvas), so `adaptive_icon_foreground_inset` is 0 -- the
+# package's 16% default would shrink it a further 32% and leave the book looking lost.
+#
+# `android` MUST stay "ic_launcher": that is what AndroidManifest.xml already points at
+# with @mipmap/ic_launcher, and this package does not edit the manifest.
+#
+# After changing the PNG, re-run: dart run flutter_launcher_icons
+flutter_launcher_icons:
+  android: "ic_launcher"
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#885CF6"
+  adaptive_icon_foreground: "assets/icon/app_icon.png"
+  adaptive_icon_foreground_inset: 0
+  min_sdk_android: 24
