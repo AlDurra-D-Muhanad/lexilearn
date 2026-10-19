@@ -96,20 +96,37 @@ final class DictionarySense {
 
 /// One English headword reached from an Arabic query.
 ///
-/// The Arabic text itself is not carried: an Arabic search is a lookup *key*, and
-/// the answer the app shows is an English entry. [entry] carries the senses.
+/// The Arabic text itself is carried: an Arabic search is a lookup *key*, and
+/// the answer the app shows is an English entry — but a list of headwords with
+/// no Arabic beside them tells the user nothing about **which** of the senses
+/// matched, and 30,567 of the dictionary's Arabic senses are stored as
+/// comma-separated synonym lists.
 final class ArabicSenseHit {
-  const ArabicSenseHit({required this.entry});
+  const ArabicSenseHit({
+    required this.entry,
+    this.arabic,
+    this.partOfSpeech,
+  });
 
   final DictionaryEntry entry;
 
+  /// The Arabic of the sense that matched, as the dictionary wrote it.
+  final String? arabic;
+
+  /// The part of speech of the sense that matched.
+  final String? partOfSpeech;
+
   @override
-  String toString() => 'ArabicSenseHit(${entry.word})';
+  String toString() => 'ArabicSenseHit(${entry.word}, $arabic)';
 }
 
 /// A near-miss from the spell checker, with the distance that produced it.
 final class SpellingSuggestion {
-  const SpellingSuggestion({required this.entry, required this.distance});
+  const SpellingSuggestion({
+    required this.entry,
+    required this.distance,
+    this.matchedForm,
+  });
 
   final DictionaryEntry entry;
 
@@ -117,20 +134,33 @@ final class SpellingSuggestion {
   /// word to [DictionaryEntry.norm].
   final int distance;
 
+  /// The inflected form the distance was measured against, or `null` when the
+  /// candidate was the headword itself.
+  ///
+  /// **This is the second half of the union.** `childern` is one transposition
+  /// from `children`, and `children` is not a headword - it resolves through
+  /// the morphology table to `child`, which is. The distance is measured
+  /// against the *form*, so it is 1, and the headword the form resolves to is
+  /// what the user is offered. Without this field the two halves of the
+  /// candidate set are indistinguishable, and the distance would read as if it
+  /// had been measured against the headword - which it was not, and could not
+  /// have been, because `damerauLevenshtein('childern', 'child')` is 3.
+  final String? matchedForm;
+
   @override
-  String toString() => 'SpellingSuggestion(${entry.word}, $distance)';
+  String toString() => 'SpellingSuggestion(${entry.word}, $distance'
+      '${matchedForm == null ? '' : ' via $matchedForm'})';
 }
 
 /// Everything the CC-BY-SA-4.0 licence obliges an attribution screen to show,
 /// read out of the database's `meta` table.
 ///
-/// **Built from `meta`, and from nothing else.** The source dictionary's
-/// `meta.attributionFile` points at `C:/Users/user/Desktop/en-ar/ATTRIBUTION`,
-/// which does not exist on any machine this app will run on, so it is carried
-/// here as [attributionFile] - a path that is *recorded*, never resolved and
-/// never read. Inventing attribution text to fill the gap would be worse than
-/// the gap: the licence obliges the app to name its sources accurately, and a
-/// fabricated paragraph is not a source.
+/// **The record, and not a summary.** The `meta` block inside the source
+/// dictionary names the *build* and reduces three different licences to one.
+/// The build tool therefore writes the upstream project, its URL and **each
+/// source's own licence and verbatim credit** into `meta`, and this class
+/// reads them back. Two of the three sources are not share-alike, and
+/// labelling them as though they were would misstate the licence.
 final class DictionaryAttribution {
   const DictionaryAttribution({
     required this.name,
@@ -138,7 +168,6 @@ final class DictionaryAttribution {
     required this.sources,
     required this.license,
     required this.licenseUrl,
-    required this.attributionFile,
     required this.generatedFrom,
     required this.entryCount,
     required this.senseCount,
@@ -146,6 +175,13 @@ final class DictionaryAttribution {
     required this.exampleCount,
     required this.ipaEntryCount,
     required this.arabicKeyCount,
+    this.upstreamProject = '',
+    this.upstreamProjectUrl = '',
+    this.upstreamTagline = '',
+    this.upstreamPair = '',
+    this.upstreamPairDescription = '',
+    this.sourceLicenses = const <String, String>{},
+    this.sourceCredits = const <String, String>{},
   });
 
   /// `English-Arabic Dictionary`.
@@ -165,12 +201,34 @@ final class DictionaryAttribution {
   /// The licence's own URL.
   final String licenseUrl;
 
-  /// A path on the machine that generated the data, kept verbatim and never
-  /// resolved. See the class doc.
-  final String? attributionFile;
-
   /// `en-ar.dict.dz + en-ar.idx (StarDict 2.4.2, sametypesequence=h)`.
   final String? generatedFrom;
+
+  /// The upstream project the dictionary was built from.
+  final String upstreamProject;
+
+  /// The upstream project's URL.
+  final String upstreamProjectUrl;
+
+  /// The upstream project's own one-line description.
+  final String upstreamTagline;
+
+  /// The dictionary pair inside the upstream project: `en-ar`.
+  final String upstreamPair;
+
+  /// The upstream's own description of that pair.
+  final String upstreamPairDescription;
+
+  /// Each source's own licence, keyed by the source's id.
+  ///
+  /// **The three differ.** `WordNet-3.0` is a separate and permissive
+  /// licence, `CC-BY-SA-3.0` and `CC-BY-SA-4.0` are not the same thing
+  /// either, and one share-alive line for all three would misstate two of
+  /// them.
+  final Map<String, String> sourceLicenses;
+
+  /// Each source's verbatim credit string, keyed by the source's id.
+  final Map<String, String> sourceCredits;
 
   /// Headwords in the shipped database, after the case-variant merge: 31,600.
   final int entryCount;
@@ -199,4 +257,20 @@ final class DictionaryAttribution {
       sources.any((s) => s.startsWith('omw-arb')) &&
       sources.any((s) => s.startsWith('pwn30')) &&
       sources.any((s) => s.startsWith('wikt-en-ar'));
+
+  /// The id of each named source, in the order the sources are named.
+  ///
+  /// The `meta` list is `id: credit`, and the id is the part before the
+  /// colon. The screen needs the ids because **the licences are keyed by
+  /// them**.
+  List<String> get sourceIds => <String>[
+        for (final source in sources)
+          if (source.contains(':')) source.split(':').first.trim() else source,
+      ];
+
+  /// The credit string of [id], or the empty string when it is not named.
+  String creditOf(String id) => sourceCredits[id] ?? '';
+
+  /// The licence of [id], or the empty string when it is not named.
+  String licenseOf(String id) => sourceLicenses[id] ?? '';
 }

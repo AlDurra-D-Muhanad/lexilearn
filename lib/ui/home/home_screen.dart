@@ -5,10 +5,15 @@ import 'dart:math';
 // app's own one is this file's `SearchController` and Material's is hidden.
 // Renaming either would break the interface later tasks were told to depend on.
 import 'package:flutter/material.dart' hide SearchController;
+import 'package:lexilearn/data/dictionary/dictionary_models.dart';
+import 'package:lexilearn/domain/dictionary_pack.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/design/design_tokens.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/domain/word_of_the_day.dart';
+import 'package:lexilearn/ui/dictionary/dictionary_controller.dart';
+import 'package:lexilearn/ui/dictionary/dictionary_search_controller.dart';
+import 'package:lexilearn/ui/dictionary/dictionary_word_screen.dart';
 import 'package:lexilearn/ui/favorites/favorites_screen.dart';
 import 'package:lexilearn/ui/home_shell.dart';
 import 'package:lexilearn/ui/search/search_controller.dart';
@@ -29,6 +34,8 @@ const String _meaningButton = 'معرفة المعنى';
 const String _clearTooltip = 'مسح';
 const String _noResults = 'لا توجد نتائج. جرّب جزءاً من الكلمة.';
 const String _searchFailed = 'تعذّر البحث.';
+const String _searching = 'جارٍ البحث…';
+const String _preparingDictionary = 'جارٍ تجهيز المعجم…';
 
 /// The brand's first destination: the greeting, the word of the day, the search
 /// field, and the 2×2 quick-launch grid.
@@ -48,6 +55,7 @@ class HomeScreen extends StatefulWidget {
     required this.packKey,
     required this.onPackSelected,
     required this.onOpenWord,
+    this.onOpenDictionaryWord,
     this.wallpaperSeed,
   });
 
@@ -87,6 +95,16 @@ class HomeScreen extends StatefulWidget {
   /// `HomeShell` holds a no-op.
   final ValueChanged<VocabEntry> onOpenWord;
 
+  /// Opens one dictionary word.
+  ///
+  /// **Optional, and it is a separate door rather than a wider one.** A
+  /// dictionary entry and a pack entry are different things — the first has
+  /// senses, glosses and examples, the second has a translation and a note —
+  /// and a screen that has to guess which it is holding is a screen that will
+  /// guess wrong. Null means "there is no dictionary here", which is the
+  /// truth for a build without one.
+  final ValueChanged<DictionaryEntry>? onOpenDictionaryWord;
+
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -96,6 +114,19 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _field = TextEditingController();
 
   Timer? _debounce;
+
+  /// The dictionary's controller, so the screen can say how far its copy has
+  /// got and know when its engine is there.
+  late final DictionaryController _dictionary;
+
+  /// The dictionary's own search, or null while there is no dictionary.
+  ///
+  /// **Created when the engine arrives and disposed when it does not.** The
+  /// dictionary is 26 MB and its copy is off the UI path, so for the first
+  /// few seconds of a first launch there is no engine and therefore no
+  /// dictionary search — and the screen says so rather than showing an empty
+  /// result list with no explanation.
+  DictionarySearchController? _dictionarySearch;
 
   /// **Home's rotating photograph.**
   ///
@@ -143,7 +174,57 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _search = SearchController(repository: context.read<VocabRepository>())
       ..addListener(_onSearchChanged);
+    // `context.read` is safe in `initState` — it does not subscribe — which is
+    // the same reason the repository is read there.
+    _dictionary = context.read<DictionaryController>();
+    _dictionary.addListener(_onDictionaryChanged);
+    _syncDictionarySearch();
     _loadPack(widget.packKey);
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    // The rotation's timer and its lifecycle observer, in the same place as
+    // everything else this state owns. `NatureRotation.dispose` cancels the
+    // timer and marks the controller disposed, so a tick that was already in
+    // flight when the route popped is a no-op rather than a notification into a
+    // dead `State`.
+    _rotation?.dispose();
+    _search
+      ..removeListener(_onSearchChanged)
+      ..dispose();
+    _dictionarySearch
+      ?..removeListener(_onSearchChanged)
+      ..dispose();
+    _dictionary.removeListener(_onDictionaryChanged);
+    _field.dispose();
+    super.dispose();
+  }
+
+  /// Creates or disposes the dictionary's search, as the engine comes and
+  /// goes.
+  void _syncDictionarySearch() {
+    final engine = _dictionary.engine;
+    if (engine == null) {
+      final existing = _dictionarySearch;
+      if (existing == null) return;
+      _dictionarySearch = null;
+      existing
+        ..removeListener(_onSearchChanged)
+        ..dispose();
+      return;
+    }
+    if (_dictionarySearch != null) return;
+    _dictionarySearch = DictionarySearchController(engine: engine)
+      ..addListener(_onSearchChanged);
+  }
+
+  /// The dictionary became ready, or its copy moved on.
+  void _onDictionaryChanged() {
+    if (!mounted) return;
+    _syncDictionarySearch();
+    setState(() {});
   }
 
   @override
@@ -181,22 +262,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _debounce?.cancel();
       _run(_field.text);
     }
-  }
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    // The rotation's timer and its lifecycle observer, in the same place as
-    // everything else this state owns. `NatureRotation.dispose` cancels the
-    // timer and marks the controller disposed, so a tick that was already in
-    // flight when the route popped is a no-op rather than a notification into a
-    // dead `State`.
-    _rotation?.dispose();
-    _search
-      ..removeListener(_onSearchChanged)
-      ..dispose();
-    _field.dispose();
-    super.dispose();
   }
 
   Future<void> _loadPack(String packKey) async {
@@ -246,7 +311,20 @@ class _HomeScreenState extends State<HomeScreen> {
     _debounce = Timer(AppDurations.standard, () => _run(value));
   }
 
-  void _run(String value) => _search.search(value, packKey: widget.packKey);
+  /// Runs the query against whichever search the active pack calls for.
+  ///
+  /// **Two searches, and the choice is the pack's.** The dictionary is the
+  /// default pack, so the field searches the dictionary when the dictionary
+  /// is the active pack and the pack's own words otherwise. Both are behind
+  /// the same 250 ms debounce, so the field behaves the same either way.
+  void _run(String value) {
+    final dictionary = _dictionarySearch;
+    if (widget.packKey == dictionaryPackKey && dictionary != null) {
+      dictionary.search(value);
+      return;
+    }
+    _search.search(value, packKey: widget.packKey);
+  }
 
   /// Empties the field and goes straight back to the dashboard.
   ///
@@ -257,13 +335,20 @@ class _HomeScreenState extends State<HomeScreen> {
     _debounce?.cancel();
     _field.clear();
     _search.clear();
+    _dictionarySearch?.clear();
   }
 
   /// Whether the body is showing results rather than the dashboard.
   ///
   /// Decided on the *trimmed* query, because a field holding nothing but spaces
   /// should stay on the dashboard instead of dumping the whole pack.
-  bool get _hasQuery => _search.query.trim().isNotEmpty;
+  bool get _hasQuery {
+    final dictionary = _dictionarySearch;
+    if (widget.packKey == dictionaryPackKey && dictionary != null) {
+      return dictionary.query.trim().isNotEmpty;
+    }
+    return _search.query.trim().isNotEmpty;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -310,6 +395,16 @@ class _HomeScreenState extends State<HomeScreen> {
         AppSpacing.m,
       ),
       children: <Widget>[
+        // **The dictionary's copy, said out loud.**
+        //
+        // The brief is explicit: the app must "never leave the app showing an
+        // empty search with no explanation". So while the 26 MB copy runs,
+        // the home screen says what is happening and how far it has got —
+        // and the dashboard itself is still there underneath it.
+        if (_dictionary.isInstalling) ...<Widget>[
+          _DictionaryProgressBanner(controller: _dictionary),
+          const SizedBox(height: AppSpacing.m),
+        ],
         if (wordOfTheDay != null) ...<Widget>[
           _WordOfTheDayCard(
             entry: wordOfTheDay,
@@ -327,6 +422,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _results() {
+    final dictionary = _dictionarySearch;
+    if (widget.packKey == dictionaryPackKey && dictionary != null) {
+      return _dictionaryResults(dictionary);
+    }
     if (_search.isSearching) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -365,6 +464,93 @@ class _HomeScreenState extends State<HomeScreen> {
         onTap: widget.onOpenWord,
       ),
     );
+  }
+
+  /// The dictionary's results.
+  ///
+  /// **A list, and the list is long.** An Arabic key is shared by many
+  /// senses — the most-shared key in this dictionary resolves to more
+  /// headwords than a screen of twenty could hold — so the list is a scroll
+  /// view with as many rows as the search found, and each row carries the
+  /// headword **and** the Arabic that matched.
+  ///
+  /// **A suggestion is a card, never a row.** The card shows what was typed
+  /// beside the word being offered, so the app never shows a different word
+  /// as if the user had typed it.
+  Widget _dictionaryResults(DictionarySearchController controller) {
+    if (controller.isSearching) {
+      // **A line of words, not a spinner.** An indeterminate
+      // `CircularProgressIndicator` schedules frames for ever, so
+      // `pumpAndSettle` never returns while one is on screen — and this
+      // screen is the one the golden photographs. The same decision
+      // `more_screen.dart` and `stats_screen.dart` make, and for the same
+      // reason.
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.l),
+          child: Text(
+            _searching,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ),
+      );
+    }
+    if (controller.error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.l),
+          child: Text(
+            _searchFailed,
+            textAlign: TextAlign.center,
+            style: Theme.of(context)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(color: Theme.of(context).colorScheme.error),
+          ),
+        ),
+      );
+    }
+    final items = controller.items;
+    if (items.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.l),
+          child: Text(
+            _noResults,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ),
+      );
+    }
+    return ListView.separated(
+      itemCount: items.length,
+      separatorBuilder: (_, _) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        final item = items[index];
+        if (item is DictionarySuggestionItem) {
+          return DictionarySuggestionCard(
+            typed: item.typed,
+            entry: item.entry,
+            reason: item.reason,
+            onOpen: () => _openDictionaryEntry(item.entry),
+          );
+        }
+        final word = item as DictionaryWordItem;
+        return _DictionaryRow(
+          entry: word.entry,
+          arabic: word.arabic,
+          onTap: () => _openDictionaryEntry(word.entry),
+        );
+      },
+    );
+  }
+
+  void _openDictionaryEntry(DictionaryEntry entry) {
+    final open = widget.onOpenDictionaryWord;
+    if (open == null) return;
+    open(entry);
   }
 }
 
@@ -886,9 +1072,110 @@ class _QuickLaunchTile extends StatelessWidget {
   }
 }
 
+/// One dictionary result: the headword, and the Arabic that matched.
+///
+/// **Both, and the Arabic is not decoration.** An Arabic query is a lookup
+/// *key* and 30,567 of the dictionary's Arabic senses are stored as
+/// comma-separated synonym lists, so a row that showed only the headword
+/// would not tell the user which of the senses they had found.
+class _DictionaryRow extends StatelessWidget {
+  const _DictionaryRow({
+    required this.entry,
+    required this.arabic,
+    required this.onTap,
+  });
+
+  final DictionaryEntry entry;
+  final String? arabic;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final secondary =
+        isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
+
+    return ListTile(
+      onTap: onTap,
+      title: Text(
+        entry.word,
+        textDirection: TextDirection.ltr,
+        style: AppText.latin,
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          if (arabic != null && arabic!.isNotEmpty)
+            Text(arabic!, textDirection: TextDirection.rtl),
+          if (entry.ipa != null && entry.ipa!.isNotEmpty)
+            Text(
+              entry.ipa!,
+              textDirection: TextDirection.ltr,
+              style: AppText.latin.copyWith(fontSize: AppText.caption, color: secondary),
+            ),
+        ],
+      ),
+      isThreeLine: (arabic != null && arabic!.isNotEmpty) &&
+          (entry.ipa != null && entry.ipa!.isNotEmpty),
+    );
+  }
+}
+
+/// The dictionary's copy, and how far it has got.
+///
+/// **A determinate bar and a sentence.** The bar is determinate because the
+/// copy really does have a fraction, and an indeterminate one schedules
+/// frames for ever — which is also why `pumpAndSettle` would never return
+/// while it was on screen.
+class _DictionaryProgressBanner extends StatelessWidget {
+  const _DictionaryProgressBanner({required this.controller});
+
+  final DictionaryController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final secondary =
+        isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
+    final percent = (controller.progress * 100).round();
+
+    return AppSurface(
+      padding: const EdgeInsets.all(AppSpacing.m),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            _preparingDictionary,
+            style: theme.textTheme.titleSmall,
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            '$percent٪',
+            textDirection: TextDirection.ltr,
+            style: theme.textTheme.bodySmall
+                ?.merge(AppText.latin)
+                .copyWith(color: secondary),
+          ),
+          const SizedBox(height: AppSpacing.s),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadii.pill),
+            child: LinearProgressIndicator(
+              value: controller.progress,
+              minHeight: 6,
+              backgroundColor:
+                  isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// One search result.
-class _EntryRow extends StatelessWidget {
-  const _EntryRow({required this.entry, required this.onTap});
+class _EntryRow extends StatelessWidget {  const _EntryRow({required this.entry, required this.onTap});
 
   final VocabEntry entry;
   final ValueChanged<VocabEntry> onTap;

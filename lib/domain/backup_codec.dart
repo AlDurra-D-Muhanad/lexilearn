@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'backup_document.dart';
+import 'dictionary_pack.dart';
 import 'pack_codec.dart';
 import 'quiz_session_result.dart';
 import 'vocab_pack.dart';
@@ -134,6 +135,13 @@ class BackupCodec {
   /// There is no foreign key onto `entries` on purpose, so a row may outlive the
   /// word it names; dropping it would destroy a curation for a pack whose entries
   /// could come back.
+  ///
+  /// **The dictionary pack is the one exception, and it is not an oversight.**
+  /// The dictionary is reference data: it is not carried in the backup — 25 MB
+  /// of it must never reach a file the user emails to themselves — but its **row**
+  /// survives a restore, because the row is what the `favorites` foreign key
+  /// points at. A saved dictionary word is the user's data and it is in the
+  /// backup; the words it names are not.
   static void _checkFavoritesResolve(
     List<VocabPack> packs,
     List<BackupFavorite> favorites,
@@ -142,6 +150,7 @@ class BackupCodec {
     final packIds = <String>{for (final pack in packs) pack.packId};
     for (final favorite in favorites) {
       if (packIds.contains(favorite.packKey)) continue;
+      if (favorite.packKey == dictionaryPackKey) continue;
       // The **first** offender, named specifically: a user with a 300-word file
       // needs to know which line to fix, not that favourites are involved.
       throw PackDecodeException(

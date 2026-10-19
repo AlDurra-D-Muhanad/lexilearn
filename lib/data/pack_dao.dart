@@ -116,6 +116,57 @@ class PackDao {
     });
   }
 
+  /// Inserts or replaces the pack's own row, with **no entries**.
+  ///
+  /// **A separate method, and not `insertPack` with an empty list.** The
+  /// dictionary is a pack whose words live in a read-only file of their own
+  /// and not in this table — it is reference data, and a backup must never
+  /// carry 25 MB of it. So it needs a row (the `favorites` table's foreign key
+  /// points at `packs(pack_key)`) and no entries.
+  ///
+  /// The row carries the dictionary's **real** size, so the pack list can say
+  /// how many words there are without reading them.
+  Future<void> insertPackRow(
+    PackSummary summary, {
+    DatabaseExecutor? executor,
+  }) async {
+    await (executor ?? _db).insert(
+      'packs',
+      <String, Object?>{
+        'pack_key': summary.packKey,
+        'title': summary.title,
+        'source_language': summary.sourceLanguage,
+        'target_language': summary.targetLanguage,
+        'schema_version': VocabPack.currentSchemaVersion,
+        'entry_count': summary.entryCount,
+        'is_bundled': summary.isBundled ? 1 : 0,
+        'imported_at': summary.importedAt.toUtc().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// The pack's own row, or null.
+  Future<PackSummary?> packRow(String packKey) async {
+    final rows = await _db.query(
+      'packs',
+      where: 'pack_key = ?',
+      whereArgs: <Object?>[packKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    return PackSummary(
+      packKey: row['pack_key']! as String,
+      title: row['title']! as String,
+      sourceLanguage: row['source_language']! as String,
+      targetLanguage: row['target_language']! as String,
+      entryCount: (row['entry_count']! as num).toInt(),
+      isBundled: (row['is_bundled']! as num).toInt() == 1,
+      importedAt: DateTime.parse(row['imported_at']! as String),
+    );
+  }
+
   /// Cascades to `entries`. Also removes this pack's progress and sessions so
   /// Stats cannot read rows for a pack that no longer exists.
   ///

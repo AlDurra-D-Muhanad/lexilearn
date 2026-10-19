@@ -59,6 +59,61 @@ const String morphologyAssetPath = 'assets/dictionary/en_morphology.json';
 const String generatedConstantsPath =
     'lib/data/dictionary/dictionary_artifact.dart';
 
+/// The upstream project the dictionary was built from, and its URL.
+///
+/// **Read from the upstream repository's own configuration**, not paraphrased:
+/// `docs/dictionary-attribution.md` records where each of these strings came
+/// from, and the upstream's own licensing rule is that an adapter must
+/// determine a licence from the data rather than assume one. The `meta` block
+/// inside the source JSON names the *build*, not the project, and reduces
+/// three different licences to one — so the record is written here, at build
+/// time, where it can be checked against the artefact it ships with.
+const String upstreamProject = 'DanielGregorini/koreader-dicts';
+const String upstreamProjectUrl =
+    'https://github.com/DanielGregorini/koreader-dicts';
+const String upstreamTagline =
+    'Free offline StarDict dictionaries for KOReader';
+
+/// The dictionary pair inside the upstream project, and its own description.
+const String upstreamPair = 'en-ar';
+const String upstreamPairDescription =
+    'English to Arabic, built by pivoting Princeton WordNet 3.0 through the '
+    'Arabic WordNet and enriching with the English Wiktionary. Includes an '
+    'inflection index.';
+
+/// Each source's own licence, from the upstream's `configs/sources.toml`.
+///
+/// **The three licences differ, and collapsing them into one share-alive
+/// line would misstate two of them.** `WordNet-3.0` is a separate and
+/// permissive licence; `omw-arb` is `CC-BY-SA-3.0`, which the upstream notes
+/// "upgrades to 4.0, so it bundles with Wiktionary without trouble"; and
+/// `wikt-en-ar` is `CC-BY-SA-4.0`.
+const Map<String, String> sourceLicenses = <String, String>{
+  'pwn30': 'WordNet-3.0',
+  'omw-arb': 'CC-BY-SA-3.0',
+  'wikt-en-ar': 'CC-BY-SA-4.0',
+};
+
+/// The source's own `sources` list, keyed by id.
+///
+/// The list is `id: credit`, and the credit is the source's own wording —
+/// "Princeton University WordNet 3.0", "Arabic WordNet (AWN v2), via Open
+/// Multilingual Wordnet 1.4", "English Wiktionary via kaikki.org
+/// (wiktextract)". The screen shows them one by one with their licences, so
+/// they are keyed here rather than left as a list of strings to be split
+/// again on the way to the screen.
+Map<String, String> _creditsById(Object? raw) {
+  if (raw is! List) return const <String, String>{};
+  final credits = <String, String>{};
+  for (final entry in raw) {
+    if (entry is! String) continue;
+    final separator = entry.indexOf(':');
+    if (separator <= 0) continue;
+    credits[entry.substring(0, separator).trim()] = entry.substring(separator + 1).trim();
+  }
+  return credits;
+}
+
 Future<void> main(List<String> args) async {
   final sourcePath = args.isNotEmpty ? args[0] : defaultSourcePath;
   final morphologyPath = args.length > 1 ? args[1] : defaultMorphologyPath;
@@ -265,7 +320,23 @@ Future<void> main(List<String> args) async {
       'sources': jsonEncode(sourceMeta['sources'] ?? const <String>[]),
       'license': (sourceMeta['license'] as String?) ?? '',
       'licenseUrl': (sourceMeta['licenseUrl'] as String?) ?? '',
-      'attributionFile': (sourceMeta['attributionFile'] as String?) ?? '',
+      // **The attribution record, and it is the record rather than a
+      // summary.** The `meta` block inside the source JSON names the *build*
+      // and reduces three different licences to one; the app has to show
+      // each source's own licence, because two of the three are not
+      // share-alike. The strings below are read from the upstream project's
+      // own `configs/sources.toml` and are recorded verbatim in
+      // `docs/dictionary-attribution.md`; nothing here is paraphrased.
+      'upstreamProject': upstreamProject,
+      'upstreamProjectUrl': upstreamProjectUrl,
+      'upstreamTagline': upstreamTagline,
+      'upstreamPair': upstreamPair,
+      'upstreamPairDescription': upstreamPairDescription,
+      'sourceLicenses': jsonEncode(sourceLicenses),
+      // **The credits are the source's own**, parsed out of its `sources`
+      // list rather than written again here: the list is `id: credit`, and
+      // the screen wants them keyed by id.
+      'sourceCredits': jsonEncode(_creditsById(sourceMeta['sources'])),
       'generatedFrom': (sourceMeta['generatedFrom'] as String?) ?? '',
       'sourceFile': sourceFile.uri.pathSegments.last,
       'sourceSha256': sourceSha,

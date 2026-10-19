@@ -162,6 +162,96 @@ class DictionaryStore {
     return matches;
   }
 
+  /// The headwords whose normalised form starts with [prefix], **shortest
+  /// first**, with their senses.
+  ///
+  /// **The search list's prefix band, and it is not the autocomplete.**
+  /// [headwordsWithPrefix] is the shipped README's `suggest` verbatim: it takes
+  /// the first [limit] matches *in dictionary order* and sorts those by length.
+  /// That is the right order for a type-ahead, where the user is still typing
+  /// and the words they are most likely to want are the ones that come first
+  /// alphabetically. A finished search is a different thing - the word the user
+  /// typed is already shown above this list, and the rest read shortest-first
+  /// and then alphabetically, so the list does not reshuffle as the query grows.
+  ///
+  /// **The alphabetical cut is a bound, and it is stated rather than hidden.**
+  /// A range scan on the `UNIQUE(norm)` index returns every headword under the
+  /// prefix - ten thousand of them for a single letter - so the scan is capped
+  /// at [prefixScanLimit] rows. The cap takes the *alphabetically* first, which
+  /// is not the same as the shortest: `cab` sorts before `cabbage`, and a word
+  /// that is a prefix of another sorts before it, so the short words are
+  /// concentrated at the front of the range anyway.
+  Future<List<DictionaryEntry>> entriesStartingWith(
+    String prefix, {
+    int limit = 50,
+  }) async {
+    if (prefix.isEmpty || limit <= 0) return const <DictionaryEntry>[];
+    final rows = await query(
+      'SELECT id, word, norm, ipa, has_ar FROM entries '
+      'WHERE norm >= ? AND norm < ? ORDER BY norm LIMIT ?',
+      <Object?>[prefix, '$prefix\uFFFF', prefixScanLimit],
+    );
+    if (rows.isEmpty) return const <DictionaryEntry>[];
+    final matches = rows.map(_entry).toList()
+      ..sort((a, b) {
+        final byLength = a.word.length.compareTo(b.word.length);
+        if (byLength != 0) return byLength;
+        // The tie-break is the point: Dart's `List.sort` is **not** stable, so
+        // two words of the same length could come back in either order and the
+        // list would differ between two runs of the same query.
+        return a.norm.compareTo(b.norm);
+      });
+    final heads = matches.take(limit).toList(growable: false);
+    return entriesByNormsWithSenses(
+      heads.map((entry) => entry.norm).toList(growable: false),
+    );
+  }
+
+  /// The headwords whose **own English text** contains [text], with their
+  /// senses.
+  ///
+  /// **The third band, and the loosest of the three.** The exact band matches a
+  /// headword; the prefix band matches a headword that starts with the query;
+  /// this one matches an entry whose *definition* contains the query - the
+  /// dictionary stores a headword's English gloss as a sentence or a list of
+  /// them, and a user who types "young person" is asking for the entry whose
+  /// gloss says "a young person of either sex".
+  ///
+  /// **It is the mirror of the Arabic band's third case**, which is the
+  /// README's own: the Arabic key is stored as a comma-separated list of
+  /// synonyms and the search looks *inside* that list, because a dictionary
+  /// where a row visibly contains the word but the search does not find it is
+  /// broken. The English side is the same rule against the English side.
+  ///
+  /// **A scan, and the cost is the price.** There is no index on `senses.en` -
+  /// it holds 81,451 sentences - so this is a full read of the column. Measured
+  /// at **47 to 116 ms** on the shipped file, against the spell checker's
+  /// 37 to 119 ms on the same path. It is the last band, it is bounded by
+  /// [limit], and it is only reached for a query of at least
+  /// [minimumEnglishTextQueryLength] characters - a one-letter query matches
+  /// 31,339 entries and a list of twenty of them would be a lie.
+  Future<List<DictionaryEntry>> entriesMentioningEnglish(
+    String text, {
+    int limit = 20,
+  }) async {
+    if (text.length < minimumEnglishTextQueryLength) {
+      return const <DictionaryEntry>[];
+    }
+    if (limit <= 0) return const <DictionaryEntry>[];
+    final rows = await query(
+      'SELECT MIN(e.id) AS id, MIN(e.word) AS word, MIN(e.norm) AS norm, '
+      'MIN(e.ipa) AS ipa, MIN(e.has_ar) AS has_ar '
+      'FROM senses s JOIN entries e ON e.id = s.entry_id '
+      "WHERE s.en IS NOT NULL AND lower(s.en) LIKE ? ESCAPE '\\' "
+      'GROUP BY e.id ORDER BY word LIMIT ?',
+      <Object?>['%${_escapeLike(text)}%', limit],
+    );
+    if (rows.isEmpty) return const <DictionaryEntry>[];
+    return entriesByNormsWithSenses(
+      rows.map((row) => row['norm']! as String).toList(growable: false),
+    );
+  }
+
   /// English headwords reachable from a normalised Arabic [key].
   ///
   /// **Exact key first, then the same key as a prefix** - two queries, in that
@@ -190,16 +280,90 @@ class DictionaryStore {
     );
     if (exact.length >= limit) return exact;
     final seen = exact.map((hit) => hit.entry.id).toSet();
+    // **The prefix half gets the budget the exact half did not spend.** The
+    // first version asked for a full `limit` here, so a key with one exact hit
+    // and a hundred prefix hits answered with a hundred and one rows - over the
+    // limit the caller set. The limit is a promise about the size of the
+    // answer, and a promise that is sometimes exceeded is not a promise.
     final prefixed = await _arabicQuery(
       'WHERE s.norm_ar >= ? AND s.norm_ar < ? AND s.norm_ar <> ?',
       <Object?>[key, '$key\uFFFF', key],
-      limit,
+      limit - exact.length,
     );
-    return _hydrateHits(<ArabicSenseHit>[
+    final merged = <ArabicSenseHit>[
       ...exact,
       ...prefixed.where((hit) => seen.add(hit.entry.id)),
+    ];
+    if (merged.length >= limit) return _hydrateHits(merged);
+
+    // **The third case, and the one the list shape is about.** The two above
+    // match the key at the *front* of the stored list. A user who types the
+    // second or third word of `روديسيا, زمبابوي, زيمبابوي` finds nothing under
+    // either, and a dictionary where the row visibly contains the word but the
+    // search does not find it is broken. So the key is matched inside the list
+    // as well - and it comes last, because an exact key is a better answer
+    // than a word that merely appears in a list of synonyms.
+    final contained = await _containedArabicQuery(key, limit - merged.length);
+    return _hydrateHits(<ArabicSenseHit>[
+      ...merged,
+      ...contained.where((hit) => seen.add(hit.entry.id)),
     ]);
   }
+
+  /// The headwords whose Arabic **list** holds [key] anywhere inside it.
+  ///
+  /// **Three LIKE patterns, because the element can be first, in the middle
+  /// or last.** The stored `norm_ar` is the normalised whole list with its
+  /// separators intact - `a, b, c` - so `, b,` finds the middle, `, b` the
+  /// last and `b,` the first.
+  ///
+  /// **The wildcards in the key are escaped.** `LIKE` treats `%` and `_` as
+  /// wildcards, and a key is a user's typing: without the escape, a query of
+  /// `a_b` would match `axb`.
+  Future<List<ArabicSenseHit>> _containedArabicQuery(
+    String key,
+    int limit,
+  ) async {
+    if (limit <= 0) return const <ArabicSenseHit>[];
+    final escaped = _escapeLike(key);
+    final rows = await query(
+      'SELECT MIN(e.id) AS id, MIN(e.word) AS word, MIN(e.norm) AS norm, '
+      'MIN(e.ipa) AS ipa, MIN(e.has_ar) AS has_ar, '
+      'MIN(s.pos) AS pos, MIN(s.ar) AS ar, MIN(s.en) AS en '
+      'FROM senses s JOIN entries e ON e.id = s.entry_id '
+      "WHERE s.norm_ar IS NOT NULL AND ("
+      "s.norm_ar LIKE ? ESCAPE '\\' OR "
+      "s.norm_ar LIKE ? ESCAPE '\\' OR "
+      "s.norm_ar LIKE ? ESCAPE '\\') "
+      'GROUP BY e.id ORDER BY word LIMIT ?',
+      <Object?>[
+        '$escaped,%',
+        '%,$escaped,%',
+        '%,$escaped',
+        limit,
+      ],
+    );
+    return <ArabicSenseHit>[
+      for (final row in rows)
+        ArabicSenseHit(
+          entry: DictionaryEntry(
+            id: row['id']! as int,
+            word: row['word']! as String,
+            norm: row['norm']! as String,
+            ipa: row['ipa'] as String?,
+            hasArabic: (row['has_ar']! as int) != 0,
+          ),
+          arabic: row['ar'] as String?,
+          partOfSpeech: row['pos'] as String?,
+        ),
+    ];
+  }
+
+  /// The `LIKE` wildcards in [value], escaped.
+  static String _escapeLike(String value) => value
+      .replaceAll('\\', '\\\\')
+      .replaceAll('%', '\\%')
+      .replaceAll('_', '\\_');
 
   /// Fills the senses of the headwords an Arabic search hit.
   ///
@@ -219,6 +383,11 @@ class DictionaryStore {
       for (final hit in hits)
         ArabicSenseHit(
           entry: byNorm[hit.entry.norm] ?? hit.entry,
+          // The Arabic of the matching sense is **kept** through the
+          // hydration: the hydrated entry carries every sense, and the one
+          // that matched is still the one the row was found by.
+          arabic: hit.arabic,
+          partOfSpeech: hit.partOfSpeech,
         ),
     ];
   }
@@ -297,6 +466,128 @@ class DictionaryStore {
     if (rows.isEmpty) return const <DictionaryEntry>[];
     return entriesByNormsWithSenses(
       rows.map((row) => row['norm']! as String).toList(growable: false),
+    );
+  }
+
+  /// How many headwords the study surface admits.
+  ///
+  /// **The number the report quotes, computed by the same rule the study
+  /// surface uses.** A count written out in prose is a claim; this is the
+  /// claim's arithmetic, and `test/data/dictionary/study_filter_test.dart`
+  /// asserts it against the shipped data.
+  Future<int> countStudyableEntries() async {
+    final rows = await query(
+      'SELECT COUNT(*) AS n FROM entries e WHERE ${_studyablePredicate('e')}',
+    );
+    return (rows.first['n']! as num).toInt();
+  }
+
+  /// The headwords the study surface admits, with their senses.
+  ///
+  /// **The filter is the dictionary's own, in SQL, and the same filter
+  /// [StudyFilter] applies in Dart.** Two implementations of one rule is two
+  /// things to keep in agreement, so the SQL and the Dart predicate are
+  /// asserted against each other in `test/data/dictionary/study_filter_test.dart`
+  /// over every headword in the shipped file.
+  ///
+  /// **The order is a hash of the row id, salted by [salt].** A deck that
+  /// always dealt the same words would be a deck nobody plays twice, and an
+  /// order that changed on every read would make the word of the day change
+  /// within the day. The salt is the day number, so the order is stable within
+  /// a day and different the next one - and it is a hash rather than a random
+  /// number because a random number is not stable at all.
+  Future<List<DictionaryEntry>> studyableEntries({
+    int limit = 0,
+    int salt = 0,
+  }) async {
+    final rows = await query(
+      'SELECT e.id, e.word, e.norm, e.ipa, e.has_ar FROM entries e '
+      'WHERE ${_studyablePredicate('e')} '
+      'ORDER BY (((e.id + $salt) * 2654435761) % 1000003) ASC '
+      '${limit > 0 ? 'LIMIT $limit' : ''}',
+    );
+    if (rows.isEmpty) return const <DictionaryEntry>[];
+    final heads = rows.map(_entry).toList();
+    final ids = heads.map((entry) => entry.id).toList(growable: false);
+    final senseRows = await query(
+      'SELECT id, entry_id, pos, ar, norm_ar, en FROM senses '
+      'WHERE entry_id IN (${_placeholders(ids.length)}) ORDER BY id',
+      ids,
+    );
+    final byEntry = <int, List<DictionarySense>>{};
+    for (final row in senseRows) {
+      byEntry
+          .putIfAbsent(row['entry_id']! as int, () => <DictionarySense>[])
+          .add(DictionarySense(
+            id: row['id']! as int,
+            pos: row['pos'] as String?,
+            arabic: row['ar'] as String?,
+            normArabic: row['norm_ar'] as String?,
+            gloss: row['en'] as String?,
+          ));
+    }
+    return heads
+        .map((head) => head.withSenses(byEntry[head.id] ?? const <DictionarySense>[]))
+        .toList(growable: false);
+  }
+
+  /// The SQL half of [StudyFilter].
+  ///
+  /// **Written once and used by both the count and the list**, so the two can
+  /// never disagree about which entries are studyable.
+  ///
+  /// * an affix is a headword that begins with a hyphen or an elision, or one
+  ///   the dictionary marks `suf` / `pref`;
+  /// * a proper noun is an entry **every one** of whose senses is `prop. n`.
+  ///   The clause therefore keeps an entry that has at least one sense which
+  ///   is *not* a proper noun — `may` is the month and a modal verb, and the
+  ///   verb is what a learner wants. An entry with no senses at all is kept,
+  ///   because there is nothing to call a proper noun.
+  static String _studyablePredicate(String alias) =>
+      "$alias.word NOT LIKE '-%' AND $alias.word NOT LIKE '''%' "
+      "AND $alias.id NOT IN (SELECT entry_id FROM senses "
+      "WHERE pos IN ('suf', 'pref')) "
+      "AND ($alias.id NOT IN (SELECT entry_id FROM senses) OR $alias.id IN ("
+      'SELECT entry_id FROM senses GROUP BY entry_id '
+      "HAVING SUM(CASE WHEN pos IS NULL OR pos <> 'prop. n' "
+      'THEN 1 ELSE 0 END) > 0))';
+
+  /// The senses whose Arabic list holds [key], however it is spelled inside
+  /// the list.
+  ///
+  /// **The comma-separated list is the reason this is not a plain equality
+  /// test.** 30,567 of the dictionary's Arabic senses are stored as a list of
+  /// synonyms - `روديسيا, زمبابوي, زيمبابوي` is one key - so a user who types
+  /// one word of a three-word list has to find the row that visibly contains
+  /// it. The stored `norm_ar` is the normalised *whole list*, so the element
+  /// has to be matched inside it.
+  ///
+  /// **Three patterns, because the element can be first, in the middle or
+  /// last.** The list is normalised with its separators intact - `a, b, c` -
+  /// so `, b,` finds the middle, `, b` the last and `b,` the first.
+  Future<List<Map<String, Object?>>> sensesContainingArabicKey(String key) {
+    if (key.isEmpty) return Future<List<Map<String, Object?>>>.value(const []);
+    return query(
+      'SELECT s.entry_id AS entry_id, s.id AS sense_id, s.pos AS pos, '
+      's.ar AS ar, s.norm_ar AS norm_ar, s.en AS en, '
+      "CASE WHEN s.norm_ar = ? THEN 0 "
+      "WHEN s.norm_ar LIKE ? THEN 1 "
+      "ELSE 2 END AS rank "
+      'FROM senses s '
+      'WHERE s.norm_ar IS NOT NULL AND ('
+      's.norm_ar = ? OR '
+      "s.norm_ar LIKE ? OR "
+      "s.norm_ar LIKE ? OR "
+      "s.norm_ar LIKE ?) "
+      'ORDER BY rank ASC, s.entry_id ASC',
+      <Object?>[
+        key,
+        '$key,%',
+        key,
+        '$key,%',
+        '%,$key,%',
+        '%,$key',
+      ],
     );
   }
 
@@ -385,6 +676,8 @@ class DictionaryStore {
             ipa: row['ipa'] as String?,
             hasArabic: (row['has_ar']! as int) != 0,
           ),
+          arabic: row['ar'] as String?,
+          partOfSpeech: row['pos'] as String?,
         ),
     ];
   }
@@ -403,6 +696,23 @@ class DictionaryStore {
 /// length.
 String _placeholders(int count) => List<String>.filled(count, '?').join(', ');
 
+/// How many rows the prefix band's range scan may read before it is cut.
+///
+/// **A bound, and a generous one.** A single letter is a prefix of thousands
+/// of headwords and the range scan on the `UNIQUE(norm)` index would read all
+/// of them; 500 rows is enough for the sort to have the short words in front
+/// of it and small enough to be free.
+const int prefixScanLimit = 500;
+
+/// The shortest query the English-text band will answer.
+///
+/// **Four characters, and the same floor the spell checker uses.** One
+/// character matches 31,339 entries and two match thousands, and a list of
+/// twenty of them would say nothing at all. The floor is the reason the band
+/// exists in this shape: it is for a phrase the user has finished typing, not
+/// for the first letter of one.
+const int minimumEnglishTextQueryLength = 4;
+
 /// Everything the dictionary's `meta` table must contain.
 ///
 /// **The key names, not just the content.** `lib/data/database.dart` holds the
@@ -415,7 +725,6 @@ const List<String> requiredMetaKeys = <String>[
   'sources',
   'license',
   'licenseUrl',
-  'attributionFile',
   'generatedFrom',
   'sourceFile',
   'sourceSha256',
@@ -429,6 +738,16 @@ const List<String> requiredMetaKeys = <String>[
   'ipaEntryCount',
   'arabicKeyCount',
   'trigramCount',
+  // **The attribution record**, written by the build tool from the upstream
+  // project's own configuration. `docs/dictionary-attribution.md` records
+  // where each string came from; nothing here is paraphrased.
+  'upstreamProject',
+  'upstreamProjectUrl',
+  'upstreamTagline',
+  'upstreamPair',
+  'upstreamPairDescription',
+  'sourceLicenses',
+  'sourceCredits',
 ];
 
 /// The value `meta.schemaVersion` must hold. Checked on open; see

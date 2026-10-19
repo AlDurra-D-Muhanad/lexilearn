@@ -59,17 +59,18 @@
   ## THE DISTINCT-COLOUR BASELINE — the one signal that does exist
 
   Every image is compared against a recorded count of its distinct colours, and
-  a mismatch fails. The fifteen committed images have fifteen different counts
-  (772 / 1203 / 1243 / 177 / 190 / 361 / 373 / 569 / 667, then the six quiz
-  images at 233 / 266 / 781 / 785 / 1145 / 1090), so the favourites bytes written
-  over `word_detail_user_shot_light.png` reported 177 where the honest value is
+  a mismatch fails. The thirty-one committed images have thirty-one different
+  counts — 772 / 1203 / 1243 / 177 / 190 / 361 / 373 / 569 / 667, then the six
+  quiz images at 233 / 266 / 781 / 785 / 1145 / 1090, and the twenty this
+  project has added since — so the favourites bytes written over
+  `word_detail_user_shot_light.png` reported 177 where the honest value is
   361.
 
   **This does not close the gap above, and it is not an identity oracle.** What it
   adds, precisely:
 
-    * it catches a swapped or stale image **whose colour histogram differs**,
-      which today is every pairing among the fifteen;
+    * it catches a swapped or stale image **whose colour histogram differs**;
+
     * it gives a second, independent signal that an image was rewritten without a
       regeneration, complementing the git staleness proxy below — which only
       fires while the tree is dirty.
@@ -77,15 +78,23 @@
   What it does **not** add:
 
     * it cannot say *which* image the bytes belong to;
-    * two images sharing a count would both pass;
+    * **two images sharing a count would both pass — and two of this round's
+      do.** `dictionary_word_user_shot_light.png` and
+      `attribution_screen_user_shot_light.png` both have 191 distinct colours,
+      and the bytes of one written over the other **passed the census**:
+      measured, with the write verified by SHA-256 before and after. That is
+      why the census now checks a **second** statistic — the pixel count of the
+      image's most common colour — and why the pair of numbers is unique for
+      all thirty-one images. See `$ExpectedDominantCount` below.
     * **it is rasteriser-dependent, so it also fires on a legitimate
       regeneration** on another platform. When you regenerate on purpose, update
-      `$ExpectedColourCount` from the `distinct colours` line this run prints —
-      that is the intended maintenance, not a defect to route around.
+      `$ExpectedColourCount` **and** `$ExpectedDominantCount` from the
+      `distinct colours` and `dominant` lines this run prints — that is the
+      intended maintenance, not a defect to route around.
 
-  Dimensions carry no signal (all fifteen are 1080x2340) and mtime is
+  Dimensions carry no signal (all thirty-one are 1080x2340) and mtime is
   unimplementable (git does not track it, and `--update-goldens` writes all
-  fifteen within a few milliseconds of each other).
+  thirty-one within a few milliseconds of each other).
 
   ## THE SET-EQUALITY GUARD
 
@@ -209,7 +218,20 @@ param(
     # from the next task that notices it is missing - which is the habit that
     # produced the four gaps above.
     'test/goldens/goldens/app_info_screen_user_shot_light.png',
-    'test/goldens/goldens/app_info_screen_user_shot_dark.png'
+    'test/goldens/goldens/app_info_screen_user_shot_dark.png',
+    # The dictionary's own three screens, added with the application layer that
+    # built them. **A screen this tool does not read is a screen nothing
+    # checks**, and the dictionary's search, its word screen and its
+    # attribution screen are three new surfaces with their own colours: the
+    # attribution screen names a licence and three upstream sources in Latin
+    # runs, and the word screen lays out Arabic at a size the artwork never
+    # specified.
+    'test/goldens/goldens/dictionary_search_user_shot_light.png',
+    'test/goldens/goldens/dictionary_search_user_shot_dark.png',
+    'test/goldens/goldens/dictionary_word_user_shot_light.png',
+    'test/goldens/goldens/dictionary_word_user_shot_dark.png',
+    'test/goldens/goldens/attribution_screen_user_shot_light.png',
+    'test/goldens/goldens/attribution_screen_user_shot_dark.png'
   )
 )
 
@@ -299,6 +321,87 @@ $ExpectedColourCount = [ordered]@{
   'test/goldens/goldens/quiz_result_screen_user_shot_dark.png'      = 371
   'test/goldens/goldens/app_info_screen_user_shot_light.png'        = 184
   'test/goldens/goldens/app_info_screen_user_shot_dark.png'         = 210
+  # The dictionary's six images, measured by a standalone HashSet[string]
+  # sweep over each committed PNG - deliberately NOT read out of this
+  # script's own run, so the baseline and the check stay two independent
+  # measurements rather than one number agreeing with itself.
+  #
+  # **Two of them are the smallest counts in the table**, and that is the
+  # dictionary's word and attribution screens: a word screen is a headword,
+  # a phonetic transcription and a handful of senses, and the attribution
+  # screen is text and rules. The search screens carry the user's photograph
+  # and so carry tens of thousands of colours - the same reason the Home
+  # screens' counts are orders of magnitude larger than every other baseline.
+  'test/goldens/goldens/dictionary_search_user_shot_light.png'      = 638
+  'test/goldens/goldens/dictionary_search_user_shot_dark.png'       = 810
+  'test/goldens/goldens/dictionary_word_user_shot_light.png'        = 191
+  'test/goldens/goldens/dictionary_word_user_shot_dark.png'         = 202
+  'test/goldens/goldens/attribution_screen_user_shot_light.png'     = 191
+  'test/goldens/goldens/attribution_screen_user_shot_dark.png'      = 199
+}
+
+# --- the dominant-colour baseline ------------------------------------------------
+#
+# **A second, independent statistic, and the reason it exists is measured.**
+#
+# The distinct-colour count alone is **not** enough to catch a swapped image.
+# Two of the dictionary's own images collide on it:
+#
+#   dictionary_word_user_shot_light.png     191 distinct colours
+#   attribution_screen_user_shot_light.png  191 distinct colours
+#
+# and the bytes of one written over the other **passed the census** - measured,
+# with the write verified by SHA-256 before and after. That is the limitation
+# the section above states ("two images sharing a count would still pass"),
+# and this round's images are what turned it from a theoretical gap into a
+# measured one.
+#
+# So the census now checks **two** numbers per image: the number of distinct
+# colours, and the number of pixels in the image's most common colour. The two
+# are independent statistics of the same histogram, and no two of the thirty-one
+# committed images share a pair:
+#
+#   (191, 1611901)  attribution_screen_user_shot_light
+#   (191, 1766343)  dictionary_word_user_shot_light
+#
+# A swap between them now fails on the second number.
+#
+# **It is still not an identity oracle.** Two images that agree on both
+# numbers would still pass, and a wrong-but-committed image is still invisible
+# to the pixel checks - the git staleness proxy below is the only thing that
+# sees an uncommitted rewrite.
+$ExpectedDominantCount = [ordered]@{
+  'test/goldens/goldens/home_shell_user_shot.png'                = 1078730
+  'test/goldens/goldens/stats_screen_user_shot_light.png'         = 1270125
+  'test/goldens/goldens/stats_screen_user_shot_dark.png'          = 1270125
+  'test/goldens/goldens/favorites_screen_user_shot_light.png'     = 1889635
+  'test/goldens/goldens/favorites_screen_user_shot_dark.png'      = 1913231
+  'test/goldens/goldens/word_detail_user_shot_light.png'          = 1227391
+  'test/goldens/goldens/word_detail_user_shot_dark.png'           = 1265044
+  'test/goldens/goldens/flashcards_screen_user_shot_light.png'     = 921611
+  'test/goldens/goldens/flashcards_screen_user_shot_dark.png'      = 945889
+  'test/goldens/goldens/quiz_screen_unanswered_user_shot_light.png' = 1278082
+  'test/goldens/goldens/quiz_screen_unanswered_user_shot_dark.png'  = 1337070
+  'test/goldens/goldens/quiz_screen_correct_user_shot_light.png'    = 1167703
+  'test/goldens/goldens/quiz_screen_correct_user_shot_dark.png'     = 1227236
+  'test/goldens/goldens/quiz_screen_wrong_user_shot_light.png'      = 1161793
+  'test/goldens/goldens/quiz_screen_wrong_user_shot_dark.png'       = 1221325
+  'test/goldens/goldens/home_screen_user_shot_light.png'            = 1081342
+  'test/goldens/goldens/home_screen_user_shot_dark.png'             = 1079747
+  'test/goldens/goldens/more_screen_user_shot_light.png'            = 1785364
+  'test/goldens/goldens/more_screen_user_shot_dark.png'             = 1798675
+  'test/goldens/goldens/quiz_setup_screen_user_shot_light.png'      = 1770787
+  'test/goldens/goldens/quiz_setup_screen_user_shot_dark.png'       = 1772024
+  'test/goldens/goldens/quiz_result_screen_user_shot_light.png'     = 2092810
+  'test/goldens/goldens/quiz_result_screen_user_shot_dark.png'      = 2100071
+  'test/goldens/goldens/app_info_screen_user_shot_light.png'        = 1466611
+  'test/goldens/goldens/app_info_screen_user_shot_dark.png'         = 1502005
+  'test/goldens/goldens/dictionary_search_user_shot_light.png'      = 2102166
+  'test/goldens/goldens/dictionary_search_user_shot_dark.png'       = 2102150
+  'test/goldens/goldens/dictionary_word_user_shot_light.png'        = 1766343
+  'test/goldens/goldens/dictionary_word_user_shot_dark.png'         = 1766343
+  'test/goldens/goldens/attribution_screen_user_shot_light.png'     = 1611901
+  'test/goldens/goldens/attribution_screen_user_shot_dark.png'      = 1611901
 }
 
 # The one directory the default list is allowed to cover.
@@ -533,7 +636,8 @@ foreach ($relative in $ImagePath) {
     # --- the distinct-colour baseline ---------------------------------------------
     # A currency detector, not an identity oracle. See $ExpectedColourCount above
     # for what it does not catch; the short version is that two images with the
-    # same count would still both pass.
+    # same count would still both pass - **and two of this round's images do**,
+    # which is why $ExpectedDominantCount below exists.
     $normalised = $relative -replace '\\', '/'
     if ($ExpectedColourCount.Contains($normalised)) {
       $expected = $ExpectedColourCount[$normalised]
@@ -547,6 +651,27 @@ foreach ($relative in $ImagePath) {
         'wrong; a path with no baseline is an image nothing can date')
     }
 
+    # --- the dominant-colour baseline ---------------------------------------------
+    # **The second, independent statistic.** The number of pixels in the image's
+    # most common colour. It is what catches a swap between two images that
+    # happen to share a distinct-colour count - and the measurement above says
+    # two of them do.
+    $dominant = ($counts.GetEnumerator() |
+        Sort-Object -Property Value -Descending |
+        Select-Object -First 1)
+    $dominantCount = if ($null -eq $dominant) { 0 } else { $dominant.Value }
+    if ($ExpectedDominantCount.Contains($normalised)) {
+      $expectedDominant = $ExpectedDominantCount[$normalised]
+      if ($dominantCount -ne $expectedDominant) {
+        $failures += ("dominant colour: $dominantCount px, baseline for this path is " +
+          "$expectedDominant (a swapped or stale image; OR you regenerated this one on " +
+          'purpose, in which case update $ExpectedDominantCount in tool/golden_census.ps1)')
+      }
+    } else {
+      $failures += ("no dominant-colour baseline for $normalised - add one, or the path is " +
+        'wrong; a path with no baseline is an image nothing can date')
+    }
+
     # --- report -----------------------------------------------------------------
     Write-Host ("  Mode: {0}  (#F8F7F5 {1} px, #0F172A {2} px)" -f $mode, $lightBg, $darkBg)
     Write-Host ''
@@ -556,6 +681,7 @@ foreach ($relative in $ImagePath) {
     Write-Host ("    mode           : {0,-10} {1}" -f $mode, $(if ($mode -ne 'unidentified') { 'ok' } else { 'FAIL' }))
     Write-Host ("    #{0} (ink) : {1,-10} {2}" -f $expectedInk, $ink, $(if ($ink -gt 0) { 'ok' } else { 'FAIL' }))
     Write-Host ("    distinct       : {0,-10} {1}" -f $counts.Count, $(if ($ExpectedColourCount.Contains($normalised) -and $counts.Count -eq $ExpectedColourCount[$normalised]) { 'ok' } else { 'FAIL' }))
+    Write-Host ("    dominant       : {0,-10} {1}" -f $dominantCount, $(if ($ExpectedDominantCount.Contains($normalised) -and $dominantCount -eq $ExpectedDominantCount[$normalised]) { 'ok' } else { 'FAIL' }))
 
     Write-Host ''
     Write-Host '  Brand tokens'

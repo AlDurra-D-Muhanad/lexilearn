@@ -7,6 +7,7 @@ import 'package:lexilearn/data/database.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/design/design_tokens.dart';
 import 'package:lexilearn/domain/pack_codec.dart';
+import 'package:lexilearn/ui/dictionary/dictionary_controller.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
 import 'package:lexilearn/ui/theme/app_theme.dart';
 import 'package:path/path.dart' as p;
@@ -18,7 +19,8 @@ import 'package:sqflite/sqflite.dart' show databaseFactory;
 ///
 /// `LexiLearnApp` takes a ready repository so this stays testable; the wiring
 /// that a widget test cannot exercise — opening the database at the app's
-/// documents path and seeding the bundled pack — lives here and nowhere else.
+/// documents path, seeding the bundled pack, and starting the dictionary's
+/// copy — lives here and nowhere else.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -34,7 +36,27 @@ Future<void> main() async {
     // pack is already installed, so a corrupt asset cannot overwrite anything
     // and a good one cannot duplicate anything.
     await repository.seedBundledPack(await rootBundle.loadString(bundledPackAsset));
-    runApp(LexiLearnApp(repository: repository));
+    // **The dictionary's own row in `packs`.** It carries no entries — the
+    // dictionary's 31,600 words live in a read-only file of their own and must
+    // never reach a backup — but the row has to exist, because
+    // `favorites.pack_key` is a foreign key onto `packs(pack_key)` and a
+    // favourite for a dictionary word would otherwise be rejected.
+    await repository.ensureDictionaryPack();
+
+    // **The dictionary's controller, built here and started by the app.**
+    //
+    // The copy is 26 MB and it must not be on the start-up path, so nothing
+    // awaits it: `LexiLearnApp` fires `start()` off its own `initState` and
+    // the app opens, navigates and shows the home screen while the copy
+    // runs. The home screen shows the progress.
+    final dictionary = DictionaryController(
+      repository: repository,
+      loadAsset: rootBundle.load,
+      loadMorphology: rootBundle.loadString,
+      targetPath: p.join(documents.path, 'dictionary', 'en_ar.db'),
+      databaseFactory: databaseFactory,
+    );
+    runApp(LexiLearnApp(repository: repository, dictionary: dictionary));
   } on PackDecodeException catch (error) {
     _fatal('The bundled vocabulary file is broken: ${error.message}');
   } on FileSystemException catch (error) {

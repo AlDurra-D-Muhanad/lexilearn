@@ -8,6 +8,7 @@ import 'package:lexilearn/data/database.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/domain/pack_codec.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
+import 'package:lexilearn/ui/dictionary/dictionary_controller.dart';
 import 'package:lexilearn/ui/link/external_link.dart';
 import 'package:lexilearn/ui/settings/app_settings_controller.dart';
 import 'package:provider/provider.dart';
@@ -581,6 +582,7 @@ Future<void> pumpShell(
   WidgetTester tester,
   VocabRepository repository, {
   int? wallpaperSeed,
+  DictionaryController? dictionary,
 }) async {
   // The link seam is the **recording** launcher, not the real one. `LexiLearnApp`
   // defaults to `url_launcher`, which has no implementation under `flutter_test`
@@ -594,6 +596,10 @@ Future<void> pumpShell(
       // Null for every existing caller: the photograph is unseeded in every
       // test that is not photographing one.
       wallpaperSeed: wallpaperSeed,
+      // **The dictionary, when the test has one.** The app's own controller is
+      // an idle one, and a test that wants the dictionary's screens hands in
+      // a controller that already has its engine.
+      dictionary: dictionary,
     ),
   );
   // The shell's read, the destination's read, and anything either of them woke
@@ -705,10 +711,23 @@ Future<T> readOutsideFakeAsync<T>(
 List<SingleChildWidget> appSeamProviders({
   required AppSettingsController settings,
   OpenExternalUrl? openUrl,
+  DictionaryController? dictionary,
 }) =>
     <SingleChildWidget>[
       ChangeNotifierProvider<AppSettingsController>.value(value: settings),
       Provider<OpenExternalUrl>.value(value: openUrl ?? _recordNothingLaunched),
+      // **The dictionary, the third seam.** `LexiLearnApp` installs it above
+      // the `MaterialApp`, and `HomeScreen` reads it to know whether the
+      // dictionary is ready and how far its copy has got. A stand-in that
+      // skipped it would throw on the read, which is the same loud failure
+      // the other two seams exist to prevent.
+      //
+      // An **idle** controller by default: no asset loader, no file system and
+      // no database factory, so `start()` returns at once and nothing is
+      // installed. A test that wants the dictionary passes one in.
+      ChangeNotifierProvider<DictionaryController>.value(
+        value: dictionary ?? DictionaryController.idle(),
+      ),
     ];
 
 /// A settings controller for a stand-in app, with a teardown that disposes it.

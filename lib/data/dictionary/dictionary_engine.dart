@@ -5,6 +5,7 @@ import 'package:lexilearn/data/dictionary/dictionary_models.dart';
 import 'package:lexilearn/data/dictionary/dictionary_normalization.dart';
 import 'package:lexilearn/data/dictionary/dictionary_store.dart';
 import 'package:lexilearn/data/dictionary/dictionary_stemmer.dart';
+import 'package:lexilearn/data/dictionary/inflected_forms.dart';
 import 'package:lexilearn/data/dictionary/morphology_table.dart';
 
 /// What an English lookup found.
@@ -130,10 +131,18 @@ final class DictionaryEngine {
     required MorphologyTable morphology,
   })  : _store = store,
         _stemmer = DictionaryStemmer(morphology),
+        _forms = InflectedForms(morphology),
         autocomplete = DictionaryAutocomplete(store);
 
   final DictionaryStore _store;
   final DictionaryStemmer _stemmer;
+
+  /// The inflected forms the morphology table can produce.
+  ///
+  /// **Held here, and not in [DictionaryAutocomplete], on purpose.** The
+  /// autocomplete must never offer an invented form; the fuzzy stage must
+  /// offer exactly the forms the table knows.
+  final InflectedForms _forms;
 
   /// The type-ahead, with no stemmer in reach.
   final DictionaryAutocomplete autocomplete;
@@ -162,33 +171,22 @@ final class DictionaryEngine {
       for (final entry in known) entry.norm: entry,
     };
 
-    for (final stage in stages) {
-      final survivors = <StemCandidate>[];
-      final survivorEntries = <DictionaryEntry>[];
-      for (final candidate in stage.candidates) {
-        final entry = byNorm[candidate.word];
-        if (entry == null) continue;
-        if (survivors.any((s) => s.word == candidate.word)) continue;
-        survivors.add(candidate);
-        survivorEntries.add(entry);
-      }
-      if (survivors.isEmpty) continue;
+    final resolution = _firstSurvivor(stages, byNorm);
+    if (resolution == null) return NoWord(typed: typed);
 
-      // The winner, with its examples loaded.
-      final full = await _store.entryByNorm(survivors.first.word);
-      final entry = full ?? survivorEntries.first;
+    // The winner, with its examples loaded.
+    final full = await _store.entryByNorm(resolution.entry.norm);
+    final entry = full ?? resolution.entry;
 
-      if (stage.route == StemRoute.exact) {
-        return ExactWord._(typed: typed, entry: entry);
-      }
-      return StemSuggestion._(
-        typed: typed,
-        entry: entry,
-        via: survivors.first.via,
-        alsoTried: survivors.skip(1).toList(growable: false),
-      );
+    if (resolution.route == StemRoute.exact) {
+      return ExactWord._(typed: typed, entry: entry);
     }
-    return NoWord(typed: typed);
+    return StemSuggestion._(
+      typed: typed,
+      entry: entry,
+      via: resolution.via,
+      alsoTried: resolution.alsoTried,
+    );
   }
 
   /// Looks [input] up as an Arabic key.
@@ -196,11 +194,75 @@ final class DictionaryEngine {
   /// The query is normalised with [normalizeArabic] and matched against
   /// `senses.norm_ar` - never against the raw Arabic text, which is stored with
   /// its tashkeel and its hamzas exactly as the dictionary wrote it.
-  Future<List<ArabicSenseHit>> searchArabic(String input, {int limit = 20}) async {
+  ///
+  /// **The list, not the one answer.** 30,508 distinct normalised Arabic keys
+  /// are in this dictionary and thousands of them are shared by more than one
+  /// sense, so an Arabic query is answered with a **ranked list**: the exact
+  /// key first, then the keys that merely start with it, then the keys that
+  /// hold it inside a comma-separated list of synonyms.
+  ///
+  /// The limit is 100 rather than 20 because the most-shared key in this
+  /// dictionary resolves to more headwords than that, and a search that
+  /// silently drops the tail of its own answer is a search that lies.
+  Future<List<ArabicSenseHit>> searchArabic(
+    String input, {
+    int limit = defaultArabicSearchLimit,
+  }) async {
     final key = normalizeArabic(input);
     if (key.isEmpty) return const <ArabicSenseHit>[];
     return _store.searchArabic(key, limit: limit);
   }
+
+  /// The headwords the search list's **prefix band** holds: the ones whose
+  /// normalised form starts with [query].
+  ///
+  /// **This is not the autocomplete.** The autocomplete ([DictionaryAutocomplete])
+  /// is the README's `suggest` and answers a type-ahead; this answers a
+  /// finished search, and the two are ordered differently — shortest first and
+  /// then alphabetically, so the list does not reshuffle as the query grows.
+  /// The autocomplete also applies no stemming, and neither does this.
+  Future<List<DictionaryEntry>> searchEnglishPrefix(
+    String query, {
+    int limit = 50,
+  }) async {
+    final normalized = normalizeEnglish(query);
+    if (normalized.isEmpty) return const <DictionaryEntry>[];
+    return _store.entriesStartingWith(normalized, limit: limit);
+  }
+
+  /// The headwords the search list's **text band** holds: the ones whose own
+  /// English definition contains [query].
+  ///
+  /// **The third band, and the loosest.** The exact band matches a headword,
+  /// the prefix band matches a headword that starts with the query, and this
+  /// one matches an entry whose *definition* contains it — the mirror of the
+  /// Arabic band's third case, which looks inside the comma-separated synonym
+  /// list the dictionary stores for an Arabic sense.
+  ///
+  /// The query is the same key the rest of the app uses ([normalizeEnglish]), so
+  /// a query and a headword are compared the same way everywhere.
+  Future<List<DictionaryEntry>> searchEnglishText(
+    String query, {
+    int limit = 20,
+  }) async {
+    final normalized = normalizeEnglish(query);
+    if (normalized.isEmpty) return const <DictionaryEntry>[];
+    return _store.entriesMentioningEnglish(normalized, limit: limit);
+  }
+
+  /// The headwords the study surface may use, with their senses.
+  ///
+  /// **The dictionary is the judge and the filter is the dictionary's own.**
+  /// See `StudyFilter` for the rules and for why an affix and a proper noun
+  /// are not a flashcard.
+  Future<List<DictionaryEntry>> studyableEntries({
+    int limit = 0,
+    int salt = 0,
+  }) =>
+      _store.studyableEntries(limit: limit, salt: salt);
+
+  /// How many headwords the study surface admits.
+  Future<int> countStudyableEntries() => _store.countStudyableEntries();
 
   /// Near-misses for a misspelling.
   ///
@@ -209,6 +271,22 @@ final class DictionaryEngine {
   /// with the query; Damerau-Levenshtein is then computed over that pool and
   /// not over the dictionary. A pool of a few hundred entries is a per-keystroke
   /// operation; 31,600 is not.
+  ///
+  /// **The candidate set is the union of the headwords and the inflected
+  /// forms, and that is the fix.** The source README is explicit that the
+  /// dictionary and the morphology table are one system, and the shipped engine
+  /// broke that in one place: the distance was computed against headwords
+  /// only, so `childern` was never compared with `children` even though
+  /// `children` is one transposition away and the table knows
+  /// `children -> child`. The scoring set is therefore
+  ///
+  /// * the headwords the trigram bound selected, and
+  /// * the inflected forms the morphology rules can produce - the 364
+  ///   irregular forms, and the regular forms of the shortlisted headwords.
+  ///
+  /// **A form is only a candidate if the word it resolves to is a headword.**
+  /// That is the table's own rule - «المعجم هو الحكم» - and it is what keeps
+  /// `childern -> child` an answer about a real word rather than a guess.
   ///
   /// **This is a fallback, not a per-keystroke feature.** It is meant to be
   /// asked once, after [lookupEnglish] has found nothing - the user typed a
@@ -250,15 +328,32 @@ final class DictionaryEngine {
     final entries = await _store.entriesByIds(
       candidates.map((candidate) => candidate.entryId).toList(growable: false),
     );
-    final suggestions = <SpellingSuggestion>[];
+
+    // One map, keyed by the entry, so the two candidate sets can be merged
+    // without offering the same word twice.
+    final byEntry = <int, SpellingSuggestion>{};
     for (final entry in entries) {
       final distance =
           damerauLevenshtein(norm, entry.norm, limit: maxDistance);
       if (distance <= maxDistance) {
-        suggestions.add(SpellingSuggestion(entry: entry, distance: distance));
+        byEntry[entry.id] = SpellingSuggestion(entry: entry, distance: distance);
       }
     }
-    suggestions.sort(_byDistanceThenLength);
+
+    // The inflected forms. The same distance, the same limit, and the same
+    // table - so `childern` reaches `child` through `children` at distance 1.
+    for (final suggestion in await _formSuggestions(
+      norm,
+      entries,
+      maxDistance,
+    )) {
+      final existing = byEntry[suggestion.entry.id];
+      if (existing == null || suggestion.distance < existing.distance) {
+        byEntry[suggestion.entry.id] = suggestion;
+      }
+    }
+
+    final suggestions = byEntry.values.toList()..sort(_byDistanceThenLength);
     return SpellingResult(
       suggestions: suggestions.take(limit).toList(growable: false),
       candidatesConsidered: candidates.length,
@@ -266,6 +361,85 @@ final class DictionaryEngine {
           ? await _store.spellingCandidatePoolSize(norm)
           : null,
     );
+  }
+
+  /// The suggestions that come from the **inflected forms** rather than from a
+  /// headword.
+  ///
+  /// **Three steps, in this order, and the order is the rule.** Build the
+  /// candidate forms, keep the ones the distance allows, and then resolve each
+  /// of *those* through the morphology table - a form that does not resolve to
+  /// a headword is not a candidate at all, and is dropped rather than offered.
+  Future<List<SpellingSuggestion>> _formSuggestions(
+    String norm,
+    List<DictionaryEntry> pool,
+    int maxDistance,
+  ) async {
+    final forms = _candidateForms(norm, pool, maxDistance);
+    if (forms.isEmpty) return const <SpellingSuggestion>[];
+
+    final close = <String>[];
+    final distances = <String, int>{};
+    for (final form in forms) {
+      final distance = damerauLevenshtein(norm, form, limit: maxDistance);
+      if (distance > maxDistance) continue;
+      close.add(form);
+      distances[form] = distance;
+    }
+    if (close.isEmpty) return const <SpellingSuggestion>[];
+
+    // Resolve them all in one query: the same batching the exact stage uses.
+    final stagesByForm = <String, List<StemStage>>{};
+    final wanted = <String>[];
+    for (final form in close) {
+      final stages = _stemmer.propose(form);
+      stagesByForm[form] = stages;
+      for (final stage in stages) {
+        for (final candidate in stage.candidates) {
+          if (!wanted.contains(candidate.word)) wanted.add(candidate.word);
+        }
+      }
+    }
+    final known = await _store.entriesByNormsWithSenses(wanted);
+    final byNorm = <String, DictionaryEntry>{
+      for (final entry in known) entry.norm: entry,
+    };
+
+    final suggestions = <SpellingSuggestion>[];
+    for (final form in close) {
+      final resolution = _firstSurvivor(stagesByForm[form]!, byNorm);
+      if (resolution == null) continue;
+      suggestions.add(SpellingSuggestion(
+        entry: resolution.entry,
+        distance: distances[form]!,
+        matchedForm: form,
+      ));
+    }
+    return suggestions;
+  }
+
+  /// The inflected forms worth scoring, from the two sources the table has.
+  ///
+  /// **The length filter is the bound.** A form more than [maxDistance]
+  /// characters longer or shorter than the query cannot be within the distance,
+  /// so it is never scored. That is what keeps the regular forms affordable:
+  /// the shortlist is a few hundred headwords and each one yields a few dozen
+  /// forms, of which the length filter keeps a small fraction.
+  List<String> _candidateForms(
+    String norm,
+    List<DictionaryEntry> pool,
+    int maxDistance,
+  ) {
+    final forms = <String>{};
+    for (final form in _forms.irregularForms) {
+      if ((form.length - norm.length).abs() <= maxDistance) forms.add(form);
+    }
+    for (final entry in pool) {
+      for (final form in _forms.formsOf(entry.norm)) {
+        if ((form.length - norm.length).abs() <= maxDistance) forms.add(form);
+      }
+    }
+    return forms.toList(growable: false);
   }
 
   /// How many headwords share a trigram with [input] - the size of the pool the
@@ -281,10 +455,12 @@ final class DictionaryEngine {
 
   /// Everything the CC-BY-SA-4.0 licence obliges an attribution screen to show.
   ///
-  /// **Built from `meta` and from nothing else.** The source dictionary names
-  /// an `attributionFile` that does not exist on any machine this app runs on;
-  /// it is carried through verbatim and never resolved, and no attribution text
-  /// is invented to fill the gap.
+  /// **Built from `meta` and from nothing else.** The build tool writes the
+  /// upstream project, its URL and each source's own licence and verbatim
+  /// credit into the `meta` table, and this reads them back. The stale
+  /// `attributionFile` path is **not** among them: it pointed at a file on
+  /// the machine that generated the data, it exists nowhere else, and a
+  /// path that cannot be resolved is not an attribution.
   Future<DictionaryAttribution> attribution() async {
     final meta = await _store.meta();
     return DictionaryAttribution(
@@ -293,8 +469,14 @@ final class DictionaryEngine {
       sources: _decodeSources(meta['sources']),
       license: meta['license'] ?? '',
       licenseUrl: meta['licenseUrl'] ?? '',
-      attributionFile: meta['attributionFile'],
       generatedFrom: meta['generatedFrom'],
+      upstreamProject: meta['upstreamProject'] ?? '',
+      upstreamProjectUrl: meta['upstreamProjectUrl'] ?? '',
+      upstreamTagline: meta['upstreamTagline'] ?? '',
+      upstreamPair: meta['upstreamPair'] ?? '',
+      upstreamPairDescription: meta['upstreamPairDescription'] ?? '',
+      sourceLicenses: _decodeMap(meta['sourceLicenses']),
+      sourceCredits: _decodeMap(meta['sourceCredits']),
       entryCount: _intOf(meta['entryCount']),
       senseCount: _intOf(meta['senseCount']),
       arabicSenseCount: _intOf(meta['arabicSenseCount']),
@@ -306,6 +488,38 @@ final class DictionaryEngine {
 
   /// The `meta` table, verbatim.
   Future<Map<String, String>> meta() => _store.meta();
+
+  /// The first stage of [stages] that produced a headword, with the headwords
+  /// that stage produced.
+  ///
+  /// **The one place the "first matching rule wins" rule lives.** The shipped
+  /// code appends to one list and returns as soon as that list is non-empty -
+  /// and it is only non-empty when a candidate *is a headword*, because the
+  /// dictionary check is where the candidate is added. So "first matching
+  /// rule" really means "first rule that produced a word the dictionary
+  /// contains", and that is what this returns.
+  _Resolution? _firstSurvivor(
+    List<StemStage> stages,
+    Map<String, DictionaryEntry> byNorm,
+  ) {
+    for (final stage in stages) {
+      final survivors = <StemCandidate>[];
+      for (final candidate in stage.candidates) {
+        final entry = byNorm[candidate.word];
+        if (entry == null) continue;
+        if (survivors.any((s) => s.word == candidate.word)) continue;
+        survivors.add(candidate);
+      }
+      if (survivors.isEmpty) continue;
+      return _Resolution(
+        entry: byNorm[survivors.first.word]!,
+        via: survivors.first.via,
+        route: stage.route,
+        alsoTried: survivors.skip(1).toList(growable: false),
+      );
+    }
+    return null;
+  }
 
   static int _byDistanceThenLength(SpellingSuggestion a, SpellingSuggestion b) {
     final byDistance = a.distance.compareTo(b.distance);
@@ -326,7 +540,38 @@ final class DictionaryEngine {
     }
   }
 
+  /// A `meta` value that is a JSON object of strings, read back as a map.
+  static Map<String, String> _decodeMap(String? raw) {
+    if (raw == null || raw.isEmpty) return const <String, String>{};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return const <String, String>{};
+      return <String, String>{
+        for (final entry in decoded.entries)
+          if (entry.key is String && entry.value is String)
+            entry.key as String: entry.value as String,
+      };
+    } on FormatException {
+      return const <String, String>{};
+    }
+  }
+
   static int _intOf(String? raw) => int.tryParse(raw ?? '') ?? 0;
+}
+
+/// What one resolution of a word produced.
+final class _Resolution {
+  const _Resolution({
+    required this.entry,
+    required this.via,
+    required this.route,
+    required this.alsoTried,
+  });
+
+  final DictionaryEntry entry;
+  final String via;
+  final StemRoute route;
+  final List<StemCandidate> alsoTried;
 }
 
 /// The answer to a misspelling, and the size of the search that produced it.
@@ -368,3 +613,12 @@ final class SpellingResult {
 /// trigrams from turning into a full scan. 512 candidates of Damerau distance
 /// is a few hundred thousand cell comparisons, which is nothing.
 const int spellingCandidateLimit = 512;
+
+/// How many headwords an Arabic search answers with.
+///
+/// **A hundred, and not twenty, because the data says so.** The most-shared
+/// normalised Arabic key in the shipped dictionary resolves to more headwords
+/// than a list of twenty could hold, and the brief is explicit that the
+/// search path must "cope with 68 hits". A limit that drops the tail of the
+/// answer is a limit that lies about what the dictionary contains.
+const int defaultArabicSearchLimit = 100;

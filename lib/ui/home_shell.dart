@@ -1,9 +1,14 @@
 
 import 'package:flutter/material.dart';
+import 'package:lexilearn/data/dictionary/dictionary_models.dart';
+import 'package:lexilearn/domain/dictionary_pack.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/design/design_tokens.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
+import 'package:provider/provider.dart';
 
+import 'dictionary/dictionary_controller.dart';
+import 'dictionary/dictionary_word_screen.dart';
 import 'flashcards/flashcards_screen.dart';
 import 'home/home_screen.dart';
 import 'more/more_screen.dart';
@@ -45,6 +50,18 @@ class _HomeShellState extends State<HomeShell> {
   /// The pack every destination is scoped to. Empty until [widget.repository]
   /// answers, and empty for good when no pack is installed.
   String _activePackKey = '';
+
+  /// The dictionary's controller, so the shell can react to it becoming
+  /// ready.
+  late final DictionaryController _dictionary;
+
+  /// Whether the user has picked a pack by hand.
+  ///
+  /// **The dictionary becoming ready must not overrule a choice the user
+  /// made.** The dictionary is the default, so it wins when nobody has
+  /// chosen; a user who picked the starter set before the copy finished meant
+  /// it.
+  bool _userChosePack = false;
 
   /// The brand's four destinations, in bar order.
   ///
@@ -130,7 +147,30 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
+    // `context.read` is safe in `initState` — it does not subscribe — which is
+    // the same reason `home_screen.dart` reads its repository there.
+    _dictionary = context.read<DictionaryController>();
+    _dictionary.addListener(_onDictionaryChanged);
     _loadActivePack();
+  }
+
+  @override
+  void dispose() {
+    _dictionary.removeListener(_onDictionaryChanged);
+    super.dispose();
+  }
+
+  /// Switches to the dictionary when its copy finishes.
+  ///
+  /// **The dictionary is the default pack**, and the default has to be
+  /// reachable even when the copy is still running: the app opens, the home
+  /// screen shows, and a few seconds later the dictionary is there and the
+  /// whole app is scoped to it.
+  void _onDictionaryChanged() {
+    if (!mounted || _userChosePack) return;
+    if (!_dictionary.isReady) return;
+    if (_activePackKey == dictionaryPackKey) return;
+    setState(() => _activePackKey = dictionaryPackKey);
   }
 
   Future<void> _loadActivePack() async {
@@ -141,7 +181,10 @@ class _HomeShellState extends State<HomeShell> {
     setState(() => _activePackKey = packs.first.packKey);
   }
 
-  void _selectPack(String packKey) => setState(() => _activePackKey = packKey);
+  void _selectPack(String packKey) {
+    _userChosePack = true;
+    setState(() => _activePackKey = packKey);
+  }
 
   /// Switches the bottom bar to [index].
   ///
@@ -186,6 +229,21 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
+  /// Opens a dictionary word.
+  ///
+  /// **A different route from [\_openWordDetail], and it has to be.** The
+  /// starter pack's word shows one translation and one note; a dictionary
+  /// entry has 81,451 senses between its 31,600 headwords, and the longest
+  /// gloss in the corpus is 616 characters. A screen sized for the first
+  /// would overflow on the second.
+  void _openDictionaryWord(DictionaryEntry entry) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => DictionaryWordRoute(entry: entry),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Same order as `_destinations`, and the same length. Index-for-index.
@@ -194,6 +252,7 @@ class _HomeShellState extends State<HomeShell> {
         packKey: _activePackKey,
         onPackSelected: _selectPack,
         onOpenWord: _openWordDetail,
+        onOpenDictionaryWord: _openDictionaryWord,
         wallpaperSeed: widget.wallpaperSeed,
       ),
       FlashcardsScreen(

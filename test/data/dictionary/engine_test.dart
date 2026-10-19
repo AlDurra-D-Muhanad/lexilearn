@@ -317,15 +317,44 @@ void main() {
       expect(attribution.arabicKeyCount, 30508);
     });
 
-    test('the attribution file is recorded, never resolved', () async {
-      // The source dictionary names an `ATTRIBUTION` file on the machine that
-      // generated it. That file does not exist anywhere else, so the path is
-      // carried verbatim and read from nothing - and no attribution text is
-      // invented to replace it.
+    test('the stale attribution file is gone, and the record is not',
+        () async {
+      // **The record replaced the summary.** The source dictionary named an
+      // `ATTRIBUTION` file on the machine that generated it; that file exists
+      // nowhere else, so the build no longer writes the path at all. What is
+      // written instead is the upstream project, its URL and **each source's
+      // own licence and verbatim credit** - and the licences differ.
       final attribution = await engine.attribution();
-      expect(attribution.attributionFile, isNotNull);
-      expect(attribution.attributionFile, contains('ATTRIBUTION'));
+      expect(attribution.upstreamProject, 'DanielGregorini/koreader-dicts');
+      expect(
+        attribution.upstreamProjectUrl,
+        'https://github.com/DanielGregorini/koreader-dicts',
+      );
+      expect(attribution.upstreamPair, 'en-ar');
       expect(attribution.generatedFrom, contains('StarDict'));
+    });
+
+    test('each source carries its own licence and its verbatim credit',
+        () async {
+      final attribution = await engine.attribution();
+      expect(attribution.sourceIds, hasLength(3));
+      // **The three licences differ**, and one share-alive line for all of
+      // them would misstate two.
+      expect(attribution.licenseOf('pwn30'), 'WordNet-3.0');
+      expect(attribution.licenseOf('omw-arb'), 'CC-BY-SA-3.0');
+      expect(attribution.licenseOf('wikt-en-ar'), 'CC-BY-SA-4.0');
+      expect(
+        attribution.creditOf('pwn30'),
+        'Princeton University WordNet 3.0',
+      );
+      expect(
+        attribution.creditOf('omw-arb'),
+        'Arabic WordNet (AWN v2), via Open Multilingual Wordnet 1.4',
+      );
+      expect(
+        attribution.creditOf('wikt-en-ar'),
+        'English Wiktionary via kaikki.org (wiktextract)',
+      );
     });
   });
 

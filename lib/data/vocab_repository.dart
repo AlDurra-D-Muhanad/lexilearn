@@ -1,4 +1,8 @@
 import 'package:lexilearn/core/clock.dart';
+import 'package:lexilearn/data/dictionary/dictionary_artifact.dart';
+import 'package:lexilearn/data/dictionary/dictionary_engine.dart';
+import 'package:lexilearn/data/dictionary/dictionary_models.dart';
+import 'package:lexilearn/domain/dictionary_pack.dart';
 import 'package:lexilearn/domain/backup_codec.dart';
 import 'package:lexilearn/domain/backup_document.dart';
 import 'package:lexilearn/domain/pack_codec.dart';
@@ -35,6 +39,23 @@ class VocabRepository {
   final SettingsDao _settings;
   final Clock _clock;
 
+  /// The dictionary engine, once the copy on the device has finished.
+  ///
+  /// **Null until then, and the app is fully usable while it is null.** The
+  /// dictionary is 26 MB and the copy is off the UI path; the home screen, the
+  /// flashcards, the quiz and the starter pack all work before it lands.
+  DictionaryEngine? _dictionary;
+
+  /// The dictionary, or null when it has not been installed yet.
+  DictionaryEngine? get dictionary => _dictionary;
+
+  /// Attaches the dictionary engine.
+  ///
+  /// **Late-bound on purpose.** The engine cannot exist until the 26 MB copy
+  /// has finished, and the copy must not be on the start-up path, so the
+  /// repository is built first and the dictionary arrives afterwards.
+  void attachDictionary(DictionaryEngine engine) => _dictionary = engine;
+
   // --- settings ---------------------------------------------------------------
   //
   // The theme preference and nothing else, so far. Two thin forwarders rather
@@ -54,9 +75,157 @@ class VocabRepository {
   Future<void> setSetting(String key, String value) =>
       _settings.write(key, value);
 
-  Future<List<PackSummary>> packs() => _packs.listPacks();
+  /// Every pack on the device, the **dictionary first**.
+  ///
+  /// **The dictionary is the default, and the starter set is the other one.**
+  /// The order is the default: `HomeShell` takes the first pack as the active
+  /// one, and the brief asks for the dictionary to be the default. The
+  /// dictionary is only in the list once its engine is attached, so a user
+  /// whose copy has not finished yet is looking at the starter set and a pack
+  /// list with one entry — which is honest, rather than a pack that cannot be
+  /// searched.
+  ///
+  /// The starter pack keeps its own row and its own title; the title says
+  /// "starter set", because it is one and because the dictionary is 31,600
+  /// entries wide.
+  Future<List<PackSummary>> packs() async {
+    final installed = await _packs.listPacks();
+    final dictionary = _dictionary;
+    if (dictionary == null) return _withStarterTitle(installed);
+    return <PackSummary>[
+      _dictionarySummary(installed),
+      ..._withStarterTitle(installed),
+    ];
+  }
 
-  Future<List<VocabEntry>> entries(String packKey) => _packs.entriesOf(packKey);
+  /// The dictionary's own row, with the size the dictionary really is.
+  PackSummary _dictionarySummary(List<PackSummary> installed) {
+    final existing = installed
+        .where((summary) => summary.packKey == dictionaryPackKey)
+        .toList();
+    if (existing.isNotEmpty) {
+      return PackSummary(
+        packKey: existing.first.packKey,
+        title: dictionaryPackTitle,
+        sourceLanguage: existing.first.sourceLanguage,
+        targetLanguage: existing.first.targetLanguage,
+        entryCount: existing.first.entryCount,
+        isBundled: true,
+        importedAt: existing.first.importedAt,
+      );
+    }
+    return PackSummary(
+      packKey: dictionaryPackKey,
+      title: dictionaryPackTitle,
+      sourceLanguage: 'en',
+      targetLanguage: 'ar',
+      entryCount: dictionaryEntryCount,
+      isBundled: true,
+      importedAt: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+    );
+  }
+
+  /// The starter pack's row, relabelled.
+  ///
+  /// **The label is the only thing that changes.** The pack's entries, its
+  /// id and its key are untouched, so a favourite saved against it under the
+  /// old title is still there.
+  List<PackSummary> _withStarterTitle(List<PackSummary> installed) => <PackSummary>[
+        for (final summary in installed)
+          if (summary.packKey == starterPackKey)
+            PackSummary(
+              packKey: summary.packKey,
+              title: starterPackTitle,
+              sourceLanguage: summary.sourceLanguage,
+              targetLanguage: summary.targetLanguage,
+              entryCount: summary.entryCount,
+              isBundled: summary.isBundled,
+              importedAt: summary.importedAt,
+            )
+          else
+            summary,
+      ];
+
+  /// The pack's words.
+  ///
+  /// **The dictionary's words come from the dictionary, not from this
+  /// table.** The dictionary is a read-only file of its own; the app's
+  /// `entries` table holds the starter pack and whatever the user has
+  /// imported, and putting 31,600 dictionary rows in it would put them in
+  /// every backup as well.
+  ///
+  /// The dictionary's pool is **a sample, and the sample is bounded**. A
+  /// deck of ten cards and a quiz of ten questions need a few dozen words,
+  /// and reading 31,600 of them on every screen mount would be a second of
+  /// waiting for nothing.
+  Future<List<VocabEntry>> entries(String packKey) async {
+    if (packKey == dictionaryPackKey) {
+      final engine = _dictionary;
+      if (engine == null) return const <VocabEntry>[];
+      final heads = await engine.studyableEntries(
+        limit: dictionaryStudyPoolSize,
+        salt: _studySalt(),
+      );
+      return <VocabEntry>[for (final head in heads) _toVocabEntry(head)];
+    }
+    return _packs.entriesOf(packKey);
+  }
+
+  /// The salt that makes the dictionary's pool stable within a day.
+  ///
+  /// **Days since the epoch, so the order is the same all day and different
+  /// tomorrow.** A pool that changed on every read would make the word of the
+  /// day change within the day, and a pool that never changed would deal the
+  /// same words for ever.
+  int _studySalt() {
+    final now = _clock();
+    return now.difference(DateTime.utc(2000)).inHours ~/ 24;
+  }
+
+  /// A dictionary headword as an entry the app's study surfaces can use.
+  VocabEntry _toVocabEntry(DictionaryEntry head) {
+    final arabic = <String>[
+      for (final sense in head.senses)
+        if (sense.arabic != null && sense.arabic!.trim().isNotEmpty)
+          sense.arabic!,
+    ];
+    final glosses = <String>[
+      for (final sense in head.senses)
+        if (sense.gloss != null && sense.gloss!.trim().isNotEmpty) sense.gloss!,
+    ];
+    return VocabEntry(
+      // **The namespaced id**, so the two packs' favourites cannot collide.
+      id: dictionaryEntryId(head.norm),
+      term: head.word,
+      translations: arabic,
+      note: glosses.isEmpty ? '' : glosses.first,
+      phonetic: head.ipa ?? '',
+      partOfSpeech: head.senses.isEmpty ? '' : (head.senses.first.pos ?? ''),
+      examples: <String>[
+        for (final sense in head.senses) ...sense.examples,
+      ],
+    );
+  }
+
+  /// Makes sure the dictionary has a row in `packs`.
+  ///
+  /// **A row and no entries.** The `favorites` table's foreign key points at
+  /// `packs(pack_key)`, so a favourite for a dictionary word needs the pack to
+  /// exist — and the pack carries no entries, which is what keeps 31,600
+  /// dictionary rows out of every backup.
+  Future<void> ensureDictionaryPack() async {
+    await _packs.insertPackRow(
+      PackSummary(
+        packKey: dictionaryPackKey,
+        title: dictionaryPackTitle,
+        sourceLanguage: 'en',
+        targetLanguage: 'ar',
+        entryCount: dictionaryEntryCount,
+        isBundled: true,
+        importedAt: _clock(),
+      ),
+    );
+  }
 
   /// Looks the pack up, then hands the comparison to `SearchMatcher`.
   ///
@@ -78,6 +247,14 @@ class VocabRepository {
   }
 
   Future<String> exportPackJson(String packKey) async {
+    if (packKey == dictionaryPackKey) {
+      // **The dictionary is reference data and is not exportable.** A backup
+      // carries the user's favourites, never 25 MB of dictionary.
+      throw PackDecodeException(
+        'The dictionary is reference data and is not exported. It ships with '
+        'the app and is installed on first launch.',
+      );
+    }
     final pack = await _packs.getPack(packKey);
     if (pack == null) {
       throw PackDecodeException('No vocabulary pack named "$packKey" is installed.');
@@ -230,6 +407,19 @@ class VocabRepository {
     final progress = <WordProgress>[];
     final favorites = <BackupFavorite>[];
     for (final summary in summaries) {
+      // **The dictionary is not exported, and the reason is the ruling.** A
+      // backup carries the user's favourites, never 25 MB of dictionary. The
+      // dictionary's words live in a read-only file of their own and are not
+      // in this table at all, so there is nothing to export — but its *row*
+      // is, and a row exported as an empty pack would come back from a
+      // restore as a pack of nothing, with its size and its title lost.
+      if (summary.packKey == dictionaryPackKey) {
+        progress.addAll(await _progress.allForPack(summary.packKey));
+        for (final entryId in await _favorites.favoritesIn(summary.packKey)) {
+          favorites.add(BackupFavorite(packKey: summary.packKey, entryId: entryId));
+        }
+        continue;
+      }
       final pack = await _packs.getPack(summary.packKey);
       // A pack row whose entries have gone is skipped rather than exported as an
       // empty vocabulary list: it would restore as a real pack that cannot be
@@ -323,6 +513,14 @@ class VocabRepository {
       // anything about them. Kept, and asserted on, so that "it was redundant" is
       // a reading of this comment rather than a change somebody makes.
       for (final summary in await _packs.listPacks(executor: txn)) {
+        // **The dictionary's row survives a restore.** It is not in the
+        // backup - the dictionary is reference data and is never exported -
+        // so deleting it here would leave the device with no dictionary pack
+        // at all, and every dictionary favourite would go with it through
+        // the foreign key's cascade. The row has no entries, so keeping it
+        // costs nothing and keeps the favourites that the backup *does* carry
+        // restorable.
+        if (summary.packKey == dictionaryPackKey) continue;
         await _progress.reset(summary.packKey, executor: txn);
         await _sessions.deleteForPack(summary.packKey, executor: txn);
         await _packs.deletePack(summary.packKey, executor: txn);

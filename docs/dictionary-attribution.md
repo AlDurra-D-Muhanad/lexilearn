@@ -47,6 +47,40 @@ So the shipped work is under **CC-BY-SA-4.0**:
 4. **The WordNet licence is not CC-BY-SA** — it is `WordNet-3.0`, a separate and
    permissive licence. Do not label Princeton's material as share-alike.
 
+## Where it goes in the app — a ruling, already half-built
+
+**The three-dot menu at the top of every screen** → a row labelled **النسب** with a
+balance icon → a screen titled **المصادر والنسب**. It is reached the same way the app
+info screen and the Telegram contact are, so the three sit together and the licence
+is one tap from where the user looks for "what is this app".
+
+The screen has three sections, in this order:
+
+1. **الترخيص** — the licence of the shipped work, `CC-BY-SA-4.0`, with its URL as a
+   link that opens the licence text.
+2. **المصادر** — the three sources, each showing **its own licence** and its
+   **verbatim credit string**. The three licences differ, and collapsing them into
+   one share-alive line would misstate two of them.
+3. **الأرقام** — what the dictionary actually contains: entries, senses, senses with
+   an Arabic translation, examples, entries with an IPA transcription, and the number
+   of Arabic search keys.
+
+## The correction this ruling requires
+
+`lib/ui/dictionary/attribution_screen.dart` exists and reads the dictionary's `meta`
+table. **That is the thing to change.** `meta` carries the stale `attributionFile`
+path, names the build rather than the project, and reduces three different licences
+to one.
+
+**The fix belongs in the build tool, not in the screen.** The build writes the
+verified strings above into the database's `meta` table at build time — the upstream
+project and its URL, the three sources with their own licences and their verbatim
+credits — and the screen keeps reading the table it already reads. The screen's shape
+does not change; the data under it stops being the summary and becomes the record.
+
+**`attributionFile` must be dropped, not rendered.** It points at a path that does not
+exist, and the user has confirmed it is a stale path from an earlier session.
+
 ## A note on the `meta` block
 
 The `meta` block inside `en-ar-dictionary.json` carries the same licence and the same

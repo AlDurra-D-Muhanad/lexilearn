@@ -14,7 +14,7 @@
 const int dictionaryArtifactBytes = 26599424;
 
 /// The SHA-256 of `assets/dictionary/en_ar.db`, lower-case hex.
-const String dictionaryArtifactSha256 = 'd66ee0bc62d73f71d7b979d02eddc36f31a6a69c3c6728282c6ce99643311445';
+const String dictionaryArtifactSha256 = '5b26d68a611164c111f59f54095d6a84b283b42a59459dccfcd265d0e7383b53';
 
 /// The SHA-256 of the source JSON the artefact was built from.
 const String dictionarySourceSha256 = 'd9a64f1f45ed2afe8a3bd1e6a97c488ceca5f9966734f93d3c48e081f4b669b1';

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lexilearn/design/design_tokens.dart';
+import 'package:lexilearn/ui/dictionary/attribution_screen.dart';
+import 'package:lexilearn/ui/dictionary/dictionary_controller.dart';
 import 'package:lexilearn/ui/link/external_link.dart';
 import 'package:lexilearn/ui/settings/app_info_screen.dart';
 import 'package:lexilearn/ui/settings/app_settings_controller.dart';
@@ -8,6 +10,7 @@ import 'package:provider/provider.dart';
 
 /// The menu's copy. Arabic, like every other chrome string in this app.
 const String _appInfoLabel = 'معلومات التطبيق';
+const String _attributionLabel = 'النسب';
 const String _themeSystem = 'حسب النظام';
 const String _themeLight = 'فاتح';
 const String _themeDark = 'داكن';
@@ -28,6 +31,9 @@ const String _menuTooltip = 'المزيد من الخيارات';
 @immutable
 class _MenuValue {
   const _MenuValue.appInfo() : action = _MenuAction.appInfo, themeMode = null;
+  const _MenuValue.attribution()
+      : action = _MenuAction.attribution,
+        themeMode = null;
   const _MenuValue.theme(ThemeMode this.themeMode)
       : action = _MenuAction.theme;
   const _MenuValue.telegram() : action = _MenuAction.telegram, themeMode = null;
@@ -38,7 +44,7 @@ class _MenuValue {
   final ThemeMode? themeMode;
 }
 
-enum _MenuAction { appInfo, theme, telegram }
+enum _MenuAction { appInfo, attribution, theme, telegram }
 
 /// The three-dot menu, identical on all four bottom-bar destinations.
 ///
@@ -91,6 +97,15 @@ class AppOverflowMenu extends StatelessWidget {
         const PopupMenuItem<_MenuValue>(
           value: _MenuValue.appInfo(),
           child: _Row(icon: Icons.info_outline, label: _appInfoLabel),
+        ),
+        // **The dictionary's licence, and it is an obligation rather than a
+        // courtesy.** The dictionary is CC-BY-SA-4.0, and that licence obliges
+        // an application shipping it to name the licence and its sources. The
+        // screen reads them out of the dictionary's own `meta` table and
+        // invents nothing.
+        const PopupMenuItem<_MenuValue>(
+          value: _MenuValue.attribution(),
+          child: _Row(icon: Icons.balance_outlined, label: _attributionLabel),
         ),
         const PopupMenuDivider(),
         // Three items, one of which is always the current mode — not a single
@@ -145,11 +160,30 @@ class AppOverflowMenu extends StatelessWidget {
         Navigator.of(context).push(
           MaterialPageRoute<void>(builder: (_) => const AppInfoScreen()),
         );
+      case _MenuAction.attribution:
+        _openAttribution(context);
       case _MenuAction.theme:
         settings.setMode(value.themeMode!).ignore();
       case _MenuAction.telegram:
         openUrl(telegramContactUri).ignore();
     }
+  }
+
+  /// Opens the dictionary's attribution screen.
+  ///
+  /// **The licence obligation, and the read is off the menu's own path.** The
+  /// attribution comes out of the dictionary's `meta` table, so the screen
+  /// cannot be built until the dictionary is there; the read is awaited and
+  /// the route is pushed when it answers.
+  Future<void> _openAttribution(BuildContext context) async {
+    final controller = context.read<DictionaryController>();
+    final attribution = await controller.attribution();
+    if (!context.mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => AttributionScreen(attribution: attribution),
+      ),
+    );
   }
 }
 

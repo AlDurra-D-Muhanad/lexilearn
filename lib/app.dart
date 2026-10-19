@@ -4,6 +4,7 @@ import 'package:provider/single_child_widget.dart';
 
 
 import 'data/vocab_repository.dart';
+import 'ui/dictionary/dictionary_controller.dart';
 import 'ui/home_shell.dart';
 import 'ui/link/external_link.dart';
 import 'ui/settings/app_settings_controller.dart';
@@ -40,7 +41,18 @@ class LexiLearnApp extends StatefulWidget {
     this.openUrl,
     this.navigatorObservers,
     this.wallpaperSeed,
+    this.dictionary,
   });
+
+  /// The dictionary's own controller: the copy onto the device, its progress,
+  /// and the engine once it is there.
+  ///
+  /// **Optional, and the app works without it.** The dictionary is 26 MB and
+  /// the copy is off the UI path, so the app opens, navigates and shows the
+  /// home screen while it happens — and a build with no dictionary at all
+  /// still opens, still shows the starter pack and still works. A controller
+  /// that was not handed in is an **idle** one, which never starts.
+  final DictionaryController? dictionary;
 
   /// Seeds the rotating photograph. **A seam for `golden_test.dart` only** -
   /// null is the app's own behaviour, and the argument is threaded straight
@@ -70,6 +82,25 @@ class _LexiLearnAppState extends State<LexiLearnApp> {
   late final AppSettingsController _settings =
       AppSettingsController(repository: widget.repository);
 
+  /// The dictionary controller, or an idle one.
+  ///
+  /// **Built here and not handed in whole**, so a screen can reach it through
+  /// the provider and a test that mounts the app without a dictionary still
+  /// has one to read. The idle controller has no seams — no asset loader, no
+  /// file system, no database factory — so its `start()` returns at once and
+  /// nothing is installed.
+  late final DictionaryController _dictionary = widget.dictionary ??
+      DictionaryController.idle();
+
+  /// Whether this state made the dictionary controller, and so owns it.
+  ///
+  /// **A controller that was handed in is not disposed here.** The app is
+  /// given one by `main.dart`, which built it with the asset loader and the
+  /// file system; disposing it at the end of the app's life would tear down
+  /// something the caller still holds. The idle one this state creates is its
+  /// own, and its own is disposed.
+  bool get _ownsDictionary => widget.dictionary == null;
+
   @override
   void initState() {
     super.initState();
@@ -84,11 +115,17 @@ class _LexiLearnAppState extends State<LexiLearnApp> {
     // gives: the first frame must not wait on the database, and the mode it
     // starts at is exactly the one this app used before the controller existed.
     _settings.load().ignore();
+    // **The dictionary's 26 MB copy, fired and not awaited.** This is the
+    // whole of ruling E's first clause: the copy happens off the UI path, the
+    // app opens and navigates while it runs, and the home screen says what is
+    // happening rather than showing an empty search with no explanation.
+    _dictionary.start().ignore();
   }
 
   @override
   void dispose() {
     _settings.dispose();
+    if (_ownsDictionary) _dictionary.dispose();
     super.dispose();
   }
 
@@ -110,6 +147,12 @@ class _LexiLearnAppState extends State<LexiLearnApp> {
         // this was a `Provider`. `.value` because the controller is created in
         // [initState] and disposed in [dispose]; the provider must not own it.
         ChangeNotifierProvider<AppSettingsController>.value(value: _settings),
+        // **The dictionary, the same shape as the settings controller**: a
+        // `ChangeNotifier` owned by this state, provided above the
+        // `MaterialApp` so a screen can reach it. `ChangeNotifierProvider.value`
+        // and not `Provider.value` for the reason the comment above gives —
+        // provider asserts against a `Listenable` in a plain `Provider`.
+        ChangeNotifierProvider<DictionaryController>.value(value: _dictionary),
       ],
       // `ListenableBuilder` rather than `Consumer` on purpose: the *only* thing
       // that depends on the controller is `themeMode` below, and rebuilding the

@@ -4,11 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lexilearn/app.dart';
+import 'package:lexilearn/data/dictionary/dictionary_models.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/design/design_tokens.dart';
 import 'package:lexilearn/domain/quiz_question.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
+import 'package:lexilearn/ui/dictionary/attribution_screen.dart';
+import 'package:lexilearn/ui/dictionary/dictionary_controller.dart';
+import 'package:lexilearn/ui/dictionary/dictionary_word_screen.dart';
 import 'package:lexilearn/ui/flashcards/flashcard_controller.dart';
 import 'package:lexilearn/ui/flashcards/flashcards_screen.dart';
 import 'package:lexilearn/ui/home/home_screen.dart';
@@ -23,6 +27,7 @@ import 'package:lexilearn/ui/wallpaper/wallpaper_catalog.dart';
 import 'package:lexilearn/ui/word_detail/word_detail_screen.dart';
 import 'package:provider/provider.dart';
 
+import '../data/dictionary/dictionary_test_env.dart';
 import '../helpers/test_env.dart';
 
 /// The one Home tile that pushes a route rather than selecting a bar
@@ -483,6 +488,67 @@ void main() {
     });
   }
 
+  // --- the dictionary ------------------------------------------------------------
+  //
+  // **Six images, and they are the screens this round added.** The
+  // dictionary's own search results, its word screen and its attribution
+  // screen, each in both modes, because each of them names a different set of
+  // brand tokens per brightness and because a screen the census does not read
+  // is a screen nothing checks.
+  //
+  // **Their own harness, and the reason is the same as `_openDeck`'s.** The
+  // shared harness has no dictionary, so the shell would resolve the starter
+  // pack and the search field would search the wrong thing. The dictionary
+  // harness attaches the shipped artefact's engine to its repository, and the
+  // shell then resolves the **dictionary** as the active pack — which is the
+  // default in the shipping app, and is what these images are of.
+  for (final brightness in <Brightness>[Brightness.light, Brightness.dark]) {
+    final mode = brightness == Brightness.dark ? 'dark' : 'light';
+
+    testWidgets('dictionary search user shot, $mode', (tester) async {
+      useAPhone(tester);
+      await _setMode(tester, brightness);
+      await _openDictionary(tester);
+      await _typeDictionaryQuery(tester);
+      // **The result is asserted, not photographed.** A reference image that
+      // showed an empty search would look exactly as plausible as one that
+      // showed a word.
+      expect(find.text(_dictionaryQuery), findsWidgets);
+
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/dictionary_search_user_shot_$mode.png'),
+        skip: _goldenSkipReason,
+      );
+    });
+
+    testWidgets('dictionary word user shot, $mode', (tester) async {
+      useAPhone(tester);
+      await _setMode(tester, brightness);
+      await _openDictionary(tester);
+      await _openDictionaryWord(tester);
+
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/dictionary_word_user_shot_$mode.png'),
+        skip: _goldenSkipReason,
+      );
+    });
+
+    testWidgets('attribution screen user shot, $mode', (tester) async {
+      useAPhone(tester);
+      await _setMode(tester, brightness);
+      await _openDictionary(tester);
+      await _openAttribution(tester);
+
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/attribution_screen_user_shot_$mode.png'),
+        skip: _goldenSkipReason,
+      );
+    });
+  }
+
   // --- the quiz ----------------------------------------------------------------
   //
   // **Six images, and this pair of screens is the reason the whole file has a
@@ -561,6 +627,121 @@ void main() {
 
 /// The overflow menu's app-info entry, as `app_overflow_menu.dart` spells it.
 const String _appInfoMenuLabel = 'معلومات التطبيق';
+
+/// The overflow menu's attribution entry, as `app_overflow_menu.dart` spells
+/// it.
+///
+/// **النسب**, and the wording is the ruling's: the row names the licences and
+/// the credits, and the screen it opens is titled «المصادر والنسب».
+const String _attributionMenuLabel = 'النسب';
+
+/// The query the dictionary search is driven with, so the reference image
+/// shows a **named** word rather than whichever one the dictionary offered.
+const String _dictionaryQuery = 'child';
+
+/// The dictionary's own harness: the shipped artefact, opened, with its
+/// engine attached to the repository.
+///
+/// **Its own harness, and the reason is the same as `_openDeck`'s.** The
+/// shared harness has no dictionary, so the shell resolves the starter pack
+/// and every destination is scoped to it. Attaching the dictionary's engine
+/// makes `packs()` answer with the dictionary first, which makes the
+/// dictionary the active pack — which is the default in the shipping app and
+/// is what these images are of.
+class _DictionaryHarness {
+  _DictionaryHarness(this.harness, this.controller, this.entry);
+
+  final TestHarness harness;
+  final DictionaryController controller;
+  final DictionaryEntry entry;
+}
+
+/// Opens the shipped dictionary and mounts the app on it.
+Future<_DictionaryHarness> _openDictionary(WidgetTester tester) async {
+  // **Every real read in here goes through `runAsync`.** A `testWidgets` body
+  // runs in a fake-async zone, and a real sqflite future never completes
+  // there — the failure mode is a ten-minute hang with no message naming the
+  // cause (`docs/engineering-standards.md` §5).
+  final fixture = await tester.runAsync(DictionaryFixture.open);
+  addTearDown(fixture!.close);
+
+  final dictionaryHarness = await tester.runAsync(
+    () => TestHarness.create(packs: const <VocabPack>[_goldenPack]),
+  );
+  addTearDown(dictionaryHarness!.dispose);
+
+  // **The engine is attached to the repository**, so the shell's own start-up
+  // read resolves the dictionary as the active pack. Nothing about the
+  // dictionary is hard-coded into the shell.
+  dictionaryHarness.repository.attachDictionary(fixture.engine);
+
+  final controller = DictionaryController.ready(fixture.engine);
+  addTearDown(controller.dispose);
+  // **The attribution is read here, outside the fake-async zone.** The menu
+  // awaits it, and a real sqflite future never completes inside a
+  // `testWidgets` body — so the read is done here and the menu's await
+  // answers at once.
+  await tester.runAsync(controller.attribution);
+
+  await pumpShell(
+    tester,
+    dictionaryHarness.repository,
+    wallpaperSeed: _wallpaperSeed,
+    dictionary: controller,
+  );
+
+  final entry = (await tester.runAsync(
+    () => fixture.store.entryByNorm(_dictionaryQuery),
+  ))!;
+  return _DictionaryHarness(dictionaryHarness, controller, entry);
+}
+
+/// Types the dictionary's query into Home's search field.
+///
+/// **The dictionary's own settle, and the reason it is needed.** The shared
+/// `settleDatabase` counts the **app** database's operations; a dictionary
+/// read is on another file and is not one of them, so the shared settle can
+/// return while the dictionary is still answering — and the reference image
+/// would photograph the word «جارٍ البحث…» instead of a result. This gives
+/// the reply a real turn and pumps until the results are there, which is the
+/// same dance the shared helper performs for the app database.
+Future<void> _typeDictionaryQuery(WidgetTester tester) async {
+  await tester.enterText(find.byType(TextField), _dictionaryQuery);
+  await tester.pump(AppDurations.standard);
+  for (var round = 0; round < 50; round++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pump();
+    if (find.text(_dictionaryQuery).evaluate().length > 1) return;
+  }
+  fail('the dictionary search for "$_dictionaryQuery" never answered');
+}
+
+/// Opens the dictionary's word screen for the entry the search found.
+Future<void> _openDictionaryWord(WidgetTester tester) async {
+  await _typeDictionaryQuery(tester);
+  final row = find.descendant(
+    of: find.byType(ListView),
+    matching: find.text(_dictionaryQuery),
+  );
+  await tester.tap(row);
+  await tester.pumpAndSettle();
+  await settleDatabase(tester);
+  expect(find.byType(DictionaryWordScreen), findsOneWidget,
+      reason: 'the result row opens the dictionary word screen');
+}
+
+/// Opens the attribution screen through the overflow menu.
+Future<void> _openAttribution(WidgetTester tester) async {
+  await tester.tap(find.byIcon(Icons.more_vert));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(_attributionMenuLabel));
+  await tester.pumpAndSettle();
+  await settleDatabase(tester);
+  expect(find.byType(AttributionScreen), findsOneWidget,
+      reason: 'the menu opens the dictionary attribution screen');
+}
 
 /// The quiz's advance button, as `quiz_screen.dart` spells it, on every question
 /// but the last.
