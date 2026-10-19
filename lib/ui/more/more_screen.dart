@@ -7,6 +7,8 @@ import 'package:lexilearn/data/pack_dao.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/design/design_tokens.dart';
 import 'package:lexilearn/ui/packs/packs_controller.dart';
+import 'package:lexilearn/ui/home_shell.dart';
+import 'package:lexilearn/ui/settings/app_overflow_menu.dart';
 import 'package:lexilearn/ui/stats/stats_controller.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
 import 'package:provider/provider.dart';
@@ -223,52 +225,71 @@ class _MoreScreenState extends State<MoreScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(_title),
-        // The header sits on the background rather than on a raised surface,
-        // matching the artwork's word-card header. The AppBar's own default is
-        // `surfaceContainer`, which would draw a second tone across the top of a
-        // screen whose only surfaces are the cards below it.
-        backgroundColor:
-            isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
-        surfaceTintColor: Colors.transparent,
-      ),
-      body: SafeArea(
-        child: Stack(
-          // `Positioned.fill` rather than a bare child, so the confirmation
-          // layer can cover the scroll view and so its own `Positioned.fill`
-          // has a bounded box to fill. The same two reasons
-          // `stats_screen.dart` stacks its own body this way.
-          children: <Widget>[
-            Positioned.fill(child: _page()),
-            if (_confirmation != null)
-              Positioned.fill(
-                // Back *cancels* the confirmation and does not leave the screen.
-                // `canPop: false` keeps the route; the callback turns the blocked
-                // pop into a cancel, so back and `إلغاء` do the same thing.
-                // Measured before this wrapper existed, on the statistics
-                // screen's identical layer: with the confirmation open,
-                // `tester.binding.handlePopRoute()` returned `true`, that
-                // screen's count went to 0 and the host route came back — so
-                // Android's back silently left the screen mid-confirmation.
-                child: PopScope<void>(
-                  canPop: false,
-                  onPopInvokedWithResult: (didPop, _) {
-                    // `didPop` is always false while `canPop` is false; the guard
-                    // is here so a future `canPop` cannot turn a cancellation
-                    // into a navigation.
-                    if (didPop) return;
-                    _cancel();
-                  },
+    // **The app's back button, and the reason this screen has exactly one
+    // `PopScope`.** Back from a bar destination goes to Home
+    // (`ShellBackToHome`). This screen also has a destructive confirmation to
+    // close, and for a long time each of those wanted its own `PopScope`. They
+    // cannot both have one: a `PopScope` is a veto, not a consumer, so a blocked
+    // pop fires *every* `PopEntry` registered on the route with `didPop ==
+    // false` — measured: one back press closed the confirmation **and** jumped
+    // the bar to Home. So the confirmation is folded into the one handler through
+    // `onBack`, and it is `onBack` (rather than a second scope) that keeps the tab
+    // where the user is while a dialog is up. See `ShellBackToHome`.
+    //
+    // `null` while no confirmation is open, which is what lets the default
+    // "go to Home" behaviour through.
+    return ShellBackToHome(
+      onBack: _confirmation == null ? null : _cancel,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text(_title),
+          // The header sits on the background rather than on a raised surface,
+          // matching the artwork's word-card header. The AppBar's own default is
+          // `surfaceContainer`, which would draw a second tone across the top of a
+          // screen whose only surfaces are the cards below it.
+          backgroundColor:
+              isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
+          surfaceTintColor: Colors.transparent,
+          // The app's overflow menu, in the actions slot this bar already has and
+          // was not using. One of four destinations that carry it — see
+          // `AppOverflowMenu` for why the control is on all four and not only on
+          // Home, and for the three pushed screens that deliberately do not.
+          actions: const <Widget>[AppOverflowMenu()],
+        ),
+        body: SafeArea(
+          child: Stack(
+            // `Positioned.fill` rather than a bare child, so the confirmation
+            // layer can cover the scroll view and so its own `Positioned.fill`
+            // has a bounded box to fill. The same two reasons
+            // `stats_screen.dart` stacks its own body this way.
+            children: <Widget>[
+              Positioned.fill(child: _page()),
+              if (_confirmation != null)
+                Positioned.fill(
+                  // **No `PopScope` here any more, and that is the fix rather
+                  // than a simplification.** This layer used to carry its own
+                  // `canPop: false` wrapper so that Android's back would cancel
+                  // the confirmation instead of leaving the screen — a defect
+                  // measured on `stats_screen.dart`'s identical layer first
+                  // (`tester.binding.handlePopRoute()` returned `true`, the
+                  // screen's count went to 0 and the host route came back). The
+                  // wrapper worked, and then it stopped being the only one:
+                  // `ShellBackToHome` above also vetoes the same route, and both
+                  // `PopEntry`s fire on every blocked pop. Two vetoes for one
+                  // press meant one press cancelled the dialog *and* left the
+                  // tab. The cancel now arrives through `ShellBackToHome.onBack`
+                  // and this layer is a plain child, which is what makes
+                  // `test/ui/more_screen_test.dart` → *back cancels the
+                  // confirmation and stays on the tab* green rather than a test
+                  // that has to pick which of two scopes won.
                   child: _ConfirmLayer(
                     confirmation: _confirmation!,
                     onCancel: _cancel,
                     onConfirm: _run,
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

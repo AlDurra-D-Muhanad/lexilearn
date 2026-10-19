@@ -35,6 +35,9 @@ dependencies:
   # file_picker: user picks a .json pack from Downloads or Drive.
   # share_plus: hands a written backup file to the Android share sheet.
   # crypto: SHA-1 for deterministic entry ids.
+  # url_launcher: hands an https link to the browser or Telegram. Adds **no
+  # permission** - see lib/ui/link/external_link.dart for the manifest it
+  # contributes and docs/engineering-standards.md section 12.
   flutter:
     sdk: flutter
 
@@ -48,6 +51,7 @@ dependencies:
   file_picker: ^13.1.0
   share_plus: ^13.3.1
   crypto: ^3.0.7
+  url_launcher: ^6.3.3
 
 dev_dependencies:
   flutter_test:

@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/design/design_tokens.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
+import 'package:lexilearn/ui/home_shell.dart';
+import 'package:lexilearn/ui/settings/app_overflow_menu.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
 import 'package:provider/provider.dart';
 
@@ -248,8 +250,12 @@ class _DeckBody extends StatelessWidget {
 
     return ListenableBuilder(
       listenable: controller,
-      builder: (context, _) => Scaffold(
-        appBar: AppBar(
+      // `ShellBackToHome` is this destination's share of the app's back button:
+      // Android's back returns to `الرئيسية` rather than closing the app, which is
+      // what the user asked for and what `HomeShell` documents. See that widget.
+      builder: (context, _) => ShellBackToHome(
+        child: Scaffold(
+          appBar: AppBar(
           // The artwork's own title reads «بطاقة التعلم» — *the* learning card,
           // singular — and §4ج never names the title at all; it names the progress
           // indicator, the image, the word, the three controls and the swipe
@@ -275,9 +281,21 @@ class _DeckBody extends StatelessWidget {
           //
           // The actions slot is where this app already puts a run that is metadata
           // rather than chrome, and it leaves the artwork's body exactly as drawn.
-          actions: <Widget>[_PackKeyBadge(packKey: packKey)],
+          //
+          // **The overflow menu joins the badge here rather than replacing it.**
+          // The artwork's header is the title, a back arrow and the progress row,
+          // and this app already spends the actions slot on the one thing the
+          // artwork has no room for; the menu is the second thing it has no room
+          // for, and dropping either to make room would be a worse trade than a
+          // bar that is 48px wider than the mock. The menu itself is the same
+          // widget on all four destinations — see `AppOverflowMenu`.
+          actions: <Widget>[
+            _PackKeyBadge(packKey: packKey),
+            const AppOverflowMenu(),
+          ],
+          ),
+          body: SafeArea(child: _body(context, theme, isDark)),
         ),
-        body: SafeArea(child: _body(context, theme, isDark)),
       ),
     );
   }

@@ -9,6 +9,7 @@ import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
 import 'package:lexilearn/ui/more/more_screen.dart';
 import 'package:lexilearn/ui/packs/packs_controller.dart';
+import 'package:lexilearn/ui/settings/app_settings_controller.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
 import 'package:lexilearn/ui/theme/app_theme.dart';
 import 'package:provider/provider.dart';
@@ -181,6 +182,7 @@ Future<void> _pumpMore(
       packs: packs,
       packKey: packKey,
       brightness: brightness,
+      settings: createAppSettings(repository),
     ),
   );
   await settleDatabase(tester);
@@ -192,6 +194,7 @@ class _MoreApp extends StatelessWidget {
     required this.packs,
     required this.packKey,
     required this.brightness,
+    required this.settings,
   });
 
   final VocabRepository repository;
@@ -199,12 +202,18 @@ class _MoreApp extends StatelessWidget {
   final String packKey;
   final Brightness brightness;
 
+  /// The theme/launcher seams `LexiLearnApp` would have installed. `MoreScreen`
+  /// carries the app's overflow menu, which reads both, so this stand-in has to
+  /// supply them itself — see `appSeamProviders` in `test/helpers/test_env.dart`.
+  final AppSettingsController settings;
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: <SingleChildWidget>[
         Provider<VocabRepository>.value(value: repository),
         ChangeNotifierProvider<PacksController>.value(value: packs),
+        ...appSeamProviders(settings: settings),
       ],
       child: MaterialApp(
         theme: AppTheme.light(),
@@ -356,6 +365,7 @@ void main() {
           ),
           packKey: 'en_ar',
           brightness: Brightness.light,
+          settings: createAppSettings(harness.repository),
         ),
       );
       await tester.pump();
@@ -584,15 +594,20 @@ void main() {
             repository: harness.repository,
             pickJsonFile: () async => null,
           ),
-          child: Provider<VocabRepository>.value(
-            value: harness.repository,
-            child: MaterialApp(
-              theme: AppTheme.light(),
-              builder: (context, child) =>
-                  Directionality(textDirection: TextDirection.rtl, child: child!),
-              home: MoreScreen(
-                packKey: 'en_ar',
-                onPackSelected: (key) => chosen = key,
+          child: MultiProvider(
+            providers: appSeamProviders(
+              settings: createAppSettings(harness.repository),
+            ),
+            child: Provider<VocabRepository>.value(
+              value: harness.repository,
+              child: MaterialApp(
+                theme: AppTheme.light(),
+                builder: (context, child) =>
+                    Directionality(textDirection: TextDirection.rtl, child: child!),
+                home: MoreScreen(
+                  packKey: 'en_ar',
+                  onPackSelected: (key) => chosen = key,
+                ),
               ),
             ),
           ),
@@ -861,16 +876,20 @@ void main() {
       await _tap(tester, find.widgetWithText(OutlinedButton, _reset));
       expect(inMore(_resetTitle), findsOneWidget);
 
-      // The return value does not say the route popped, and is not asserted as if
-      // it did: `maybePop` returns `true` for `doNotPop` as well as for a real
-      // pop — it means "handled", and being blocked on purpose counts. What
-      // distinguishes the two behaviours is whether the screen is still in the
-      // tree.
-      final handled = await tester.binding.handlePopRoute();
+      // **The return value of `handlePopRoute` is not asserted here, and the
+      // comment this test used to carry said why and then asserted it anyway.**
+      //
+      // `NavigatorState.maybePop` returns `true` for `RoutePopDisposition.doNotPop`
+      // — that is, for a pop this code *deliberately blocked* — as well as for a
+      // real one, because "handled" is what it reports and being blocked on
+      // purpose counts (`docs/engineering-standards.md` §2, traced through
+      // `navigator.dart` and `routes.dart` on this SDK). So `expect(handled,
+      // isTrue)` cannot tell the two behaviours apart.
+      //
+      // What distinguishes them is the tree, and that is what this asserts.
+      await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
 
-      expect(handled, isTrue,
-          reason: 'the pop was handled — by being blocked, not by navigating');
       expect(find.byType(MoreScreen), findsOneWidget,
           reason: 'the route did not pop; back did not navigate away');
       expect(inMore(_resetTitle), findsNothing,

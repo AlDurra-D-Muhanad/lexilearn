@@ -256,8 +256,25 @@ class _FeedbackBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final correct = controller.lastSelectedWasCorrect;
+
+    // **The verdict palette, not the scheme's own containers.** This banner
+    // used to read `scheme.primaryContainer` for a right answer, which is the
+    // brand purple — `#E9DDFF` light and `#4C3E76` dark, 101,226 px of it in the
+    // dark reference image — sitting *directly above* the green correct-option
+    // field the previous round introduced. A screen that announced "right answer,
+    // here it is" in purple above the green answer itself was saying two
+    // different things at once, and it was the purple one that carried the
+    // verdict.
+    //
+    // The fix is the role `AppVerdictColors` already exists for, used here for
+    // both branches rather than only the correct one: `wrongFill` **is**
+    // `scheme.errorContainer` and `wrongInk` **is** `scheme.onErrorContainer` —
+    // pinned by `test/design/app_theme_test.dart` — so the wrong half is
+    // unchanged to the pixel while the right half stops disagreeing with the
+    // field under it. One read, two colours, and the banner is finally the same
+    // fact as the row it points at.
+    final verdict = AppVerdictColors.of(context);
 
     return AnimatedContainer(
       // The answer reveal is a movement, so it gets the brand's fast duration —
@@ -269,7 +286,7 @@ class _FeedbackBanner extends StatelessWidget {
         vertical: AppSpacing.s,
       ),
       decoration: BoxDecoration(
-        color: correct ? scheme.primaryContainer : scheme.errorContainer,
+        color: correct ? verdict.correctFill : verdict.wrongFill,
         borderRadius: BorderRadius.circular(AppRadii.md),
       ),
       child: Text(
@@ -279,7 +296,7 @@ class _FeedbackBanner extends StatelessWidget {
         textAlign: TextAlign.center,
         textDirection: TextDirection.rtl,
         style: TextStyle(
-          color: correct ? scheme.onPrimaryContainer : scheme.onErrorContainer,
+          color: correct ? verdict.correctInk : verdict.wrongInk,
           fontWeight: FontWeight.w700,
         ),
       ),

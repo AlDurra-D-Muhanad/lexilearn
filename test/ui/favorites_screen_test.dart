@@ -394,15 +394,16 @@ void main() {
 
       // Blocked, so the route stays and the screen is still there.
       //
-      // **The return value does not say the route popped, and is not asserted as
-      // if it did.** `NavigatorState.maybePop` returns `true` for
-      // `RoutePopDisposition.doNotPop` as well as for a real pop — it means "the
-      // pop was handled", and being blocked on purpose counts as handled.
-      final handled = await tester.binding.handlePopRoute();
+      // **The return value is deliberately not captured.**
+      // `NavigatorState.maybePop` returns `true` for `RoutePopDisposition.doNotPop`
+      // as well as for a real pop - it means "the pop was handled", and being
+      // blocked on purpose counts as handled - so `expect(handled, isTrue)` cannot
+      // tell a blocked pop from a navigation. `docs/engineering-standards.md`
+      // section 2; the measurement that distinguishes them is whether
+      // `FavoritesScreen` is still in the tree, which is the first assertion below.
+      await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
 
-      expect(handled, isTrue,
-          reason: 'the pop was handled — by being blocked, not by navigating');
       expect(find.byType(FavoritesScreen), findsOneWidget,
           reason: 'the route did not pop; back did not navigate away');
       expect(inFav(_removeTitle), findsNothing,

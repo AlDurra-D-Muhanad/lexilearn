@@ -112,14 +112,22 @@ Future<void> _pumpHome(
   await tester.pumpWidget(
     Provider<VocabRepository>.value(
       value: harness.repository,
-      child: MaterialApp(
-        theme: AppTheme.light(),
-        builder: (context, child) =>
-            Directionality(textDirection: TextDirection.rtl, child: child!),
-        home: HomeScreen(
-          packKey: packKey,
-          onPackSelected: onPackSelected ?? (_) {},
-          onOpenWord: onOpenWord ?? (_) {},
+      // `HomeScreen` carries the app's overflow menu, which reads the two
+      // seams `LexiLearnApp` installs. This stand-in bypasses the app, so it
+      // supplies them here — the same reason it supplies the repository.
+      child: MultiProvider(
+        providers: appSeamProviders(
+          settings: createAppSettings(harness.repository),
+        ),
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          builder: (context, child) =>
+              Directionality(textDirection: TextDirection.rtl, child: child!),
+          home: HomeScreen(
+            packKey: packKey,
+            onPackSelected: onPackSelected ?? (_) {},
+            onOpenWord: onOpenWord ?? (_) {},
+          ),
         ),
       ),
     ),

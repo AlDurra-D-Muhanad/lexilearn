@@ -217,6 +217,101 @@ class _HomeShellState extends State<HomeShell> {
   }
 }
 
+/// Wraps a bottom-bar destination so Android's back returns to Home.
+///
+/// **THE BACK BUTTON, and the reason this widget exists.** The user reported that
+/// entering a screen and pressing back on the phone left the app entirely.
+/// Measured before any of this, on the unmodified tree, with a throwaway test
+/// that called `tester.binding.handlePopRoute()` and then read the tree
+/// (`docs/engineering-standards.md` §2 — the return value is never asserted,
+/// because `NavigatorState.maybePop` returns `true` for a deliberately blocked
+/// pop too):
+///
+/// | where | handlePopRoute | HomeScreen after |
+/// |---|---|---|
+/// | bottom-bar destination 4 (`المزيد`) | **false** | **0** |
+/// | Home | false | 1 |
+/// | a pushed route (word detail) | true | 1 |
+///
+/// Read the first row. `MaterialApp`'s `home:` **is** the root route and the four
+/// bar destinations are not routes at all — they are four widgets the bar swaps
+/// inside one `AnimatedSwitcher`. So there was nothing for Android's back to pop
+/// on any of the three non-Home tabs. `maybePop` reached the root route, found
+/// `RoutePopDisposition.bubble` (the first route has nothing below it to bubble
+/// *to*), returned `false` — and `false` is what tells the engine to call
+/// `SystemNavigator.pop()`, which closes the app. That is the user's report, and
+/// it explains why the pushed screens were fine: a pushed route is a real route
+/// and popped normally all along.
+///
+/// **Why this lives on each destination and not on the shell**, which is where
+/// it went first and where it was wrong. A `PopScope` is a *veto*, not a
+/// consumer: when the root route's `popDisposition` comes back `doNotPop`,
+/// `Route.onPopInvokedWithResult` fires **every** registered `PopEntry` on that
+/// route with `didPop == false` — including entries that had nothing to do with
+/// the block. Measured on `MoreScreen` with a confirmation open: the
+/// confirmation's own `PopScope` cancelled the dialog as designed **and** the
+/// shell's `PopScope` fired too, so one back press closed the dialog *and*
+/// jumped the bar to Home. A control that cannot tell whether the block was its
+/// own is not a control. With one `PopScope` per destination — and
+/// `MoreScreen`'s folding its confirmation into the same one through [onBack] —
+/// each back press has exactly one decision and one owner.
+///
+/// **Home has none, and that is the other half of what the user asked for.** On
+/// Home nothing vetoes the pop, `maybePop` bubbles, and the engine closes the
+/// app: «وان كان المستخدم في الصفحة الرئيسية عندها يخرج من التطبيق». Pinned by
+/// `test/ui/back_navigation_test.dart` → *nothing vetoes the pop while Home is
+/// showing*, which asserts the absence of a blocking `PopScope` in the tree
+/// rather than a return value that means two different things.
+class ShellBackToHome extends StatelessWidget {
+  const ShellBackToHome({super.key, required this.child, this.onBack});
+
+  final Widget child;
+
+  /// Handles the back press instead of switching to Home.
+  ///
+  /// `MoreScreen` passes its confirmation's cancel here so that a back press
+  /// closes the dialog **and stays on the tab**, rather than closing the dialog
+  /// and jumping to Home. Null on the other destinations, which have nothing
+  /// that could want a back press of its own.
+  final VoidCallback? onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope<void>(
+      // Always false, on every destination. There is nothing above a
+      // bottom-bar destination for back to pop to, so the route must not move;
+      // what the press *means* is this widget's decision.
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        // `didPop` is always false while `canPop` is false; the guard is here so
+        // a future `canPop` cannot turn the switch into a navigation. Same guard,
+        // same reason, as `more_screen.dart` and `stats_screen.dart`.
+        if (didPop) return;
+        final handle = onBack;
+        if (handle != null) {
+          handle();
+          return;
+        }
+        ShellTabScope.of(context)?.selectTab(_homeIndex);
+      },
+      child: child,
+    );
+  }
+}
+
+/// The index of `الرئيسية`, which is also index 0.
+///
+/// **Named rather than written as `0` at each use**, for the reason the rest of
+/// this file repeats: a bare `0` in three places is three places a future
+/// reordering of [_destinations] has to be found in, and two of them are
+/// behaviour — the back button's target and the shell's own start — where
+/// getting it wrong does not crash.
+///
+/// It is asserted equal to the index of `الرئيسية` in
+/// `test/ui/back_navigation_test.dart`, so reordering the bar without moving
+/// this is a red test rather than a back button that leaves from the wrong tab.
+const int _homeIndex = 0;
+
 /// The shell's selected destination, published to the screens inside it.
 ///
 /// **Why this exists.** `HomeShell` owns the bottom bar's index, and Home's

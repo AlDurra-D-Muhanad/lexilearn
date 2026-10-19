@@ -12,10 +12,12 @@ import 'package:lexilearn/ui/quiz/quiz_controller.dart';
 import 'package:lexilearn/ui/quiz/quiz_result_screen.dart';
 import 'package:lexilearn/ui/quiz/quiz_screen.dart';
 import 'package:lexilearn/ui/quiz/quiz_setup_screen.dart';
+import 'package:lexilearn/ui/settings/app_settings_controller.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
 import 'package:lexilearn/ui/theme/app_theme.dart';
 import 'package:lexilearn/ui/theme/app_verdict_colors.dart';
 import 'package:provider/provider.dart';
+import 'package:provider/single_child_widget.dart';
 
 import '../helpers/test_env.dart';
 
@@ -122,10 +124,15 @@ void main() {
 
   tearDown(() => harness.dispose());
 
-  Future<void> pumpQuiz(WidgetTester tester) async {
-    await tester.pumpWidget(_QuizApp(controller: controller));
-    await settleDatabase(tester);
-  }
+  Future<void> pumpQuiz(
+      WidgetTester tester, {
+      Brightness brightness = Brightness.light,
+    }) async {
+      await tester.pumpWidget(
+        _QuizApp(controller: controller, brightness: brightness),
+      );
+      await settleDatabase(tester);
+    }
 
   Finder optionText(QuizQuestion question, int index) =>
       find.text(question.options[index].text);
@@ -160,6 +167,29 @@ void main() {
   /// and it is the side that is visible next to the field.
   Color optionBorderColor(WidgetTester tester, QuizQuestion question, int index) =>
       (optionDecoration(tester, question, index).border! as Border).top.color;
+
+  /// The fill the feedback banner above the options is actually painting.
+  ///
+  /// Read from the rendered widget, like [optionDecoration], for the same
+  /// reason: a test that asserted a constant would still pass with the banner on
+  /// screen saying the opposite.
+  ///
+  /// Scoped by the banner's own text, which is the one thing that separates it
+  /// from an option row — the option rows are `AnimatedContainer`s too. Both
+  /// spellings are searched, because the banner says `إجابة صحيحة` for a right
+  /// answer and `إجابة خاطئة — …` for a wrong one, and either one is enough to
+  /// find it.
+  Color bannerFill(WidgetTester tester) {
+    final banner = find.ancestor(
+      of: find.textContaining(_correctBanner).evaluate().isNotEmpty
+          ? find.textContaining(_correctBanner)
+          : find.textContaining(_wrongBanner),
+      matching: find.byType(AnimatedContainer),
+    );
+    expect(banner, findsOneWidget, reason: 'exactly one feedback banner');
+    return (tester.widget<AnimatedContainer>(banner).decoration! as BoxDecoration)
+        .color!;
+  }
 
   /// The controller behind the screen under test.
   ///
@@ -286,6 +316,60 @@ void main() {
     expect(controller.answeredCount, 1);
     expect(controller.isFinished, isFalse);
     expect(controller.question, isNotNull);
+  });
+
+  testWidgets('the banner above the answer announces the same verdict',
+      (tester) async {
+    // **Item 6.** The banner used to paint `scheme.primaryContainer` for a right
+    // answer — the brand purple, `#E9DDFF` light and `#4C3E76` dark, 101,226 px
+    // of it in the dark reference image — directly *above* the green
+    // correct-option field round 1 introduced. A screen that said "right answer,
+    // here it is" in purple, above the answer in green, was saying two different
+    // things at once, and the one carrying the verdict was the wrong one.
+    //
+    // **Asserted as a relationship, not as a hex.** Both branches are checked,
+    // because the defect only exists on the correct branch and a one-sided test
+    // would pass with the wrong branch broken instead.
+    await pumpQuiz(tester);
+    final question = controller.question!;
+
+    await _tap(tester, optionText(question, question.correctIndex));
+
+    expect(bannerFill(tester), optionFill(tester, question, question.correctIndex),
+        reason: 'the banner and the field it points at are one verdict, in '
+            'correctFill');
+    expect(bannerFill(tester),
+        isNot(Theme.of(tester.element(find.byType(QuizScreen))).colorScheme.primaryContainer),
+        reason: 'primaryContainer is the brand purple, and it is not a verdict');
+  });
+
+  testWidgets('the wrong-answer banner and the wrong field agree', (tester) async {
+    await pumpQuiz(tester);
+    final question = controller.question!;
+    final wrong = _firstWrongIndex(question);
+
+    await _tap(tester, optionText(question, wrong));
+
+    expect(bannerFill(tester), optionFill(tester, question, wrong),
+        reason: 'the wrong half must stay the scheme\'s own error container, so '
+            'the banner and the picked row still agree');
+  });
+
+  testWidgets('the banner is green in dark mode too, not purple',
+      (tester) async {
+    // The dark half is its own test because the light one cannot see it: in
+    // light mode `primaryContainer` is a pale lavender that reads as "not this"
+    // at a glance, while `#4C3E76` sat directly above a dark green field and
+    // was the state the user photographed.
+    await pumpQuiz(tester, brightness: Brightness.dark);
+    final question = controller.question!;
+
+    await _tap(tester, optionText(question, question.correctIndex));
+
+    final scheme = Theme.of(tester.element(find.byType(QuizScreen))).colorScheme;
+    expect(bannerFill(tester), isNot(scheme.primaryContainer));
+    expect(bannerFill(tester),
+        optionFill(tester, question, question.correctIndex));
   });
 
   testWidgets('the correct option is marked in the brand success colour',
@@ -735,6 +819,7 @@ void main() {
     await tester.pumpWidget(_SetupApp(
       repository: two.repository,
       selected: selected,
+      settings: createAppSettings(two.repository),
     ));
     await settleDatabase(tester);
 
@@ -792,17 +877,29 @@ void main() {
 /// callback would prove the `onChanged` wiring and nothing about the re-keying,
 /// which is half of what had no coverage.
 class _SetupApp extends StatelessWidget {
-  const _SetupApp({required this.repository, required this.selected});
+  const _SetupApp({
+    required this.repository,
+    required this.selected,
+    required this.settings,
+  });
 
   final VocabRepository repository;
 
   /// Every pack key the screen reported, in order.
   final List<String> selected;
 
+  /// The theme/launcher seams `LexiLearnApp` would have installed.
+  /// `QuizSetupScreen` carries the app's overflow menu in its `AppBar`, which
+  /// reads both — see `appSeamProviders` in `test/helpers/test_env.dart`.
+  final AppSettingsController settings;
+
   @override
   Widget build(BuildContext context) {
-    return Provider<VocabRepository>.value(
-      value: repository,
+    return MultiProvider(
+      providers: <SingleChildWidget>[
+        Provider<VocabRepository>.value(value: repository),
+        ...appSeamProviders(settings: settings),
+      ],
       child: MaterialApp(
         theme: AppTheme.light(),
         darkTheme: AppTheme.dark(),

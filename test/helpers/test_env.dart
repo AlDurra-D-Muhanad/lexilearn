@@ -8,6 +8,10 @@ import 'package:lexilearn/data/database.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/domain/pack_codec.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
+import 'package:lexilearn/ui/link/external_link.dart';
+import 'package:lexilearn/ui/settings/app_settings_controller.dart';
+import 'package:provider/provider.dart';
+import 'package:provider/single_child_widget.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// An in-memory database plus a repository, for widget and DAO tests.
@@ -31,6 +35,7 @@ class TestHarness {
   static Future<TestHarness> create({
     List<VocabPack> packs = const <VocabPack>[],
     DateTime? now,
+    String? path,
   }) async {
     // `flutter test` runs each test file in its own isolate, so this static
     // guard is per-file. Initialising here rather than in a `setUpAll` is what
@@ -45,9 +50,18 @@ class TestHarness {
     // Left at the default, sqflite caches its open-database helper by path and
     // would hand every harness in this isolate the SAME database — the second
     // harness would be created successfully and silently wrong.
+    //
+    // **`path` is the one way to get a harness that survives a restart.** The
+    // theme preference has to outlive the process, and "outlives the process" is
+    // not testable against `:memory:`: `singleInstance: false` means a second
+    // harness at that path is a *different, empty* database, which is a fresh
+    // install rather than a restart. Point two harnesses at the same file and
+    // the second one opens the first one's data — that is what
+    // `test/ui/app_settings_test.dart` → *the theme choice survives a restart*
+    // uses, and it is the only distinction that makes that test mean anything.
     final db = await openAppDatabase(
       factory: databaseFactoryFfi,
-      path: inMemoryDatabasePath,
+      path: path ?? inMemoryDatabasePath,
       singleInstance: false,
     );
 
@@ -123,7 +137,14 @@ const Duration shellDatabaseSettle = Duration(milliseconds: 50);
 /// so the turn lives here. If a destination ever grows a *third* sequential read,
 /// add a `pump()`-then-`runAsync` pair here rather than copying one into a test.
 Future<void> pumpShell(WidgetTester tester, VocabRepository repository) async {
-  await tester.pumpWidget(LexiLearnApp(repository: repository));
+  // The link seam is the **recording** launcher, not the real one. `LexiLearnApp`
+  // defaults to `url_launcher`, which has no implementation under `flutter_test`
+  // — so without this every test that touched the overflow menu would throw a
+  // `MissingPluginException` from a platform channel, which is §5's "no platform
+  // at all" violation in a new place. A test asserts on [launchedLinks].
+  await tester.pumpWidget(
+    LexiLearnApp(repository: repository, openUrl: _recordNothingLaunched),
+  );
   // The shell's own start-up read: this is what fills in the active pack key.
   await tester.runAsync(() => Future<void>.delayed(shellDatabaseSettle));
   // Rebuild, so `didUpdateWidget` runs and the destination issues its read.
@@ -211,6 +232,65 @@ Future<T> readOutsideFakeAsync<T>(
   Future<T> Function() read,
 ) async =>
     (await tester.runAsync(read)) as T;
+
+/// The two providers a **stand-in** app must add when it mounts one screen
+/// directly instead of the whole application.
+///
+/// `LexiLearnApp` installs `AppSettingsController` and `OpenExternalUrl` above
+/// its `MaterialApp`, and every screen that carries the overflow menu reads
+/// both. A stand-in that skips `LexiLearnApp` — `_MoreApp` in
+/// `more_screen_test.dart`, the flashcard mount in `flashcards_screen_test.dart`,
+/// and the Home mounts in three others — therefore has to supply them itself,
+/// exactly as it already supplies `VocabRepository`.
+///
+/// **It is a loud failure by design, and that is the argument for it.** The menu
+/// asks for its two seams with `read`/`watch`, not with a nullable lookup and a
+/// silent fallback: a menu whose theme rows did nothing because no controller
+/// was above it would be a screen that looks right and cannot be tested. Every
+/// stand-in adding two lines is cheaper than that.
+///
+/// `ChangeNotifierProvider.value` and not `Provider.value` for the controller:
+/// provider **asserts** against a `Listenable` in a plain `Provider` and names
+/// `ChangeNotifierProvider` in the message. Measured on this SDK, not guessed.
+List<SingleChildWidget> appSeamProviders({
+  required AppSettingsController settings,
+  OpenExternalUrl? openUrl,
+}) =>
+    <SingleChildWidget>[
+      ChangeNotifierProvider<AppSettingsController>.value(value: settings),
+      Provider<OpenExternalUrl>.value(value: openUrl ?? _recordNothingLaunched),
+    ];
+
+/// A settings controller for a stand-in app, with a teardown that disposes it.
+///
+/// The load is fired and not awaited, for the reason the production controller's
+/// doc gives: a `testWidgets` body is a fake-async zone and the row it reads has
+/// to land on the real event loop, which is what `settleDatabase` is for.
+AppSettingsController createAppSettings(VocabRepository repository) {
+  final controller = AppSettingsController(repository: repository);
+  addTearDown(controller.dispose);
+  unawaited(controller.load());
+  return controller;
+}
+
+/// The stand-in launcher: records the last link it was asked to open and answers
+/// that nothing handled it, so a test can assert the `Uri` without a device.
+///
+/// A `static` rather than a closure so a test can read the capture back after
+/// the widget that fired it has been disposed — `test/ui/app_settings_test.dart`
+/// asserts on it, and a closure would have to be threaded through the stand-in
+/// by hand for no gain.
+final List<Uri> launchedLinks = <Uri>[];
+
+Future<bool> _recordNothingLaunched(Uri url) async {
+  launchedLinks.add(url);
+  return false;
+}
+
+/// Clears [launchedLinks]. Call it from `setUp`, not from a test body: a test
+/// body runs inside a fake-async zone where a `Future` is awkward, and a static
+/// list surviving between tests is a test that passes for the wrong reason.
+void clearLaunchedLinks() => launchedLinks.clear();
 
 /// The WCAG 2.1 relative-luminance contrast ratio between two opaque colours,
 /// as the number the guidelines quote: `(L_lighter + 0.05) / (L_darker + 0.05)`.

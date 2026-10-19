@@ -8,6 +8,7 @@ import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
 import 'package:lexilearn/ui/flashcards/flashcard_controller.dart';
 import 'package:lexilearn/ui/flashcards/flashcards_screen.dart';
+import 'package:lexilearn/ui/settings/app_settings_controller.dart';
 import 'package:lexilearn/ui/home/home_screen.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
 import 'package:lexilearn/ui/theme/app_theme.dart';
@@ -177,6 +178,7 @@ Future<void> _pumpDeck(
       repository: harness.repository,
       packKey: packKey,
       brightness: brightness,
+      settings: createAppSettings(harness.repository),
       controller: controller,
     ),
   );
@@ -635,6 +637,7 @@ void main() {
           repository: harness.repository,
           packKey: 'en_ar',
           brightness: Brightness.light,
+          settings: createAppSettings(harness.repository),
         ),
       );
       await tester.pump();
@@ -669,6 +672,7 @@ void main() {
           repository: harness.repository,
           packKey: '',
           brightness: Brightness.light,
+          settings: createAppSettings(harness.repository),
         ),
       );
       await tester.pump();
@@ -869,6 +873,7 @@ class _DeckApp extends StatelessWidget {
     required this.repository,
     required this.packKey,
     required this.brightness,
+    required this.settings,
     this.controller,
   });
 
@@ -877,6 +882,11 @@ class _DeckApp extends StatelessWidget {
   final Brightness brightness;
   final FlashcardController? controller;
 
+  /// The theme/launcher seams `LexiLearnApp` would have installed.
+  /// `FlashcardsScreen` carries the app's overflow menu in its `AppBar`, which
+  /// reads both — see `appSeamProviders` in `test/helpers/test_env.dart`.
+  final AppSettingsController settings;
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
@@ -884,6 +894,7 @@ class _DeckApp extends StatelessWidget {
         Provider<VocabRepository>.value(value: repository),
         if (controller != null)
           ChangeNotifierProvider<FlashcardController>.value(value: controller!),
+        ...appSeamProviders(settings: settings),
       ],
       child: MaterialApp(
         theme: AppTheme.light(),

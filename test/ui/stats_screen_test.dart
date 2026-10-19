@@ -676,21 +676,18 @@ void main() {
 
       // Blocked, so the route stays and the screen is still there.
       //
-      // **The return value does not say the route popped, and is not asserted
-      // as if it did.** `NavigatorState.maybePop` returns `true` for
-      // `RoutePopDisposition.doNotPop` as well as for a real pop — it means
-      // "the pop was handled", and being blocked on purpose counts as handled.
-      // Asserting `isFalse` here fails on correct code; the measurement that
-      // actually distinguishes the two behaviours is whether `StatsScreen` is
-      // still in the tree, which is the first assertion below. Verified: with
-      // this `PopScope` in place `handlePopRoute()` returns `true` and the
-      // screen survives; without it, it also returns `true` and the screen is
-      // gone.
-      final handled = await tester.binding.handlePopRoute();
+      // **The return value is deliberately not captured.** `NavigatorState.maybePop`
+      // returns `true` for `RoutePopDisposition.doNotPop` as well as for a real
+      // pop - it means "the pop was handled", and being blocked on purpose counts
+      // as handled. Asserting `isFalse` here fails on correct code; the
+      // measurement that actually distinguishes the two behaviours is whether
+      // `StatsScreen` is still in the tree, which is the first assertion below.
+      // Verified on this SDK: with the `PopScope` in place `handlePopRoute()`
+      // returns `true` and the screen survives; without it, it also returns
+      // `true` and the screen is gone.
+      await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
 
-      expect(handled, isTrue,
-          reason: 'the pop was handled — by being blocked, not by navigating');
       expect(find.byType(StatsScreen), findsOneWidget,
           reason: 'the route did not pop; back did not navigate away');
       // Cancelled, not ignored: a back button that does nothing at all is its

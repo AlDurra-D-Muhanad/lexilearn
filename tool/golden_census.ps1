@@ -189,7 +189,27 @@ param(
     'test/goldens/goldens/quiz_screen_correct_user_shot_light.png',
     'test/goldens/goldens/quiz_screen_correct_user_shot_dark.png',
     'test/goldens/goldens/quiz_screen_wrong_user_shot_light.png',
-    'test/goldens/goldens/quiz_screen_wrong_user_shot_dark.png'
+    'test/goldens/goldens/quiz_screen_wrong_user_shot_dark.png',
+    # The ten images added when the audit found four screens with no reference
+    # image at all. **This is the same lesson the six above were added for, and
+    # the audit is the point: `MoreScreen`, `QuizSetupScreen` and `QuizResultScreen`
+    # had none in either mode, and `HomeScreen` had none of its own - only the
+    # shell's, which happens to show it in light. A screen this tool does not read
+    # is a screen nothing checks, and that is exactly how the quiz's light-mode
+    # verdict tokens shipped on a dark phone for fifteen review-clean tasks.
+    'test/goldens/goldens/home_screen_user_shot_light.png',
+    'test/goldens/goldens/home_screen_user_shot_dark.png',
+    'test/goldens/goldens/more_screen_user_shot_light.png',
+    'test/goldens/goldens/more_screen_user_shot_dark.png',
+    'test/goldens/goldens/quiz_setup_screen_user_shot_light.png',
+    'test/goldens/goldens/quiz_setup_screen_user_shot_dark.png',
+    'test/goldens/goldens/quiz_result_screen_user_shot_light.png',
+    'test/goldens/goldens/quiz_result_screen_user_shot_dark.png',
+    # The screen that round added, given a reference image from birth rather than
+    # from the next task that notices it is missing - which is the habit that
+    # produced the four gaps above.
+    'test/goldens/goldens/app_info_screen_user_shot_light.png',
+    'test/goldens/goldens/app_info_screen_user_shot_dark.png'
   )
 )
 
@@ -250,6 +270,20 @@ $ExpectedColourCount = [ordered]@{
   'test/goldens/goldens/quiz_screen_correct_user_shot_dark.png'     = 785
   'test/goldens/goldens/quiz_screen_wrong_user_shot_light.png'      = 1145
   'test/goldens/goldens/quiz_screen_wrong_user_shot_dark.png'       = 1090
+  # The ten images added by the coverage audit, with their counts measured by a
+  # standalone HashSet sweep over each committed PNG - deliberately NOT read out
+  # of this script's own run, so the baseline and the check are two independent
+  # measurements rather than one number agreeing with itself.
+  'test/goldens/goldens/home_screen_user_shot_light.png'            = 775
+  'test/goldens/goldens/home_screen_user_shot_dark.png'             = 616
+  'test/goldens/goldens/more_screen_user_shot_light.png'            = 627
+  'test/goldens/goldens/more_screen_user_shot_dark.png'             = 684
+  'test/goldens/goldens/quiz_setup_screen_user_shot_light.png'      = 461
+  'test/goldens/goldens/quiz_setup_screen_user_shot_dark.png'       = 529
+  'test/goldens/goldens/quiz_result_screen_user_shot_light.png'     = 337
+  'test/goldens/goldens/quiz_result_screen_user_shot_dark.png'      = 371
+  'test/goldens/goldens/app_info_screen_user_shot_light.png'        = 184
+  'test/goldens/goldens/app_info_screen_user_shot_dark.png'         = 210
 }
 
 # The one directory the default list is allowed to cover.

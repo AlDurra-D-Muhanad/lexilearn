@@ -1,13 +1,21 @@
 import 'package:sqflite/sqflite.dart';
 
-/// v1. Every future migration adds a branch to [_onUpgrade] and bumps this.
+/// v2. Every future migration adds a branch to [_onUpgrade] and bumps this.
 ///
-/// `favorites` is part of this v1, not a v2. It ships in the first release, so
-/// nothing anywhere has ever opened a v1 database that lacked the table and
-/// there is no install a migration could be written for. The first schema change
-/// *after* a release is the thing that bumps this — and that release is also the
-/// first time `if (from < 2)` in [_onUpgrade] becomes reachable.
-const int databaseSchemaVersion = 1;
+/// **v1 to v2 is the first migration this project has ever had to write, and
+/// the first release that has ever had to run one.** The comment that used to
+/// sit here said there was nothing to migrate, on the grounds that nothing had
+/// shipped a schema; that stopped being true the moment a v1 `lexilearn.db`
+/// existed on a phone. The theme toggle needed somewhere to persist, the only
+/// store this app has is SQLite, so `settings` is v2.
+///
+/// `docs/engineering-standards.md` section 12 is unaffected by any of this:
+/// still no permission, still no network, and a table is not a manifest entry.
+///
+/// v1 itself was not wrong. `favorites` is part of that v1, not a v2 - it ships
+/// in the first release, so nothing anywhere has ever opened a v1 database that
+/// lacked the table and there is no install a migration could be written for.
+const int databaseSchemaVersion = 2;
 
 /// Opens the app database, creating or migrating the schema as needed.
 ///
@@ -133,10 +141,40 @@ Future<void> _onCreate(Database db, int version) async {
       FOREIGN KEY (pack_key) REFERENCES packs (pack_key) ON DELETE CASCADE
     )
   ''');
+  // v2: app settings. One row per key; one key so far, the theme choice.
+  //
+  // Created through [_createSettingsTable], which `_onUpgrade` calls too, so the
+  // fresh-install path and the v1-upgrade path are the same statement and cannot
+  // drift apart.
+  await _createSettingsTable(db);
   await batch.commit(noResult: true);
 }
 
+/// The v2 `settings` table, in one place.
+///
+/// A statement rather than an `IF NOT EXISTS` guard duplicated across
+/// [_onCreate] and [_onUpgrade]: the two run in mutually exclusive worlds — a
+/// database that has never existed, versus one already open at v1 — so neither
+/// needs the guard, and one definition is one thing to keep correct when v3
+/// arrives.
+Future<void> _createSettingsTable(Database db) => db.execute('''
+    CREATE TABLE settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )
+  ''');
+
 Future<void> _onUpgrade(Database db, int from, int to) async {
-  // v1 is the first shipped schema, so there is nothing to migrate yet.
-  // Future revisions append `if (from < 2) { ... }` blocks here.
+  // v1 -> v2: the theme preference's home.
+  //
+  // **This branch is reachable.** The comment it replaced said there was nothing
+  // to migrate "yet"; the moment a v1 `lexilearn.db` existed on a real phone that
+  // stopped being true, and the phone the user is holding has one.
+  //
+  // Written `from < 2` rather than `from == to - 1` so a device that somehow
+  // skipped a version still ends up with every table it needs — the rule every
+  // branch after this one has to follow.
+  if (from < 2) {
+    await _createSettingsTable(db);
+  }
 }

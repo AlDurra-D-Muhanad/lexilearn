@@ -11,6 +11,7 @@ import 'package:lexilearn/domain/word_of_the_day.dart';
 import 'package:lexilearn/ui/favorites/favorites_screen.dart';
 import 'package:lexilearn/ui/home_shell.dart';
 import 'package:lexilearn/ui/search/search_controller.dart';
+import 'package:lexilearn/ui/settings/app_overflow_menu.dart';
 import 'package:lexilearn/ui/stats/stats_screen.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
 import 'package:provider/provider.dart';
@@ -319,6 +320,16 @@ class _Header extends StatelessWidget {
           _PackPill(packKey: packKey),
           const SizedBox(width: AppSpacing.s),
           const _BookMark(),
+          const SizedBox(width: AppSpacing.s),
+          // **The app's overflow menu, and the reason Home is not the only
+          // destination that has one.** The user reported its absence here;
+          // `AppOverflowMenu` records why all four destinations carry it
+          // instead. It goes at the end of this row because this screen has no
+          // `AppBar` and its header already ends with a control-shaped element,
+          // so nothing above or below the fold moves. Pinned by
+          // `test/ui/home_shell_test.dart` → *every destination carries the
+          // overflow menu*.
+          const AppOverflowMenu(),
         ],
       ),
     );

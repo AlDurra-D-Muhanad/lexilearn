@@ -328,12 +328,12 @@ void main() {
 
     test('a v1 file is refused by name rather than half-read', () {
       // **The version bump that carried favourites in is inside the backup
-      // document only.** `databaseSchemaVersion` stayed 1; this constant moved to
-      // 2. A file written by an older build has no `favorites` key, so reading it
-      // as "no favourites" would silently wipe the new phone's list on the
-      // restore — which is the exact data loss this change exists to stop,
-      // reintroduced from the other direction. Refuse it, and say what version
-      // the app reads.
+      // document.** This constant moved to 2; `databaseSchemaVersion` moved to 2
+      // later and for an unrelated reason, so the two now agree by coincidence.
+      // A file written by an older build has no `favorites` key, so reading it as
+      // "no favourites" would silently wipe the new phone's list on the restore —
+      // which is the exact data loss this change exists to stop, reintroduced from
+      // the other direction. Refuse it, and say what version the app reads.
       expect(
         () => BackupCodec.decode(
             '{"kind":"backup","schemaVersion":1,'
@@ -346,13 +346,61 @@ void main() {
       );
     });
 
-    test('the current version is 2, and it is not the database schema version',
+    test('the backup file version and the database version are two counters',
         () {
-      // Two different numbers with two different meanings, and the second one is
-      // the one a future task is most likely to confuse with the first.
-      expect(BackupDocument.currentSchemaVersion, 2);
-      expect(databaseSchemaVersion, 1,
-          reason: 'the app database ships as v1; only the backup file moved');
+      // **The point of this test is that these two numbers are unrelated, and
+      // until this round the way it said so was by making them differ.**
+      // Task 14's fix round moved the backup file to 2 and left the database at 1,
+      // so `expect(databaseSchemaVersion, 1)` doubled as proof that nobody had
+      // merged them. The theme toggle added the `settings` table and moved the
+      // database to 2 for an entirely unrelated reason — so the two now
+      // **coincide**, and that technique has stopped working: it would pass
+      // identically whether the counters were independent or the same counter
+      // written twice.
+      //
+      // So the purpose is re-expressed rather than the number changed. Changing
+      // the `1` to a `2` would have made this test assert the coincidence, and
+      // its `reason` string would still have been claiming the database is v1.
+      //
+      // What is pinned now: each constant to its own value, and — in the next
+      // test — each consumer to its own constant. That holds whether the numbers
+      // differ, coincide, or one overtakes the other again.
+      expect(BackupDocument.currentSchemaVersion, 2,
+          reason: 'a v1 backup file has no `favorites` key and must stay refused');
+      expect(databaseSchemaVersion, 2,
+          reason: 'the app database moved to v2 for the `settings` table, '
+              'independently of anything to do with the backup file');
+    });
+
+    test('the same version number means different things to the two formats',
+        () {
+      // **The independence proof that does not depend on the numbers differing.**
+      //
+      // `schemaVersion: 2` is accepted in a *backup* file and refused in a *pack*
+      // file — same number, opposite verdicts, because `BackupCodec` validates
+      // against `BackupDocument.currentSchemaVersion` (2) and `PackCodec` against
+      // `VocabPack.currentSchemaVersion` (1). If either codec were reading the
+      // other's constant, or the wrong one were read in place of its own, one of
+      // these two expectations would fail.
+      //
+      // This is strictly stronger than the inequality it replaces: an inequality
+      // only proves the numbers are not currently equal, which two independent
+      // counters and one merged counter can both satisfy. Two consumers reading
+      // one shared constant can only satisfy *this*.
+      final backup = '{"kind":"backup","schemaVersion":2,'
+          '"exportedAt":"2026-10-14T00:00:00Z",'
+          '"packs":[],"progress":[],"sessions":[]}';
+      expect(() => BackupCodec.decode(backup), returnsNormally,
+          reason: 'version 2 is what a backup file is');
+
+      final pack = '{"schemaVersion":2,'
+          '"packId":"p","title":"t","sourceLanguage":"en",'
+          '"targetLanguage":"ar","entries":[]}';
+      expect(() => PackCodec.decodePack(pack),
+          throwsA(isA<PackDecodeException>().having(
+              (e) => e.message, 'message', contains('version'))),
+          reason: 'the identical number is not what a pack file is - it is 1, and '
+              'a reader that conflated the two counters would accept this');
     });
 
     test('a favourite naming a pack the file does not carry is refused by name',

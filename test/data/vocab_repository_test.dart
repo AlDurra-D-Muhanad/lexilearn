@@ -599,9 +599,11 @@ void main() {
   test('a v1 backup file is refused by name, and nothing on the device moves',
       () async {
     // The version bump that carried favourites in lives **inside the backup
-    // document only** — `databaseSchemaVersion` is untouched at 1. A file written
-    // by an older build therefore has to be refused, and refused in words a user
-    // can act on, rather than half-read.
+    // document**. (`databaseSchemaVersion` later moved to 2 too, for the unrelated
+    // `settings` table, so the two counters now coincide — see
+    // `test/domain/backup_codec_test.dart`.) A file written by an older build
+    // therefore has to be refused, and refused in words a user can act on, rather
+    // than half-read.
     final before = await _snapshot(harness);
     await harness.repository.setFavorite(
         packKey: 'en_ar', entryId: 'fever-1', isFavorite: true);

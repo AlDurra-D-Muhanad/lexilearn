@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:lexilearn/data/pack_dao.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/design/design_tokens.dart';
+import 'package:lexilearn/ui/home_shell.dart';
+import 'package:lexilearn/ui/settings/app_overflow_menu.dart';
 import 'package:provider/provider.dart';
 
 import 'quiz_controller.dart';
@@ -64,15 +66,25 @@ class QuizSetupScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        title: const Text(_title),
-      ),
-      body: SafeArea(
-        child: _QuizSetupForm(
-          packKey: packKey,
-          onPackSelected: onPackSelected,
+    // `ShellBackToHome` is this destination's share of the app's back button:
+    // Android's back returns to `الرئيسية` rather than closing the app, which is
+    // what the user asked for and what `HomeShell` documents. See that widget.
+    return ShellBackToHome(
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          title: const Text(_title),
+          // The app's overflow menu, in the actions slot this bar already has and
+          // was not using. One of four destinations that carry it — see
+          // `AppOverflowMenu` for why the control is on all four and not only on
+          // Home, and for the three pushed screens that deliberately do not.
+          actions: const <Widget>[AppOverflowMenu()],
+        ),
+        body: SafeArea(
+          child: _QuizSetupForm(
+            packKey: packKey,
+            onPackSelected: onPackSelected,
+          ),
         ),
       ),
     );

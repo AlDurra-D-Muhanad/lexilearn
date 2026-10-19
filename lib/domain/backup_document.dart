@@ -27,9 +27,18 @@ class BackupDocument {
   /// `databaseSchemaVersion`.** They are two different numbers with two different
   /// jobs: that one versions the app's SQLite schema, this one versions the shape
   /// of the JSON a user saves to Drive. They moved apart in Task 14's fix round,
-  /// when `favorites` was added to the file while the database stayed at v1 —
-  /// see the test *the current version is 2, and it is not the database schema
-  /// version*, which exists so the next reader does not merge them.
+  /// when `favorites` was added to the file while the database stayed at v1.
+  ///
+  /// **They are both 2 now, and that is a coincidence.** The database moved to 2
+  /// later and for an unrelated reason — the `settings` table the theme toggle
+  /// persists into. So nothing may now rely on the two numbers differing, and the
+  /// test that used to say so has been re-expressed around what is actually true:
+  /// `BackupCodec` reads *this* constant and `PackCodec` reads
+  /// `VocabPack.currentSchemaVersion`, which is why the identical number is
+  /// accepted in a backup file and refused in a pack file. See
+  /// *the backup file version and the database version are two counters* and *the
+  /// same version number means different things to the two formats* in
+  /// `test/domain/backup_codec_test.dart`.
   ///
   /// It went to **2** because a v1 file has no `favorites` key at all, and
   /// decoding one as "no favourites" would wipe the new phone's saved words on

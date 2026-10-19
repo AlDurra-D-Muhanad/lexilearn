@@ -12,8 +12,12 @@ import 'package:lexilearn/domain/vocab_pack.dart';
 import 'package:lexilearn/ui/flashcards/flashcard_controller.dart';
 import 'package:lexilearn/ui/flashcards/flashcards_screen.dart';
 import 'package:lexilearn/ui/home/home_screen.dart';
+import 'package:lexilearn/ui/more/more_screen.dart';
 import 'package:lexilearn/ui/quiz/quiz_controller.dart';
+import 'package:lexilearn/ui/quiz/quiz_result_screen.dart';
 import 'package:lexilearn/ui/quiz/quiz_screen.dart';
+import 'package:lexilearn/ui/quiz/quiz_setup_screen.dart';
+import 'package:lexilearn/ui/settings/app_info_screen.dart';
 import 'package:lexilearn/ui/word_detail/word_detail_screen.dart';
 import 'package:provider/provider.dart';
 
@@ -320,6 +324,144 @@ void main() {
     );
   });
 
+  // --- the screens that had no reference image at all ----------------------------
+  //
+  // **This group exists because of what a missing golden costs, and that was
+  // measured rather than argued.** The quiz shipped a defect that survived fifteen
+  // review-clean tasks, 415 tests and nine images, and it was caught by a person
+  // running the app on a real phone — because `tool/golden_census.ps1` reads the
+  // images *this file* writes, and this file never mentioned the quiz. A screen
+  // the census does not read is a screen nothing checks.
+  //
+  // The audit found four such screens: `MoreScreen`, `QuizSetupScreen` and
+  // `QuizResultScreen` had **no** image in either mode, and `HomeScreen` had no
+  // image of its own — only the shell's, which happens to show it in light. Ten
+  // images here, five screens × two modes, plus `AppInfoScreen`, the screen this
+  // round added.
+  //
+  // **Every one is reached through the real app**, by tapping the bar or the
+  // menu, for the reason `[_statsTile]` gives: a reference image captured any
+  // other way would be a picture of something the user cannot get to.
+  for (final brightness in <Brightness>[Brightness.light, Brightness.dark]) {
+    final mode = brightness == Brightness.dark ? 'dark' : 'light';
+
+    testWidgets('home screen user shot, $mode', (tester) async {
+      useAPhone(tester);
+      await _setMode(tester, brightness);
+      await pumpShell(tester, harness.repository);
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/home_screen_user_shot_$mode.png'),
+        skip: _goldenSkipReason,
+        );
+    });
+
+    testWidgets('more screen user shot, $mode', (tester) async {
+      // **The screen this round most needed one.** `MoreScreen` is a bar
+      // destination with `isDark ? … : …` throughout — the same shape of code
+      // that hid the quiz's dark-mode defect — and it is the app's settings
+      // surface, where a colour regression is least likely to be noticed by
+      // looking at it.
+      useAPhone(tester);
+      await _setMode(tester, brightness);
+      await _openBarDestination(tester, harness.repository, Icons.apps);
+      expect(find.byType(MoreScreen), findsOneWidget);
+
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/more_screen_user_shot_$mode.png'),
+        skip: _goldenSkipReason,
+        );
+    });
+
+    testWidgets('quiz setup screen user shot, $mode', (tester) async {
+      useAPhone(tester);
+      await _setMode(tester, brightness);
+      await _openBarDestination(
+          tester, harness.repository, Icons.check_box_outlined);
+      expect(find.byType(QuizSetupScreen), findsOneWidget);
+
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/quiz_setup_screen_user_shot_$mode.png'),
+        skip: _goldenSkipReason,
+        );
+    });
+
+    testWidgets('quiz result screen user shot, $mode', (tester) async {
+      // Reached by *finishing* a two-question quiz rather than by mounting
+      // `QuizResultScreen` on its own, so the reference image is the state a user
+      // actually lands in. The deal is seeded and the score asserted, because an
+      // image reading "0 / 2" would still look plausible.
+      useAPhone(tester);
+      await _setMode(tester, brightness);
+      await _openQuiz(tester, harness.repository);
+      // **Answer *and advance*, twice, both correctly.**
+      //
+      // Two traps this shot fell into, both measured:
+      //
+      // * Answering twice **without advancing in between** silently grades
+      //   question 1 twice — `_answerQuiz` taps an option, an answered option is
+      //   inert (`onTap: answered ? null : ...`), and `controller.question` is
+      //   still question 1. The result screen would never have appeared, and the
+      //   reference image would have been an image of nothing.
+      // * Reusing `_answerQuiz` for the **second** question fails, because it
+      //   asserts the advance button reads `التالي` — and after the first
+      //   `next()`, `_questionNumber` has reached `_questionCount`, so it reads
+      //   `إنهاء`. Its answer is copied inline here rather than changing a helper
+      //   three committed reference images depend on.
+      for (var i = 0; i < 2; i++) {
+        final controller = _controllerOf(tester);
+        final question = controller.question!;
+        await tester.tap(find.text(question.options[question.correctIndex].text));
+        await settleDatabase(tester);
+        // The 150ms cross-fade, for the reason `_answerQuiz` gives: a photograph
+        // taken mid-fade is of a colour the app does not settle on.
+        await tester.pump(AppDurations.fast);
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(
+          FilledButton,
+          controller.isLastQuestion ? _finishQuiz : _advanceQuiz,
+        ));
+        await settleDatabase(tester);
+      }
+
+      // **The score is asserted, not photographed.** A reference image reading
+      // `0 / 2` would look exactly as plausible as one reading `2 / 2`, and the
+      // census cannot tell them apart — it reads colours, not glyphs.
+      expect(_controllerOf(tester).correctCount, 2,
+          reason: 'both answers were correct, so the image shows 2 / 2');
+      expect(find.byType(QuizResultScreen), findsOneWidget);
+
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/quiz_result_screen_user_shot_$mode.png'),
+        skip: _goldenSkipReason,
+        );
+    });
+
+    testWidgets('app info screen user shot, $mode', (tester) async {
+      // The screen this round added, given the same treatment from birth rather
+      // than from the next task that notices it is missing.
+      useAPhone(tester);
+      await _setMode(tester, brightness);
+      await pumpShell(tester, harness.repository);
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(_appInfoMenuLabel));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AppInfoScreen), findsOneWidget);
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/app_info_screen_user_shot_$mode.png'),
+        skip: _goldenSkipReason,
+        );
+    });
+  }
+
   // --- the quiz ----------------------------------------------------------------
   //
   // **Six images, and this pair of screens is the reason the whole file has a
@@ -395,6 +537,48 @@ void main() {
     });
   }
 }
+
+/// The overflow menu's app-info entry, as `app_overflow_menu.dart` spells it.
+const String _appInfoMenuLabel = 'معلومات التطبيق';
+
+/// The quiz's advance button, as `quiz_screen.dart` spells it, on every question
+/// but the last.
+const String _advanceQuiz = 'التالي';
+
+/// The advance button on the last question, which is a different word.
+///
+/// `QuizController.isLastQuestion` is `_questionNumber >= _questionCount`, and
+/// `_questionNumber` advances in `next()` — so the counter reaches the question
+/// count exactly when the *next* question is dealt, not when the current one is
+/// answered. Measured: a shot that assumed `التالي` throughout found **no**
+/// matching widget on the second question.
+const String _finishQuiz = 'إنهاء';
+
+/// Taps a bottom-bar destination by its icon and lets its own reads land.
+///
+/// Shared by every destination shot, because three copies of the same two waits
+/// is how one of them ends up with the previous one's read count. Each
+/// destination issues a read from `initState`, so `pumpShell`'s two turns
+/// happened before it existed.
+Future<void> _openBarDestination(
+  WidgetTester tester,
+  VocabRepository repository,
+  IconData icon,
+) async {
+  await pumpShell(tester, repository);
+  await tester.tap(find.byIcon(icon));
+  await tester.pumpAndSettle();
+  await settleDatabase(tester);
+  await settleDatabase(tester);
+}
+
+/// The controller behind the quiz currently on screen.
+///
+/// Read from the tree rather than captured from [_openQuiz], because the result
+/// shot drives the quiz it finds rather than the one that helper built.
+QuizController _controllerOf(WidgetTester tester) =>
+    Provider.of<QuizController>(tester.element(find.byType(QuizScreen)),
+        listen: false);
 
 /// Puts the phone in [brightness] the way the app itself would see it.
 ///

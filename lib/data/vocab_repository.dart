@@ -14,6 +14,7 @@ import 'favorite_dao.dart';
 import 'pack_dao.dart';
 import 'progress_dao.dart';
 import 'session_dao.dart';
+import 'settings_dao.dart';
 
 /// The only class the UI layer is allowed to know about.
 class VocabRepository {
@@ -23,6 +24,7 @@ class VocabRepository {
         _progress = ProgressDao(database),
         _sessions = SessionDao(database),
         _favorites = FavoriteDao(database),
+        _settings = SettingsDao(database),
         _clock = clock ?? DateTime.now;
 
   final Database _db;
@@ -30,7 +32,27 @@ class VocabRepository {
   final ProgressDao _progress;
   final SessionDao _sessions;
   final FavoriteDao _favorites;
+  final SettingsDao _settings;
   final Clock _clock;
+
+  // --- settings ---------------------------------------------------------------
+  //
+  // The theme preference and nothing else, so far. Two thin forwarders rather
+  // than a `SettingsDao` handed to the UI layer, for the reason every other DAO
+  // here is private: `VocabRepository`'s own doc comment says it is the only
+  // class the UI layer is allowed to know about, and a screen that reached for
+  // `SettingsDao` directly would be the first thing in `lib/ui/` to hold a
+  // `Database`.
+
+  /// The stored value for [key], or null when nothing has been written.
+  ///
+  /// Null is the honest answer for "the user has never chosen" and the only
+  /// thing `AppSettingsController` treats as an error-free state.
+  Future<String?> setting(String key) => _settings.read(key);
+
+  /// Stores [value] under [key], replacing whatever was there.
+  Future<void> setSetting(String key, String value) =>
+      _settings.write(key, value);
 
   Future<List<PackSummary>> packs() => _packs.listPacks();
 
