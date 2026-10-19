@@ -526,6 +526,12 @@ void main() {
       await _pumpApp(tester, harness.repository);
       await tester.tap(inHome(_tiles[0][0]));
       await tester.pumpAndSettle();
+      // The tile switched the bar rather than pushing, so the destination
+      // mounted for the first time and its own read is now in flight. A body that
+      // ends here leaves that read running - found by the slow-database sweep,
+      // which turned this into `A Timer is still pending even after the widget
+      // tree was disposed` in all three of the tiles below.
+      await settleDatabase(tester);
 
       expectSwitchedTo(tester, 1, FlashcardsScreen);
     });
@@ -535,6 +541,8 @@ void main() {
       await _pumpApp(tester, harness.repository);
       await tester.tap(inHome(_tiles[1][0]));
       await tester.pumpAndSettle();
+      // As above: the destination's own read, drained before the body ends.
+      await settleDatabase(tester);
 
       expectSwitchedTo(tester, 2, QuizSetupScreen);
     });
@@ -632,6 +640,13 @@ void main() {
       await _pumpApp(tester, harness.repository);
       await tester.tap(inHome(_tiles[2][0]));
       await tester.pumpAndSettle();
+      // `FavoritesScreen` reads the saved words in its `initState`, and it
+      // mounted on this tap. Drained before the body ends, for the reason the
+      // other two tiles carry - and the sweep caught this one twice over: the
+      // read outlived the test and came back as `Bad state: This database has
+      // already been closed` on `SELECT entry_id FROM favorites ...`, thrown
+      // after the test had completed.
+      await settleDatabase(tester);
 
       expect(find.byType(FavoritesScreen), findsOneWidget);
       // Home is still in the tree underneath — offstage, because a route is now

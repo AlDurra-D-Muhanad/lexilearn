@@ -79,6 +79,19 @@ void main() {
 
         await tester.binding.handlePopRoute();
         await tester.pumpAndSettle();
+        // **The settle that was missing, and the whole flaky failure.** Back does
+        // not navigate: it switches the bar's index, and `HomeShell` swaps the
+        // destination inside one `AnimatedSwitcher` keyed by that index
+        // (`home_shell.dart:218-228`). So going Home *remounts* `HomeScreen`, and
+        // its `initState` calls `_loadPack`, which is a fresh `entries` read
+        // (`home_screen.dart:146,220`). `pumpAndSettle` cannot finish that read -
+        // `databaseFactoryFfi` answers over a `SendPort` to another isolate, so
+        // the reply is a real event, not a microtask - and a body that returned
+        // here left sqflite's ten-second lock-warning timer pending, which
+        // `flutter_test` fails over as "A Timer is still pending even after the
+        // widget tree was disposed". Measured at 6/8 runs of this file on its
+        // own, before this settle existed.
+        await settleDatabase(tester);
 
         // What the user asked for: back returns to the main page.
         expect(find.byType(HomeScreen), findsOneWidget,
@@ -146,6 +159,10 @@ void main() {
           reason: '$screen vetoes the pop so it can answer it itself',
         );
       }
+      // The loop above ends on a destination, and this body is over: the settle
+      // belongs after the last thing that touched the database, not just between
+      // the iterations. See the note on the same line in the first group.
+      await settleDatabase(tester);
     });
   });
 
@@ -171,6 +188,10 @@ void main() {
 
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
+      // Popping the route puts `HomeScreen` back, and the shell had swapped it
+      // out, so it mounts afresh and reads the pack again. Same reason as the
+      // settle in the first group.
+      await settleDatabase(tester);
 
       expect(find.byType(WordDetailScreen), findsNothing,
           reason: 'the pushed route popped');
@@ -213,6 +234,11 @@ void main() {
       // And back still works afterwards, now that the dialog is gone.
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
+      // The last press is a bar switch back to Home, which remounts `HomeScreen`
+      // and its pack read. This is the last database-triggering action in the
+      // body, so this is the settle that keeps the read out of the teardown.
+      await settleDatabase(tester);
+
       expect(find.byType(HomeScreen), findsOneWidget,
           reason: 'the next back press goes Home, as it should');
     });
