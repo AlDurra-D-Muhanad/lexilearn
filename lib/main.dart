@@ -66,10 +66,23 @@ void _fatal(String message) {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
-                    const Icon(
+                    // `theme.colorScheme.error`, which for this `AppTheme.light()`
+                    // resolves to `AppColors.errorLight` — pinned by
+                    // `test/design/app_theme_test.dart` → *the colour scheme is the
+                    // brand palette*. **Value-preserving, and that is the point of
+                    // the change rather than a side effect of it**: the fatal
+                    // screen hard-codes `AppTheme.light()` because it is handed
+                    // straight to `runApp` with no ancestor to read a theme from,
+                    // so this subtree can never be dark. Reading the light token
+                    // through the theme it was built with means the next person to
+                    // give this subtree a `themeMode` does not silently leave a
+                    // dark-mode error in a light-mode screen — which is precisely
+                    // the defect `quiz_screen.dart` shipped for fifteen
+                    // review-clean tasks.
+                    Icon(
                       Icons.error_outline,
                       size: 40,
-                      color: AppColors.errorLight,
+                      color: theme.colorScheme.error,
                     ),
                     const SizedBox(height: AppSpacing.m),
                     Text(

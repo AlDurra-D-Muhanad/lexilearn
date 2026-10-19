@@ -3,6 +3,7 @@ import 'package:lexilearn/design/design_tokens.dart';
 import 'package:lexilearn/domain/quiz_option.dart';
 import 'package:lexilearn/domain/quiz_question.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
+import 'package:lexilearn/ui/theme/app_verdict_colors.dart';
 import 'package:provider/provider.dart';
 
 import 'quiz_controller.dart';
@@ -312,6 +313,12 @@ class _OptionTile extends StatelessWidget {
     final scheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
+    // The verdict palette, read from the theme once and used for all three
+    // things that carry a verdict: the fill, the 2px border, and the icon's ink.
+    // Reading it here rather than per-branch is what makes "the right answer is
+    // green in both brightnesses" one fact instead of three.
+    final verdict = AppVerdictColors.of(context);
+
     // "Answered" means the user has committed, so feedback is revealed;
     // "selected" means *this* is the row they chose. They are different things:
     // a wrong pick goes red while the genuinely right option goes green, and
@@ -325,20 +332,31 @@ class _OptionTile extends StatelessWidget {
     var width = 1.0;
     var ink = scheme.onSurface;
     if (answered && isRight) {
-      // The brand's success/insets tokens, not `colorScheme.primary`: "that was
-      // right" must read the same in either brightness, and the theme's primary
-      // is a different colour from the one the flashcards screen draws success
-      // in. Measured against the brand: `#16A34A` on white is 3.3:1 and on the
-      // dark background 5.5:1, both over the 3:1 a 2px border and an icon need.
-      fill = scheme.primaryContainer;
-      border = AppColors.successLight;
+      // The green the user asked for — «الاختيار الصحيح يكون فقط اطاره بالاخضر
+      // و الحقل بنفسجي» — resolved from the theme, and matched to the wrong
+      // answer's treatment below: fully filled, a 2px border, ink on the fill.
+      //
+      // **The fill was `scheme.primaryContainer` until this task**, which
+      // measures `#E9DDFF` light and `#4C3E76` dark — the brand purple, and
+      // what the user photographed (their screenshot reads `#E8DDFF` / `#4C3F77`
+      // for it, one channel higher in each, which is what a resampled image
+      // does). That is why it read as purple rather than as "correct": the border
+      // and the field disagreed, and the field is the larger area — in the
+      // reference image below the field is 143,668 px against the border's
+      // 12,901. `colorScheme` has no success role at all, so the purple was the
+      // only thing on screen when the code was written; `AppVerdictColors`
+      // supplies the green that role was missing. It is Material's own container
+      // tone for the success seed, not a literal — see that file for the
+      // derivation and the measured hexes.
+      fill = verdict.correctFill;
+      border = verdict.correctBorder;
       width = 2;
-      ink = scheme.onPrimaryContainer;
+      ink = verdict.correctInk;
     } else if (answered && selected) {
-      fill = scheme.errorContainer;
-      border = AppColors.errorLight;
+      fill = verdict.wrongFill;
+      border = verdict.wrongBorder;
       width = 2;
-      ink = scheme.onErrorContainer;
+      ink = verdict.wrongInk;
     } else if (answered) {
       // The options that were neither picked nor right recede rather than
       // vanish: they were real options and the user may be reading them.
@@ -380,10 +398,24 @@ class _OptionTile extends StatelessWidget {
                       style: theme.textTheme.titleMedium?.copyWith(color: ink),
                     ),
                   ),
+                  // **Not `const`, and that is the fix.** Both of these were
+                  // `const Icon(…, color: AppColors.successLight)`, so they
+                  // could not read the theme at all: on a dark phone the user
+                  // measured **0** pixels of `#F87171` and `#4ADE80` across the
+                  // whole answered quiz, and 15,795 / 15,719 pixels of the
+                  // *light* `#16A34A` / `#DC2626`. The ink is the on-colour of
+                  // the fill it sits on, so the tick is dark-on-green in light
+                  // and light-on-green in dark — 7.22:1 and 7.23:1, over AA for
+                  // a 24px glyph and over AAA. On the wrong answer the cross
+                  // reads the same way against `#FFDAD6` / `#93000A`.
+                  //
+                  // The tick is what makes the right option unmistakable when
+                  // the user's own pick was a different one, which is the case
+                  // the user reported («لايوجد علامة صح (✅) بجانبه»).
                   if (answered && isRight)
-                    const Icon(Icons.check_circle, color: AppColors.successLight),
+                    Icon(Icons.check_circle, color: verdict.correctInk),
                   if (answered && selected && !isRight)
-                    const Icon(Icons.cancel, color: AppColors.errorLight),
+                    Icon(Icons.cancel, color: verdict.wrongInk),
                 ],
               ),
             ),

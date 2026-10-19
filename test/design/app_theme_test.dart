@@ -3,6 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lexilearn/design/design_tokens.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
 import 'package:lexilearn/ui/theme/app_theme.dart';
+import 'package:lexilearn/ui/theme/app_verdict_colors.dart';
+
+import '../helpers/test_env.dart';
 
 void main() {
   test('the colour scheme is the brand palette, not Material\'s tonal guess', () {
@@ -220,5 +223,138 @@ void main() {
   test('fromColorScheme is a pure function of the scheme', () {
     final scheme = ColorScheme.fromSeed(seedColor: AppColors.primaryLight);
     expect(AppTheme.fromColorScheme(scheme).colorScheme.primary, scheme.primary);
+  });
+
+  // ---------------------------------------------------------------------------
+  // The verdict palette — the one role `ColorScheme` has no field for.
+  // ---------------------------------------------------------------------------
+
+  test('both themes install a verdict palette, so no screen can be without one', () {
+    // The `!` inside `AppVerdictColors.of(context)` is a claim that this holds.
+    // A theme built any other way would throw `null check operator used on a
+    // null value` at the quiz screen rather than quietly drawing no feedback.
+    for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+      expect(theme.extension<AppVerdictColors>(), isNotNull);
+    }
+    expect(
+      AppTheme.fromColorScheme(ColorScheme.fromSeed(seedColor: AppColors.primaryLight))
+          .extension<AppVerdictColors>(),
+      isNotNull,
+      reason: 'the fromColorScheme caller installs it too',
+    );
+  });
+
+  test('the correct verdict is green, and it is a derivation rather than a literal', () {
+    // **The defect, in the theme.** The correct option's fill was
+    // `colorScheme.primaryContainer` — `#E9DDFF` light, `#4C3E76` dark — which is
+    // the brand purple, behind a 2px green border. The user photographed that and
+    // called it «الاختيار الصحيح يكون فقط اطاره بالاخضر و الحقل بنفسجي». There is
+    // no `successContainer` on `ColorScheme`, so this is where the role had to be
+    // added; what it must never be is purple.
+    final light = AppTheme.light();
+    final dark = AppTheme.dark();
+
+    for (final theme in <ThemeData>[light, dark]) {
+      final verdict = theme.extension<AppVerdictColors>()!;
+      expect(
+        verdict.correctFill,
+        isNot(theme.colorScheme.primaryContainer),
+        reason: 'the right answer is painted in the purple primary container',
+      );
+      // Green, defined as green: hue inside the green arc AND the green channel
+      // dominant. A hue-only check would accept a desaturated grey-green; a
+      // channel-only check would accept a cyan. This is the test that goes red if
+      // the seed, the Flutter version or the role itself ever moves off green.
+      final hsl = HSLColor.fromColor(verdict.correctFill);
+      expect(hsl.hue, inInclusiveRange(80, 170),
+          reason: '${verdict.correctFill} is not on the green arc');
+      expect(hsl.saturation, greaterThan(0.3));
+      expect(hsl.lightness, greaterThan(0.1));
+      expect(verdict.correctFill.g, greaterThan(verdict.correctFill.r));
+      expect(verdict.correctFill.g, greaterThan(verdict.correctFill.b));
+    }
+
+    // And it is the *same* construction the error half uses: M3's container tone
+    // for that seed. Recomputed here rather than read out of the extension, so a
+    // future edit that hardcodes a "nicer" green instead of deriving one goes red.
+    expect(
+      light.extension<AppVerdictColors>()!.correctFill,
+      ColorScheme.fromSeed(
+        seedColor: AppColors.successLight,
+        brightness: Brightness.light,
+      ).primaryContainer,
+    );
+    expect(
+      dark.extension<AppVerdictColors>()!.correctFill,
+      ColorScheme.fromSeed(
+        seedColor: AppColors.successDark,
+        brightness: Brightness.dark,
+      ).primaryContainer,
+    );
+  });
+
+  test('the verdict palette carries the measured hexes, per brightness', () {
+    // These are the numbers in the report. Pinned so a Flutter upgrade that
+    // re-tones the palette cannot move a green the user has already approved
+    // without this saying so.
+    final light = AppTheme.light().extension<AppVerdictColors>()!;
+    final dark = AppTheme.dark().extension<AppVerdictColors>()!;
+
+    expect(light.correctFill, const Color(0xFFB7F1BA));
+    expect(light.correctInk, const Color(0xFF1C5128));
+    expect(dark.correctFill, const Color(0xFF17512B));
+    expect(dark.correctInk, const Color(0xFFB4F1BE));
+
+    // The borders are the brand tokens, per brightness — this is the fix for the
+    // dark-mode defect, stated at its source. `#16A34A` and `#DC2626` in a dark
+    // theme is what the user's phone drew.
+    expect(light.correctBorder, AppColors.successLight);
+    expect(dark.correctBorder, AppColors.successDark);
+    expect(light.wrongBorder, AppColors.errorLight);
+    expect(dark.wrongBorder, AppColors.errorDark);
+    expect(dark.correctBorder, isNot(AppColors.successLight));
+    expect(dark.wrongBorder, isNot(AppColors.errorLight));
+  });
+
+  test('the wrong verdict is untouched: it is the scheme\'s own error container', () {
+    // The user approved this one explicitly («ممتاز و هو المطلوب»), so it is
+    // carried through by reference rather than restated. `isNot` the correct
+    // half too, so swapping the two cannot pass.
+    for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+      final verdict = theme.extension<AppVerdictColors>()!;
+      expect(verdict.wrongFill, theme.colorScheme.errorContainer);
+      expect(verdict.wrongInk, theme.colorScheme.onErrorContainer);
+      expect(verdict.wrongFill, isNot(verdict.correctFill));
+      expect(verdict.wrongInk, isNot(verdict.correctInk));
+    }
+  });
+
+  test('ink on the verdict fills passes WCAG AA in both brightnesses', () {
+    // The requirement the check mark and the cross have to meet, as an assertion
+    // rather than a sentence: AA is 4.5:1 for text, and these are 24px glyphs so
+    // they are measured against the stricter of the two bars anyway.
+    for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+      final verdict = theme.extension<AppVerdictColors>()!;
+      final correct = contrastRatio(verdict.correctInk, verdict.correctFill);
+      final wrong = contrastRatio(verdict.wrongInk, verdict.wrongFill);
+      expect(correct, greaterThanOrEqualTo(4.5),
+          reason: 'the tick on the green fill in ${theme.brightness}');
+      expect(wrong, greaterThanOrEqualTo(4.5),
+          reason: 'the cross on the red fill in ${theme.brightness}');
+    }
+  });
+
+  test('the verdict borders clear the 3:1 a 2px border needs against the surface', () {
+    // Measured on the surface each mode actually puts behind the option row. The
+    // wrong half clears it everywhere; the correct border is the tighter one and
+    // lands at 3.30:1 in light, which is the reason the verdict carries a
+    // *filled* green field rather than relying on the border alone.
+    for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+      final verdict = theme.extension<AppVerdictColors>()!;
+      expect(contrastRatio(verdict.correctBorder, theme.colorScheme.surface),
+          greaterThanOrEqualTo(3.0));
+      expect(contrastRatio(verdict.wrongBorder, theme.colorScheme.surface),
+          greaterThanOrEqualTo(3.0));
+    }
   });
 }

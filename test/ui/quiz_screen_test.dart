@@ -14,6 +14,7 @@ import 'package:lexilearn/ui/quiz/quiz_screen.dart';
 import 'package:lexilearn/ui/quiz/quiz_setup_screen.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
 import 'package:lexilearn/ui/theme/app_theme.dart';
+import 'package:lexilearn/ui/theme/app_verdict_colors.dart';
 import 'package:provider/provider.dart';
 
 import '../helpers/test_env.dart';
@@ -128,6 +129,37 @@ void main() {
 
   Finder optionText(QuizQuestion question, int index) =>
       find.text(question.options[index].text);
+
+  /// The decoration the option row at [index] is actually painting.
+  ///
+  /// Read from the rendered `AnimatedContainer` rather than from a constant in
+  /// `quiz_screen.dart`, so an assertion about it measures what the user's phone
+  /// draws and goes red when the source changes — which is the entire difference
+  /// between this helper and `expect(AppColors.successLight, AppColors.successLight)`.
+  BoxDecoration optionDecoration(
+    WidgetTester tester,
+    QuizQuestion question,
+    int index,
+  ) {
+    final button = find.ancestor(
+      of: optionText(question, index),
+      matching: find.byType(AnimatedContainer),
+    );
+    expect(button, findsOneWidget, reason: 'option $index is not a button');
+    return tester.widget<AnimatedContainer>(button).decoration! as BoxDecoration;
+  }
+
+  /// The fill of the option row at [index].
+  Color optionFill(WidgetTester tester, QuizQuestion question, int index) =>
+      optionDecoration(tester, question, index).color!;
+
+  /// The 2px verdict border of the option row at [index].
+  ///
+  /// `top` rather than a `Border` comparison: `Border.all` builds the same colour
+  /// on all four sides, so reading one side cannot pass while a side is wrong —
+  /// and it is the side that is visible next to the field.
+  Color optionBorderColor(WidgetTester tester, QuizQuestion question, int index) =>
+      (optionDecoration(tester, question, index).border! as Border).top.color;
 
   /// The controller behind the screen under test.
   ///
@@ -256,19 +288,90 @@ void main() {
     expect(controller.question, isNotNull);
   });
 
-  testWidgets('the correct option is marked in the brand success colour', (tester) async {
+  testWidgets('the correct option is marked in the brand success colour',
+      (tester) async {
     await pumpQuiz(tester);
     final question = controller.question!;
 
     expect(find.byIcon(Icons.check_circle), findsNothing);
     await _tap(tester, optionText(question, question.correctIndex));
 
-    // `AppColors.successLight`, not `colorScheme.primary`: the answer to "was
-    // that right" must not change colour between light and dark. Asserted, not
-    // assumed — the plan's own draft used the theme's primary.
+    // `AppVerdictColors.correctInk`, and in light mode that is `#1C5128` — the
+    // on-colour of the green fill, **not** `AppColors.successLight`. Asserting the
+    // border token here is what this test used to do, and it is why the check mark
+    // read as a dim green glyph on a purple field: the tick has to be legible
+    // against what is under it, not against the card.
+    //
+    // The dark half of that is its own test below, because a light-mode-only
+    // assertion here is exactly what let the defect through.
     final check = tester.widget<Icon>(find.byIcon(Icons.check_circle));
-    expect(check.color, AppColors.successLight);
+    expect(check.color, AppTheme.light().extension<AppVerdictColors>()!.correctInk);
+    expect(check.color, isNot(AppColors.successLight));
+    expect(contrastRatio(check.color!, optionFill(tester, question, question.correctIndex)),
+        greaterThanOrEqualTo(4.5));
     expect(find.byIcon(Icons.cancel), findsNothing);
+
+    // The border is still the brand's success token for the mode.
+    expect(optionBorderColor(tester, question, question.correctIndex),
+        AppColors.successLight);
+  });
+
+  testWidgets('the correct answer is a green field, not a purple one',
+      (tester) async {
+    await pumpQuiz(tester);
+    final question = controller.question!;
+
+    await _tap(tester, optionText(question, question.correctIndex));
+
+    // The user's own words: «الاختيار الصحيح يكون فقط اطاره بالاخضر و الحقل
+    // بنفسجي». A green *border* around a purple *field* reads as purple, because
+    // the field is the larger area — measured over their screenshot as `#E8DDFF`
+    // light / `#4C3F77` dark, which is `colorScheme.primaryContainer` (the theme
+    // measures `#E9DDFF` / `#4C3E76`; the screenshot reads one channel higher,
+    // which is what a resampled image does).
+    final fill = optionFill(tester, question, question.correctIndex);
+    expect(fill, isNot(AppTheme.light().colorScheme.primaryContainer));
+
+    // Green, defined as green and not as "some colour that is not purple".
+    final hsl = HSLColor.fromColor(fill);
+    expect(hsl.hue, inInclusiveRange(80, 170));
+    expect(fill.g, greaterThan(fill.r));
+    expect(fill.g, greaterThan(fill.b));
+
+    // …and in dark mode too, which is the phone the defect shipped on. The same
+    // controller, re-mounted under the dark theme: the answer is already committed
+    // and a re-read is what the app does on a theme change anyway.
+    await tester.pumpWidget(
+      _QuizApp(controller: controller, brightness: Brightness.dark),
+    );
+    await settleDatabase(tester);
+    final darkFill = optionFill(tester, question, question.correctIndex);
+    expect(darkFill, isNot(AppTheme.dark().colorScheme.primaryContainer));
+    expect(HSLColor.fromColor(darkFill).hue, inInclusiveRange(80, 170));
+    expect(darkFill.g, greaterThan(darkFill.r));
+    expect(darkFill, isNot(fill), reason: 'both modes drew the same green');
+  });
+
+  testWidgets('the wrong answer is filled, so the correct one is too',
+      (tester) async {
+    // The shape the user approved: «ممتاز و هو المطلوب» — the wrong option is
+    // *filled*, not outlined. The right answer now gets the same treatment, which
+    // is why the correct fill is checked for being green above rather than for
+    // being some specific pastel: the relationship being restored is
+    // "both verdicts are filled", and the colour is checked separately.
+    await pumpQuiz(tester);
+    final question = controller.question!;
+    final wrong = _firstWrongIndex(question);
+
+    await _tap(tester, optionText(question, wrong));
+
+    expect(optionFill(tester, question, wrong),
+        AppTheme.light().colorScheme.errorContainer);
+    // …and the right one is filled with a different colour, not left neutral.
+    expect(optionFill(tester, question, question.correctIndex),
+        isNot(AppTheme.light().colorScheme.errorContainer));
+    expect(optionFill(tester, question, question.correctIndex),
+        isNot(AppTheme.light().colorScheme.surface));
   });
 
   testWidgets('a wrong answer reveals the correct translation', (tester) async {
@@ -282,8 +385,18 @@ void main() {
     expect(find.textContaining(question.answer.displayText), findsWidgets);
     // The right option is marked too: the user has to see what they were being
     // offered, not only what they picked.
-    final cancel = tester.widget<Icon>(find.byIcon(Icons.cancel));
-    expect(cancel.color, AppColors.errorLight);
+    //
+    // The cross is the wrong verdict's **ink** — `onErrorContainer`, the same
+    // relationship the tick has to the green — and the border is the error token
+    // for the mode. This test used to assert `AppColors.errorLight` here and again
+    // in the dark-theme test below, which is how two light-mode constants came to
+    // be pinned as correct in a dark-mode screen.
+    expect(
+      tester.widget<Icon>(find.byIcon(Icons.cancel)).color,
+      AppTheme.light().extension<AppVerdictColors>()!.wrongInk,
+    );
+    expect(optionBorderColor(tester, question, _firstWrongIndex(question)),
+        AppColors.errorLight);
     expect(find.byIcon(Icons.check_circle), findsOneWidget);
     expect(controller.correctCount, 0);
   });
@@ -431,10 +544,88 @@ void main() {
     await _tap(tester, optionText(question, _firstWrongIndex(question)));
 
     expect(tester.takeException(), isNull);
-    // Both verdicts still read, in the brand's own tokens.
-    expect(tester.widget<Icon>(find.byIcon(Icons.check_circle)).color, AppColors.successLight);
-    expect(tester.widget<Icon>(find.byIcon(Icons.cancel)).color, AppColors.errorLight);
     expect(find.textContaining(_wrongBanner), findsOneWidget);
+    // Both verdicts still read, in this brightness's own tokens. These four lines
+    // are the defect's own record: they asserted `AppColors.successLight` and
+    // `AppColors.errorLight` **in a dark theme**, and passed, for as long as the
+    // screen drew the light-mode hexes on the user's phone.
+    final verdict = AppTheme.dark().extension<AppVerdictColors>()!;
+    expect(tester.widget<Icon>(find.byIcon(Icons.check_circle)).color,
+        verdict.correctInk);
+    expect(tester.widget<Icon>(find.byIcon(Icons.cancel)).color, verdict.wrongInk);
+  });
+
+  testWidgets('dark mode draws the dark verdict borders, not the light ones',
+      (tester) async {
+    // The one assertion that fails if `AppColors.successLight` / `errorLight` are
+    // ever typed into this screen again. Read from the *rendered* `Border`, not
+    // from a constant in the source, so it measures what the user sees rather
+    // than what the file says.
+    await tester.pumpWidget(
+      _QuizApp(controller: controller, brightness: Brightness.dark),
+    );
+    await settleDatabase(tester);
+    final question = controller.question!;
+
+    // Before an answer, no verdict is on screen: every row is the plain dark
+    // hairline. Asserted so the verdict assertions below cannot be satisfied by a
+    // row that was already green before the user tapped anything.
+    expect(optionBorderColor(tester, question, question.correctIndex),
+        AppColors.borderDark);
+
+    await _tap(tester, optionText(question, question.correctIndex));
+
+    expect(optionBorderColor(tester, question, question.correctIndex),
+        AppColors.successDark);
+    expect(optionBorderColor(tester, question, question.correctIndex),
+        isNot(AppColors.successLight));
+
+    // A second tap cannot change the answer (`QuizController.answer` guards it),
+    // so the wrong verdict needs the next question rather than this one.
+    await _tap(tester, find.widgetWithText(FilledButton, _next));
+    final second = controller.question!;
+    final wrong = _firstWrongIndex(second);
+    await _tap(tester, optionText(second, wrong));
+
+    expect(optionBorderColor(tester, second, wrong), AppColors.errorDark);
+    expect(optionBorderColor(tester, second, wrong), isNot(AppColors.errorLight));
+
+    // The icons too — they were `const`, which is why they *could* not read the
+    // theme even in principle.
+    expect(tester.widget<Icon>(find.byIcon(Icons.check_circle)).color,
+        isNot(AppColors.successLight));
+    expect(tester.widget<Icon>(find.byIcon(Icons.cancel)).color,
+        isNot(AppColors.errorLight));
+  });
+
+  testWidgets('a tick sits beside the right answer whenever one is revealed',
+      (tester) async {
+    // The user reported no ✅ beside the correct option («لايوجد علامة صح (✅)
+    // بجانبه»), so this asserts the whole relationship rather than the icon's
+    // existence: it appears only once an answer is committed, and it appears even
+    // when the committed answer was a *different* option — that second half is the
+    // case the report is about, and the one a naive "after a correct answer" test
+    // never reaches.
+    await pumpQuiz(tester);
+    final question = controller.question!;
+
+    expect(find.byIcon(Icons.check_circle), findsNothing);
+
+    // Answered wrongly: the right option is not the picked one, and it is still
+    // ticked. Exactly one tick, so it cannot be marking the wrong row as well.
+    await _tap(tester, optionText(question, _firstWrongIndex(question)));
+    expect(find.byIcon(Icons.check_circle), findsOneWidget);
+    expect(find.byIcon(Icons.cancel), findsOneWidget);
+    expect(tester.getCenter(find.byIcon(Icons.check_circle)).dy,
+        closeTo(tester.getCenter(optionText(question, question.correctIndex)).dy, 1.0),
+        reason: 'the tick is on the correct row, not the picked one');
+
+    // And answered correctly: still exactly one, and no cross.
+    await _tap(tester, find.widgetWithText(FilledButton, _next));
+    final second = controller.question!;
+    await _tap(tester, optionText(second, second.correctIndex));
+    expect(find.byIcon(Icons.check_circle), findsOneWidget);
+    expect(find.byIcon(Icons.cancel), findsNothing);
   });
 
   testWidgets('an empty pack lands on the result screen rather than throwing',

@@ -23,6 +23,15 @@
       with no background at all, or both, is a broken render, not a dark mode.
     * the text ink of that mode must be present — `#1F2937` on light, `#F9FAFB` on
       dark — and the *other* mode's background must be absent.
+    * the verdict tokens must belong to the mode — a dark render carries **0**
+      pixels of `#16A34A` / `#DC2626`, and a light render **0** of `#4ADE80` /
+      `#F87171`. This is the one check that would have caught the defect the six
+      quiz images exist for: `quiz_screen.dart` named the *light* verdict tokens
+      at four call sites, two of them `const Icon`s that could not read the theme
+      at all, and on the user's dark phone that measured **0** pixels of the dark
+      tokens against 15,795 and 15,719 of the light ones. Every other assertion in
+      this file is about a colour being *absent* or out of place; these two are
+      about a colour that is entirely normal, in the wrong place.
 
   It then prints the full brand-token table, so a colour that has quietly moved is
   visible in the same run.
@@ -50,16 +59,17 @@
   ## THE DISTINCT-COLOUR BASELINE — the one signal that does exist
 
   Every image is compared against a recorded count of its distinct colours, and
-  a mismatch fails. All nine committed images have **nine different counts**
-  (772 / 1203 / 1243 / 177 / 190 / 361 / 373 / 569 / 667), so the favourites bytes
-  written over `word_detail_user_shot_light.png` reported 177 where the honest
-  value is 361.
+  a mismatch fails. The fifteen committed images have fifteen different counts
+  (772 / 1203 / 1243 / 177 / 190 / 361 / 373 / 569 / 667, then the six quiz
+  images at 233 / 266 / 781 / 785 / 1145 / 1090), so the favourites bytes written
+  over `word_detail_user_shot_light.png` reported 177 where the honest value is
+  361.
 
   **This does not close the gap above, and it is not an identity oracle.** What it
   adds, precisely:
 
     * it catches a swapped or stale image **whose colour histogram differs**,
-      which today is every pairing among the nine;
+      which today is every pairing among the fifteen;
     * it gives a second, independent signal that an image was rewritten without a
       regeneration, complementing the git staleness proxy below — which only
       fires while the tree is dirty.
@@ -73,9 +83,9 @@
       `$ExpectedColourCount` from the `distinct colours` line this run prints —
       that is the intended maintenance, not a defect to route around.
 
-  Dimensions carry no signal (all nine are 1080x2340) and mtime is
-  unimplementable (git does not track it, and `--update-goldens` writes all nine
-  within a few milliseconds of each other).
+  Dimensions carry no signal (all fifteen are 1080x2340) and mtime is
+  unimplementable (git does not track it, and `--update-goldens` writes all
+  fifteen within a few milliseconds of each other).
 
   ## THE SET-EQUALITY GUARD
 
@@ -85,7 +95,10 @@
   Without it, an eighth image sitting on disk that no list mentions was unguarded
   — measured: `CENSUS PASSED`, exit 0 — because an image the census does not read
   is an image nothing checks. This is what a screen task that ships a new
-  reference image would otherwise have to remember by hand.
+  reference image would otherwise have to remember by hand, and it is what the
+  quiz's six images were nearly another instance of: they were generated into
+  `test/goldens/goldens/` first, and the guard is what made the run notice that
+  nothing had listed them.
 
   **The guard runs on the DEFAULT list only.** Passing `-ImagePath` replaces the
   list wholesale and is a deliberate narrowing — the `.EXAMPLE` below asks for one
@@ -163,7 +176,20 @@ param(
     'test/goldens/goldens/word_detail_user_shot_light.png',
     'test/goldens/goldens/word_detail_user_shot_dark.png',
     'test/goldens/goldens/flashcards_screen_user_shot_light.png',
-    'test/goldens/goldens/flashcards_screen_user_shot_dark.png'
+    'test/goldens/goldens/flashcards_screen_user_shot_dark.png',
+    # The quiz, three states x two modes. **These six are the images whose absence
+    # let the light-mode verdict tokens ship on a dark phone**: `quiz_screen.dart`
+    # painted `#16A34A` / `#DC2626` in dark mode, and nothing here had ever looked
+    # at a pixel of that screen. Three states rather than one because the defect
+    # only exists once an option is answered - an unanswered question draws no
+    # verdict colour at all - and two modes because every one of those colours is
+    # mode-aware. A screen with no image here is a screen nothing checks.
+    'test/goldens/goldens/quiz_screen_unanswered_user_shot_light.png',
+    'test/goldens/goldens/quiz_screen_unanswered_user_shot_dark.png',
+    'test/goldens/goldens/quiz_screen_correct_user_shot_light.png',
+    'test/goldens/goldens/quiz_screen_correct_user_shot_dark.png',
+    'test/goldens/goldens/quiz_screen_wrong_user_shot_light.png',
+    'test/goldens/goldens/quiz_screen_wrong_user_shot_dark.png'
   )
 )
 
@@ -174,11 +200,12 @@ $root = Split-Path -Parent $PSScriptRoot
 
 # --- the distinct-colour baseline ------------------------------------------------
 #
-# The one cheap signal that exists against a swapped image. **All nine committed
-# images have nine different counts**, so a file replaced with another file's
+# The one cheap signal that exists against a swapped image. **The committed
+# images all have different counts**, so a file replaced with another file's
 # bytes reports a count that belongs to some other image:
 #
-#   772 / 1203 / 1243 / 177 / 190 / 361 / 373 / 569 / 667
+#   772 / 1203 / 1243 / 177 / 190 / 361 / 373 / 569 / 667        (the first nine)
+#   233 / 266 / 781 / 785 / 1145 / 1090                          (the six quiz)
 #
 # and doctoring `word_detail_user_shot_light.png` with the favourites bytes
 # reported **177 where the honest value is 361**. The script already computes
@@ -196,7 +223,7 @@ $root = Split-Path -Parent $PSScriptRoot
 #     `distinct colours` line the run prints.
 #   * It does **not** close the gap named above. No pixel property distinguishes
 #     one screen's render from another's in general; this catches the cases where
-#     the colour histograms happen to differ, which today is all nine of them.
+#     the colour histograms happen to differ, which is all fifteen of them now.
 #   * **Dimensions carry no signal** - all nine are 1080x2340 - and **mtime is
 #     unimplementable**: git does not track it, and all nine files are written
 #     within a few milliseconds of each other by `--update-goldens`.
@@ -213,6 +240,16 @@ $ExpectedColourCount = [ordered]@{
   'test/goldens/goldens/word_detail_user_shot_dark.png'       = 373
   'test/goldens/goldens/flashcards_screen_user_shot_light.png' = 569
   'test/goldens/goldens/flashcards_screen_user_shot_dark.png'  = 667
+  # The six quiz images, added with the images themselves. Numbers below are what
+  # the run that generated them printed; they are as rasteriser-dependent as the
+  # other nine and are maintained the same way - by reading the
+  # `distinct colours` line of a deliberate regeneration.
+  'test/goldens/goldens/quiz_screen_unanswered_user_shot_light.png' = 233
+  'test/goldens/goldens/quiz_screen_unanswered_user_shot_dark.png'  = 266
+  'test/goldens/goldens/quiz_screen_correct_user_shot_light.png'    = 781
+  'test/goldens/goldens/quiz_screen_correct_user_shot_dark.png'     = 785
+  'test/goldens/goldens/quiz_screen_wrong_user_shot_light.png'      = 1145
+  'test/goldens/goldens/quiz_screen_wrong_user_shot_dark.png'       = 1090
 }
 
 # The one directory the default list is allowed to cover.
@@ -406,6 +443,42 @@ foreach ($relative in $ImagePath) {
     $tonal = Count-Of '1D1B20'
     if ($tonal -ne 0) {
       $failures += "#1D1B20 is $tonal px, must be 0 (Material text, not brand ink)"
+    }
+
+    # --- the verdict tokens must belong to the mode ----------------------------
+    #
+    # **The check that would have caught the defect these six quiz images were
+    # added for.** `quiz_screen.dart` named `AppColors.successLight` and
+    # `errorLight` at four call sites, two of them `const Icon`s that could not
+    # read the theme at all, so a dark phone drew the light verdict tokens. On the
+    # user's own screenshots that measured **0** pixels of `#4ADE80` and **0** of
+    # `#F87171`, against 15,795 of `#16A34A` and 15,719 of `#DC2626`.
+    #
+    # Nothing above would have noticed: those are all *present* colours, a dark
+    # image with a light verdict token in it is still a valid dark image, and the
+    # distinct-colour baseline only dates the file. What makes it a defect is one
+    # hex belonging to the wrong brightness - a property of the mode this block
+    # already established, so it costs two lookups and no new machinery.
+    if ($mode -eq 'dark') {
+      foreach ($leak in @(
+          @{ hex = '16A34A'; name = 'success (light)' },
+          @{ hex = 'DC2626'; name = 'error (light)'   }
+        )) {
+        $n = Count-Of $leak.hex
+        if ($n -gt 0) {
+          $failures += "#$($leak.hex) is $n px in a dark render - that is the $($leak.name) token on a dark screen"
+        }
+      }
+    } elseif ($mode -eq 'light') {
+      foreach ($leak in @(
+          @{ hex = '4ADE80'; name = 'success (dark)' },
+          @{ hex = 'F87171'; name = 'error (dark)'   }
+        )) {
+        $n = Count-Of $leak.hex
+        if ($n -gt 0) {
+          $failures += "#$($leak.hex) is $n px in a light render - that is the $($leak.name) token on a light screen"
+        }
+      }
     }
 
     # --- the distinct-colour baseline ---------------------------------------------

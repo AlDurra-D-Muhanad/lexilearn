@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../design/design_tokens.dart';
+import 'app_verdict_colors.dart';
 
 class AppTheme {
   const AppTheme._();
@@ -71,6 +72,11 @@ class AppTheme {
     return ThemeData(
       colorScheme: scheme,
       useMaterial3: true,
+      // The one role `ColorScheme` has no field for and this app needs: what a
+      // *right* answer looks like. Installed here rather than in `light()` /
+      // `dark()` so it is derived from the scheme it is mounted with — including
+      // for the `fromColorScheme` caller, which passes a scheme of its own.
+      extensions: <ThemeExtension<dynamic>>[AppVerdictColors.forScheme(scheme)],
       scaffoldBackgroundColor:
           isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
       // Every Arabic string in the app renders through this family. Latin runs

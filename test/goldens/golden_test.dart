@@ -6,11 +6,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lexilearn/app.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/design/design_tokens.dart';
+import 'package:lexilearn/domain/quiz_question.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
 import 'package:lexilearn/ui/flashcards/flashcard_controller.dart';
 import 'package:lexilearn/ui/flashcards/flashcards_screen.dart';
 import 'package:lexilearn/ui/home/home_screen.dart';
+import 'package:lexilearn/ui/quiz/quiz_controller.dart';
+import 'package:lexilearn/ui/quiz/quiz_screen.dart';
 import 'package:lexilearn/ui/word_detail/word_detail_screen.dart';
 import 'package:provider/provider.dart';
 
@@ -316,7 +319,205 @@ void main() {
       skip: _goldenSkipReason,
     );
   });
+
+  // --- the quiz ----------------------------------------------------------------
+  //
+  // **Six images, and this pair of screens is the reason the whole file has a
+  // lesson attached to it.** The quiz shipped a defect that fifteen review-clean
+  // tasks, 415 tests and nine goldens did not catch, because there was **no quiz
+  // golden**: `tool/golden_census.ps1` reads the images this file writes, so a
+  // screen it never mentions is a screen nothing checks. It was found by running
+  // the app on a real phone that happened to be in dark mode, where the quiz
+  // painted `#16A34A` and `#DC2626` — the *light* verdict tokens — because four
+  // call sites named them without reading the theme, two of them `const` Icons
+  // that therefore could not read it at all.
+  //
+  // So: **three states in both modes**, not one. A single image per mode would
+  // have photographed the unanswered question, where the defect does not exist.
+  //
+  // | state | what it proves about a reviewer looking at the PNG |
+  // |---|---|
+  // | unanswered | four neutral rows, no verdict colour anywhere |
+  // | answered correctly | the right row is **filled green** with a tick, not a green border on a purple field |
+  // | answered wrongly | the picked row is filled red, the right one is filled green, both with a glyph |
+  //
+  // The answered states are the only ones that can regress, and they are in both
+  // modes because every verdict colour is mode-aware now.
+  for (final brightness in <Brightness>[Brightness.light, Brightness.dark]) {
+    final mode = brightness == Brightness.dark ? 'dark' : 'light';
+
+    testWidgets('quiz screen user shot, unanswered, $mode', (tester) async {
+      useAPhone(tester);
+      await _setMode(tester, brightness);
+
+      await _openQuiz(tester, harness.repository);
+      expect(find.byIcon(Icons.check_circle), findsNothing);
+      expect(find.byIcon(Icons.cancel), findsNothing);
+
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/quiz_screen_unanswered_user_shot_$mode.png'),
+        skip: _goldenSkipReason,
+      );
+    });
+
+    testWidgets('quiz screen user shot, answered correctly, $mode', (tester) async {
+      useAPhone(tester);
+      await _setMode(tester, brightness);
+
+      final question = await _openQuiz(tester, harness.repository);
+      await _answerQuiz(tester, question, question.correctIndex);
+
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/quiz_screen_correct_user_shot_$mode.png'),
+        skip: _goldenSkipReason,
+      );
+    });
+
+    testWidgets('quiz screen user shot, answered wrongly, $mode', (tester) async {
+      useAPhone(tester);
+      await _setMode(tester, brightness);
+
+      final question = await _openQuiz(tester, harness.repository);
+      await _answerQuiz(tester, question, _firstWrongIndex(question));
+
+      // Both verdicts have to be on screen at once here, which is the state the
+      // user photographed: a wrong pick, the right answer revealed beside it.
+      expect(find.byIcon(Icons.cancel), findsOneWidget);
+      expect(find.byIcon(Icons.check_circle), findsOneWidget);
+
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/quiz_screen_wrong_user_shot_$mode.png'),
+        skip: _goldenSkipReason,
+      );
+    });
+  }
 }
+
+/// Puts the phone in [brightness] the way the app itself would see it.
+///
+/// Overriding the dispatcher rather than mounting `themeMode: ThemeMode.dark`,
+/// for the reason the statistics dark shot gives: `LexiLearnApp` leaves
+/// `themeMode` at its default, so a stand-in with a forced mode would be a
+/// different app rather than a different phone. Shared by the six quiz shots
+/// rather than copied into each — the same reason `pumpShell` and
+/// `useAPhone` are shared.
+Future<void> _setMode(WidgetTester tester, Brightness brightness) async {
+  if (brightness == Brightness.light) return;
+  tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+  addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+}
+
+/// Opens the quiz over the real shell, with a **seeded** controller.
+///
+/// **Why this pushes the route rather than driving the setup screen, and what
+/// that costs.** `QuizSetupScreen._start` builds its own `QuizController` with no
+/// `random:` (quiz_setup_screen.dart:133-137), so a quiz reached through the app
+/// deals a *different question every run* — and `_goldenPack` has four entries,
+/// so both the answer and the option order would move. A reference image that
+/// reads a different word on every regeneration is a reference nobody can compare
+/// against, which is the same objection `[_openWordDetail]` records about the
+/// word-of-the-day card.
+///
+/// So the controller is handed in already dealt, exactly as `_openDeck` does for
+/// the flashcard deck, and the deal is **asserted** afterwards (term, option
+/// count, correct index) so a seed that stopped producing this question fails
+/// loudly instead of quietly photographing a different one. The screen, the
+/// shell, the bar, the theme and the route are the real ones; only the
+/// construction of the route is the test's, and it is the same trade `_openDeck`
+/// already makes and documents.
+///
+/// Returns the question it dealt, so each caller can answer it by index.
+Future<QuizQuestion> _openQuiz(
+  WidgetTester tester,
+  VocabRepository repository,
+) async {
+  final controller = QuizController(
+    repository: repository,
+    packKey: _goldenPack.packId,
+    questionCount: _quizQuestionCount,
+    random: Random(_quizSeed),
+  );
+  addTearDown(controller.dispose);
+
+  // `runAsync` because `start()` is a real SQLite read, and a `testWidgets` body
+  // runs in a fake-async zone where a real future never answers — the same
+  // one-line reason the harness is built in `setUp`. Awaited here rather than
+  // fired and delayed, because the deal has to be known before the tree is
+  // mounted for the assertions below to mean anything.
+  await tester.runAsync(controller.start);
+
+  final question = controller.question!;
+  expect(question.answer.term, 'serenity',
+      reason: 'seed $_quizSeed asks serenity-1 first off [_goldenPack]');
+  expect(question.options, hasLength(4));
+
+  await pumpShell(tester, repository);
+  Navigator.of(tester.element(find.byType(HomeScreen))).push(
+    MaterialPageRoute<void>(
+      builder: (_) => ChangeNotifierProvider<QuizController>.value(
+        value: controller,
+        child: const QuizScreen(),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  await settleDatabase(tester);
+
+  // Asserting the tree rather than trusting the push: a screen that never arrived
+  // would photograph the shell, and the census cannot tell — it reads colours,
+  // not identity. `docs/engineering-standards.md` §6.
+  expect(find.byType(QuizScreen), findsOneWidget);
+  return question;
+}
+
+/// The index of an option that is not the answer.
+///
+/// By identity, from `QuizQuestion.isCorrect`, for the reason
+/// `test/ui/quiz_screen_test.dart` gives for its own copy: a helper that compared
+/// option *text* would agree with a grader that compares text.
+int _firstWrongIndex(QuizQuestion question) {
+  for (var i = 0; i < question.options.length; i++) {
+    if (!question.isCorrect(i)) return i;
+  }
+  throw StateError('the generated question had no wrong option');
+}
+
+/// Taps the option at [index] and lets the verdict render.
+///
+/// `settleDatabase` rather than a bare `pump`: the tap's `onTap` discards the
+/// `answer()` future, and the repository write behind it has to land on the real
+/// loop before the next test tears the harness down. It is the same shape as
+/// `test/ui/quiz_screen_test.dart`'s `_tap`, and it is **not** copied from there:
+/// this file's version additionally settles the 150ms `AnimatedContainer` cross-
+/// fade, because a photograph taken mid-fade would be of a colour the app does
+/// not settle on.
+Future<void> _answerQuiz(
+  WidgetTester tester,
+  QuizQuestion question,
+  int index,
+) async {
+  await tester.tap(find.text(question.options[index].text));
+  await settleDatabase(tester);
+  await tester.pump(AppDurations.fast);
+  await tester.pumpAndSettle();
+  expect(find.text('التالي'), findsOneWidget,
+      reason: 'the answer is committed, so the screen has moved on');
+}
+
+/// The seed that deals `serenity-1` first off [_goldenPack].
+///
+/// One constant for all six shots so the light and the dark images are the same
+/// screen in two modes and not two different screens. **Verified by the
+/// assertion inside [_openQuiz]**, not trusted: a generator change that moved
+/// this would fail that test rather than quietly redrawing six reference images.
+const int _quizSeed = 7;
+
+/// Long enough for the "answered wrongly" state to be reachable in one screenful
+/// and short enough that the second question is never asked for a reference image.
+const int _quizQuestionCount = 2;
 
 /// Why every golden in this file is `skip:`-ed, and how to regenerate one.
 ///

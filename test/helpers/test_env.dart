@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -210,6 +211,33 @@ Future<T> readOutsideFakeAsync<T>(
   Future<T> Function() read,
 ) async =>
     (await tester.runAsync(read)) as T;
+
+/// The WCAG 2.1 relative-luminance contrast ratio between two opaque colours,
+/// as the number the guidelines quote: `(L_lighter + 0.05) / (L_darker + 0.05)`.
+///
+/// **Why it lives here rather than in a test file.** "The ink passes AA" is a
+/// claim, and `docs/engineering-standards.md` §1 says a claim in prose is not
+/// evidence. Asserting `expect(ratio, greaterThanOrEqualTo(4.5))` puts the
+/// threshold where a regression can fail, and computing it in two files is two
+/// chances to compute it differently — so there is one implementation, and the
+/// per-channel linearisation is written out rather than delegated to
+/// `computeLuminance`, which is the same formula with a different spelling.
+///
+/// The `math.pow(...).toDouble()` is a `num`/`double` narrowing, not a
+/// correction: `pow` returns `num`, and this file's helper returns `double`.
+double contrastRatio(Color a, Color b) {
+  final la = _relativeLuminance(a);
+  final lb = _relativeLuminance(b);
+  return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05);
+}
+
+double _relativeLuminance(Color color) {
+  double channel(double v) =>
+      v <= 0.03928 ? v / 12.92 : math.pow((v + 0.055) / 1.055, 2.4).toDouble();
+  return 0.2126 * channel(color.r) +
+      0.7152 * channel(color.g) +
+      0.0722 * channel(color.b);
+}
 
 /// Arabic runs — U+0600 to U+06FF — in a string.
 ///
