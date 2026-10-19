@@ -78,6 +78,14 @@ flutter:
   uses-material-design: true
   assets:
     - assets/packs/
+    # The dictionary, as a finished SQLite file.
+    #
+    # **The build happens offline, once.** `tool/build_dictionary_db.dart` turns
+    # the 12 MB source JSON into this file; the app parses no JSON at start-up
+    # and never pays for the build. The file is read-only reference and it is
+    # a separate file from the app's own database, so `databaseSchemaVersion`
+    # stays at 2 and a backup never carries 26 MB of dictionary.
+    - assets/dictionary/
     # The user's own photographs, shipped as bundled local assets.
     #
     # **No network, no permission, nothing added to the offline guarantee.**
