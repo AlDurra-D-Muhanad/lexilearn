@@ -136,14 +136,24 @@ const Duration shellDatabaseSettle = Duration(milliseconds: 50);
 /// it. That is two copies, and Tasks 13, 14 and 15 would have added three more,
 /// so the turn lives here. If a destination ever grows a *third* sequential read,
 /// add a `pump()`-then-`runAsync` pair here rather than copying one into a test.
-Future<void> pumpShell(WidgetTester tester, VocabRepository repository) async {
+Future<void> pumpShell(
+  WidgetTester tester,
+  VocabRepository repository, {
+  int? wallpaperSeed,
+}) async {
   // The link seam is the **recording** launcher, not the real one. `LexiLearnApp`
   // defaults to `url_launcher`, which has no implementation under `flutter_test`
   // — so without this every test that touched the overflow menu would throw a
   // `MissingPluginException` from a platform channel, which is §5's "no platform
   // at all" violation in a new place. A test asserts on [launchedLinks].
   await tester.pumpWidget(
-    LexiLearnApp(repository: repository, openUrl: _recordNothingLaunched),
+    LexiLearnApp(
+      repository: repository,
+      openUrl: _recordNothingLaunched,
+      // Null for every existing caller: the photograph is unseeded in every
+      // test that is not photographing one.
+      wallpaperSeed: wallpaperSeed,
+    ),
   );
   // The shell's own start-up read: this is what fills in the active pack key.
   await tester.runAsync(() => Future<void>.delayed(shellDatabaseSettle));

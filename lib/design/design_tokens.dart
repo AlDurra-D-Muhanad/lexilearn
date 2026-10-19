@@ -68,6 +68,17 @@ class AppDurations {
 
   static const Duration fast = Duration(milliseconds: 150);
   static const Duration standard = Duration(milliseconds: 250);
+
+  /// How long one of the user's photographs holds on Home's word-of-the-day
+  /// card before the next one cross-fades in — **ten seconds**, the user's own
+  /// figure: «تبديل كل 10 ثوانٍ بانسيابية و سلاسة في الصفحة الرئيسية».
+  ///
+  /// Named here rather than written at the call site for the reason every other
+  /// token in this file is: a rotation interval is a design decision, and a
+  /// literal in `home_screen.dart` is a decision that can be changed by someone
+  /// who never knew one had been made. `test/ui/nature_rotation_test.dart`
+  /// reads **this** constant rather than its own copy of the number.
+  static const Duration wallpaper = Duration(seconds: 10);
 }
 
 /// Latin runs name the brand's Latin face explicitly.

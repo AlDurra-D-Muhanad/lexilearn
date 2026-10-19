@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 
+
 import 'data/vocab_repository.dart';
 import 'ui/home_shell.dart';
 import 'ui/link/external_link.dart';
 import 'ui/settings/app_settings_controller.dart';
 import 'ui/theme/app_theme.dart';
+import 'ui/wallpaper/wallpaper_catalog.dart';
 
 /// The application root.
 ///
@@ -37,7 +39,13 @@ class LexiLearnApp extends StatefulWidget {
     required this.repository,
     this.openUrl,
     this.navigatorObservers,
+    this.wallpaperSeed,
   });
+
+  /// Seeds the rotating photograph. **A seam for `golden_test.dart` only** -
+  /// null is the app's own behaviour, and the argument is threaded straight
+  /// through to the two screens that draw one. See `HomeShell.wallpaperSeed`.
+  final int? wallpaperSeed;
 
   final VocabRepository repository;
 
@@ -65,6 +73,13 @@ class _LexiLearnAppState extends State<LexiLearnApp> {
   @override
   void initState() {
     super.initState();
+    // The image-cache ceiling, in the one place every run of this app passes
+    // through. `Wallpapers` are the only bitmaps this app decodes, so the shared
+    // ceiling can be set to exactly three of them — 6,998,400 bytes against the
+    // 100 MB default. Idempotent, so a test may mount this twenty times. The
+    // arithmetic is in `lib/ui/wallpaper/wallpaper_catalog.dart`; it is
+    // asserted in `test/ui/wallpaper_catalog_test.dart`.
+    configureWallpaperImageCache();
     // Fired and not awaited, for the reason the class doc of the controller
     // gives: the first frame must not wait on the database, and the mode it
     // starts at is exactly the one this app used before the controller existed.
@@ -125,7 +140,10 @@ class _LexiLearnAppState extends State<LexiLearnApp> {
             textDirection: TextDirection.rtl,
             child: child!,
           ),
-          home: HomeShell(repository: widget.repository),
+          home: HomeShell(
+            repository: widget.repository,
+            wallpaperSeed: widget.wallpaperSeed,
+          ),
         ),
       ),
     );

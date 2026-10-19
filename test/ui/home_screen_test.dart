@@ -13,6 +13,9 @@ import 'package:lexilearn/ui/quiz/quiz_setup_screen.dart';
 import 'package:lexilearn/ui/stats/stats_screen.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
 import 'package:lexilearn/ui/theme/app_theme.dart';
+import 'package:lexilearn/ui/wallpaper/nature_photo.dart';
+import 'package:lexilearn/ui/wallpaper/wallpaper_catalog.dart';
+import 'package:lexilearn/ui/wallpaper/wallpaper_scrim.dart';
 import 'package:provider/provider.dart';
 
 import '../helpers/test_env.dart';
@@ -294,6 +297,93 @@ void main() {
       await _search(tester, '');
       expect(inHome(expected.term), findsOneWidget,
           reason: 'the card came back with a different word');
+    });
+
+    testWidgets('the card carries one of the user\'s photographs', (tester) async {
+      await _pumpApp(tester, harness.repository);
+
+      final photo = find.byType(NaturePhoto);
+      expect(photo, findsOneWidget,
+          reason: 'the card is the artwork\'s photograph, not a brand wash');
+      final card = tester.widget<NaturePhoto>(photo);
+      expect(card.assetPath, isIn(Wallpapers.light),
+          reason: 'a light phone draws the light set, as the user filed it');
+      expect(card.nextAssetPath, isIn(Wallpapers.light),
+          reason: 'the next one warmed is from the same set');
+      expect(card.nextAssetPath, isNot(card.assetPath));
+      expect(card.fit, BoxFit.cover,
+          reason: 'the card is not 2:1, so contain would letterbox it');
+    });
+
+    testWidgets('it holds the photograph for ten seconds and then changes it',
+        (tester) async {
+      // The interval is read from the token the screen passes in, so a change to
+      // `AppDurations.wallpaper` is what this test would have to be re-read for
+      // — it does not carry a private copy of the number.
+      await _pumpApp(tester, harness.repository);
+      expect(AppDurations.wallpaper, const Duration(seconds: 10));
+
+      String shown() =>
+          tester.widget<NaturePhoto>(find.byType(NaturePhoto)).assetPath;
+      final first = shown();
+
+      await tester.pump(const Duration(seconds: 9));
+      expect(shown(), first, reason: 'it changed early');
+
+      await tester.pump(const Duration(seconds: 1));
+      expect(shown(), isNot(first), reason: 'ten seconds passed and it did not');
+      // The fade is still running, so the previous frame is on screen too.
+      expect(find.byType(Image), findsNWidgets(2));
+      await tester.pumpAndSettle();
+      expect(find.byType(Image), findsOneWidget);
+    });
+
+    testWidgets('the label, the term and the phonetic sit on the scrim, and '
+        'the scrim stops above the button', (tester) async {
+      await _pumpApp(tester, harness.repository);
+
+      final surface = find.ancestor(
+        of: inHome(_meaningButton),
+        matching: find.byType(AppSurface),
+      );
+      final card = tester.getRect(surface);
+      double bandOf(Finder text) {
+        final r = tester.getRect(text);
+        return (r.bottom - card.top) / card.height;
+      }
+
+      // Measured off this very tree, so the constant `WallpaperScrim.holdFraction`
+      // is checked against the layout it exists for rather than against a
+      // comment about a layout that might have moved.
+      expect(bandOf(inHome(_wordOfTheDayLabel)), lessThan(WallpaperScrim.holdFraction));
+      expect(bandOf(inHome(WordOfTheDay.pick(_fixtureEntries, DateTime.now()).term)),
+          lessThan(WallpaperScrim.holdFraction));
+      expect(
+        bandOf(inHome(_meaningButton)),
+        greaterThan(WallpaperScrim.holdFraction),
+        reason: 'the button is an opaque amber pill; it needs no scrim, and '
+            'one drawn over it would dim the picture for nothing',
+      );
+
+      // And the scrim really is a gradient that reaches zero at the bottom.
+      // **Found by its gradient, not by being the first DecoratedBox** — the
+      // card contains several (the button's own among them) and `.first` picked
+      // one of those, which is how the first version of this assertion died on
+      // a null `gradient`.
+      final gradients = <Gradient>[];
+      for (final element in find
+          .descendant(of: surface, matching: find.byType(DecoratedBox))
+          .evaluate()) {
+        final decoration = (element.widget as DecoratedBox).decoration;
+        if (decoration is BoxDecoration && decoration.gradient != null) {
+          gradients.add(decoration.gradient!);
+        }
+      }
+      expect(gradients, hasLength(1),
+          reason: 'the card carries exactly one scrim');
+      final gradient = gradients.single as LinearGradient;
+      expect(gradient.colors.last.a, 0.0);
+      expect(gradient.colors.first.a, WallpaperScrim.topAlpha);
     });
   });
 

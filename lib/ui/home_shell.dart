@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/design/design_tokens.dart';
@@ -15,9 +16,24 @@ import 'word_detail/word_detail_screen.dart';
 /// working on. Everything after that is state local to this widget, so the four
 /// screens never have to reach back into the data layer.
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key, required this.repository});
+  const HomeShell({
+    super.key,
+    required this.repository,
+    this.wallpaperSeed,
+  });
 
   final VocabRepository repository;
+
+  /// Seeds the rotating photograph on Home's card and on the flashcard panel.
+  ///
+  /// **A seam, and nothing else.** Null is the app's own behaviour; a seed is
+  /// what `golden_test.dart` passes, because a reference image that shows a
+  /// different photograph on every regeneration is a reference nobody can
+  /// compare against. Same reasoning, and same shape, as `HomeScreen
+  /// .wallpaperSeed` and `FlashcardsScreen.wallpaperSeed`; there is one
+  /// seed for both surfaces so the light and the dark image of a screen are the
+  /// same screen in two modes rather than two different screens.
+  final int? wallpaperSeed;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -178,8 +194,12 @@ class _HomeShellState extends State<HomeShell> {
         packKey: _activePackKey,
         onPackSelected: _selectPack,
         onOpenWord: _openWordDetail,
+        wallpaperSeed: widget.wallpaperSeed,
       ),
-      FlashcardsScreen(packKey: _activePackKey),
+      FlashcardsScreen(
+        packKey: _activePackKey,
+        wallpaperSeed: widget.wallpaperSeed,
+      ),
       QuizSetupScreen(packKey: _activePackKey, onPackSelected: _selectPack),
       MoreScreen(packKey: _activePackKey, onPackSelected: _selectPack),
     ];

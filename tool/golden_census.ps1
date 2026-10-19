@@ -258,8 +258,8 @@ $ExpectedColourCount = [ordered]@{
   'test/goldens/goldens/favorites_screen_user_shot_dark.png'  = 190
   'test/goldens/goldens/word_detail_user_shot_light.png'      = 361
   'test/goldens/goldens/word_detail_user_shot_dark.png'       = 373
-  'test/goldens/goldens/flashcards_screen_user_shot_light.png' = 569
-  'test/goldens/goldens/flashcards_screen_user_shot_dark.png'  = 667
+  'test/goldens/goldens/flashcards_screen_user_shot_light.png' = 70058
+  'test/goldens/goldens/flashcards_screen_user_shot_dark.png'  = 71545
   # The six quiz images, added with the images themselves. Numbers below are what
   # the run that generated them printed; they are as rasteriser-dependent as the
   # other nine and are maintained the same way - by reading the
@@ -270,12 +270,27 @@ $ExpectedColourCount = [ordered]@{
   'test/goldens/goldens/quiz_screen_correct_user_shot_dark.png'     = 785
   'test/goldens/goldens/quiz_screen_wrong_user_shot_light.png'      = 1145
   'test/goldens/goldens/quiz_screen_wrong_user_shot_dark.png'       = 1090
+  # **These four counts are orders of magnitude larger than every other baseline,
+  # and that is the photograph talking.** They are the four images that show one
+  # of the user's own photographs: ssets/wallpapers/ went into this app in
+  # Task 19c, and a 1080x540 photograph carries tens of thousands of distinct
+  # values where a flat brand surface carries two. Measured by a standalone
+  # HashSet[string] sweep over each committed PNG, deliberately NOT read out of
+  # this script's own run, so the baseline and the check stay two independent
+  # measurements.
+  #
+  # **They are still useful, and more so than the small ones.** The check catches
+  # a swapped or stale image whose histogram differs, and a flat-surface count of
+  # 569 can collide with another flat-surface count; 50,336 cannot. What they do
+  # NOT do is survive a legitimate regeneration on another rasteriser, which the
+  # note above $ExpectedColourCount already says: update these from the
+  # distinct colours line when you regenerate on purpose.
   # The ten images added by the coverage audit, with their counts measured by a
   # standalone HashSet sweep over each committed PNG - deliberately NOT read out
   # of this script's own run, so the baseline and the check are two independent
   # measurements rather than one number agreeing with itself.
-  'test/goldens/goldens/home_screen_user_shot_light.png'            = 775
-  'test/goldens/goldens/home_screen_user_shot_dark.png'             = 616
+  'test/goldens/goldens/home_screen_user_shot_light.png'            = 50336
+  'test/goldens/goldens/home_screen_user_shot_dark.png'             = 20715
   'test/goldens/goldens/more_screen_user_shot_light.png'            = 627
   'test/goldens/goldens/more_screen_user_shot_dark.png'             = 684
   'test/goldens/goldens/quiz_setup_screen_user_shot_light.png'      = 461

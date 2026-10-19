@@ -8,6 +8,8 @@ import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/ui/home_shell.dart';
 import 'package:lexilearn/ui/settings/app_overflow_menu.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
+import 'package:lexilearn/ui/wallpaper/nature_photo.dart';
+import 'package:lexilearn/ui/wallpaper/nature_rotation.dart';
 import 'package:provider/provider.dart';
 
 import 'flashcard_controller.dart';
@@ -91,7 +93,21 @@ const double _actionHeight = 52;
 /// in the screen itself would give every user the identical deck, which is the
 /// opposite of what a vocabulary app is for.
 class FlashcardsScreen extends StatelessWidget {
-  const FlashcardsScreen({super.key, required this.packKey});
+  const FlashcardsScreen({
+    super.key,
+    required this.packKey,
+    this.wallpaperSeed,
+  });
+
+  /// Seeds the rotation that chooses which photograph the card's panel opens
+  /// on. **Null means the app's own behaviour** - a fresh [Random], so two
+  /// sessions begin on different photographs.
+  ///
+  /// The same seam `FlashcardController.random` already is, and for the same
+  /// reason: `golden_test.dart` photographs this screen, and a reference image
+  /// that shows a different photograph on every regeneration is a reference
+  /// nobody can compare against.
+  final int? wallpaperSeed;
 
   /// The pack the deck deals from. Empty until `HomeShell` resolves it, and
   /// empty for good when nothing is installed.
@@ -101,17 +117,23 @@ class FlashcardsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final injected = context.read<FlashcardController?>();
     if (injected != null) {
-      return _DeckBody(controller: injected, packKey: packKey);
+      return _DeckBody(
+        controller: injected,
+        packKey: packKey,
+        wallpaperSeed: wallpaperSeed,
+      );
     }
-    return _DeckOwner(packKey: packKey);
+    return _DeckOwner(packKey: packKey, wallpaperSeed: wallpaperSeed);
   }
 }
 
 /// Owns the controller for the app's path, where nothing else provides one.
 class _DeckOwner extends StatefulWidget {
-  const _DeckOwner({required this.packKey});
+  const _DeckOwner({required this.packKey, this.wallpaperSeed});
 
   final String packKey;
+
+  final int? wallpaperSeed;
 
   @override
   State<_DeckOwner> createState() => _DeckOwnerState();
@@ -225,15 +247,25 @@ class _DeckOwnerState extends State<_DeckOwner> {
         showPackKey: true,
       );
     }
-    return _DeckBody(controller: controller, packKey: widget.packKey);
+    return _DeckBody(
+      controller: controller,
+      packKey: widget.packKey,
+      wallpaperSeed: widget.wallpaperSeed,
+    );
   }
 }
 
 /// The screen, rebuilt whenever the controller notifies.
 class _DeckBody extends StatelessWidget {
-  const _DeckBody({required this.controller, required this.packKey});
+  const _DeckBody({
+    required this.controller,
+    required this.packKey,
+    this.wallpaperSeed,
+  });
 
   final FlashcardController controller;
+
+  final int? wallpaperSeed;
 
   /// Shown in the bar's action slot and in the empty-pack notice.
   ///
@@ -359,7 +391,13 @@ class _DeckBody extends StatelessWidget {
                 children: <Widget>[
                   _ProgressRow(controller: controller),
                   const SizedBox(height: AppSpacing.m),
-                  Expanded(child: _Card(controller: controller, entry: card)),
+                  Expanded(
+                    child: _Card(
+                      controller: controller,
+                      entry: card,
+                      wallpaperSeed: wallpaperSeed,
+                    ),
+                  ),
                   const SizedBox(height: AppSpacing.m),
                   _KnowItButton(onPressed: () => controller.answer(knewIt: true)),
                   const SizedBox(height: AppSpacing.s),
@@ -435,8 +473,8 @@ class _ProgressRow extends StatelessWidget {
   }
 }
 
-/// The card: the artwork's illustration, and the word with its pronunciation and
-/// its Arabic.
+/// The card: **the user's photograph** as the header, and the word with its
+/// pronunciation and its Arabic beneath it.
 ///
 /// **One surface, not two.** In the artwork the illustrated panel and the white
 /// panel under it share an edge — the illustration's bottom corners are square
@@ -444,20 +482,27 @@ class _ProgressRow extends StatelessWidget {
 /// single rounded unit here, and a second `AppSurface` between them would put a
 /// hairline across a picture.
 ///
-/// **The illustration is drawn, not loaded.** §4ج names «صورة طبيعة مروسة», a
-/// hand-drawn nature image, and `docs/design/brand-reference.png` draws a
-/// mountain lake. There is no image asset in this repository and no way to add
-/// one inside this task's file list, and photographs are already out of scope by
-/// user decision — `home_screen.dart`'s word-of-the-day card says so about the
-/// artwork's own photograph. So the panel holds the brand's own nature glyph at
-/// the artwork's proportion, and the *slot* is what this screen owns: where the
-/// image goes, how tall it is, and that it is the card's header. **This is an
-/// inference, and it is marked as one in the task report.**
+/// **The photograph is the artwork's own image, and it is a `StatefulWidget`
+/// panel rather than an `Image`.** §4ج names «صورة طبيعة مروسة», a hand-drawn
+/// nature image, and `docs/design/brand-reference.png` draws a mountain lake;
+/// what it draws is a *slot*, and the slot is what this screen owns — where the
+/// image goes, how tall it is, and that it is the card's header. It used to hold
+/// a brand wash and `Icons.landscape_rounded` there because the repository had
+/// no image asset and photographs were out of scope by user decision. Both
+/// reasons are gone: `assets/wallpapers/` now carries the user's own files.
+/// **The glyph is gone with them**, and `test/ui/flashcards_screen_test.dart`
+/// asserts it does not come back.
 class _Card extends StatelessWidget {
-  const _Card({required this.controller, required this.entry});
+  const _Card({
+    required this.controller,
+    required this.entry,
+    this.wallpaperSeed,
+  });
 
   final FlashcardController controller;
   final VocabEntry entry;
+
+  final int? wallpaperSeed;
 
   @override
   Widget build(BuildContext context) {
@@ -477,7 +522,10 @@ class _Card extends StatelessWidget {
             borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadii.md)),
             child: AspectRatio(
               aspectRatio: _natureAspect,
-              child: _NaturePanel(isDark: isDark),
+              child: _NaturePanel(
+                entryId: entry.id,
+                wallpaperSeed: wallpaperSeed,
+              ),
             ),
           ),
           Expanded(
@@ -579,23 +627,103 @@ class _Card extends StatelessWidget {
       isDark ? AppColors.accent : AppColors.primaryLight;
 }
 
-/// The artwork's nature illustration, as a brand wash and a glyph.
+/// The card's header: **the user's own photograph**, at the artwork's
+/// proportion, with nothing drawn on it.
 ///
-/// A wash rather than the full-strength colour for the same reason `_BookMark` is
-/// one in `home_screen.dart`: at full strength the fill shouts louder than the
-/// word the card exists to show.
-class _NaturePanel extends StatelessWidget {
-  const _NaturePanel({required this.isDark});
+/// **This is the slot the old glyph occupied, and it is a drop-in because the
+/// panel was already 2:1.** `AspectRatio(_natureAspect)` at line 478 of this file
+/// is `2`, and every staged file measures **1080 x 540 — 2.0000:1** — so
+/// `BoxFit.cover` trims **nothing at all** here and no photograph is ever
+/// distorted. That is the whole reason a single 2:1 crop could serve both
+/// surfaces.
+///
+/// **No scrim, and that is measured rather than asserted.** There is no ink
+/// anywhere in this panel: the term, its pronunciation and its meaning are on
+/// the surface *below* it, which is why the word card is a separate `Expanded`
+/// and not an overlay. `test/ui/flashcards_screen_test.dart` asserts there is no
+/// scrim in this panel, so the next person to add one has to argue with a red.
+///
+/// **The photograph changes on every card-to-card transition**, which is what
+/// the user asked for: «في نافذة البطاقات تتبدل عند كل انتقال من بطاقة لأخرى».
+/// That is **event-driven, not timed** — `interval: null`, no `Timer` at all —
+/// so a card the user is reading does not change underneath them. See
+/// `NatureRotation` for why Home and this panel are two instances of one class.
+class _NaturePanel extends StatefulWidget {
+  const _NaturePanel({required this.entryId, this.wallpaperSeed});
 
-  final bool isDark;
+  /// Seeds this panel's rotation. See `FlashcardsScreen.wallpaperSeed`.
+  final int? wallpaperSeed;
+
+  /// The id of the card this panel is under.
+  ///
+  /// **Compared, not used.** A card transition is the moment the value changes,
+  /// and `id` rather than the entry itself because `VocabEntry` has no
+  /// identity — two equal entries from different rows would compare equal and
+  /// the photograph would not move.
+  final String entryId;
+
+  @override
+  State<_NaturePanel> createState() => _NaturePanelState();
+}
+
+class _NaturePanelState extends State<_NaturePanel> {
+  /// **Event-driven, so `interval` is null and no `Timer` is ever created.**
+  ///
+  /// Built on the first `didChangeDependencies` rather than as a `late final`
+  /// field, for the reason `_HomeScreenState` records: `initState` cannot read
+  /// the theme, so a field initialiser would have to guess one, and correcting
+  /// it afterwards draws the starting index **twice** — once per set — which is
+  /// invisible on a device and makes a seeded rotation unreproducible.
+  NatureRotation? _rotation;
+
+  /// Never null by the time `build` runs: `didChangeDependencies` runs first.
+  NatureRotation get rotation => _rotation!;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // The panel is rebuilt on every controller notification, so this is where
+    // the set follows the theme. Idempotent, so the repeated calls are free.
+    //
+    // **No lifecycle observer here, and that is not an oversight.** With
+    // `interval: null` there is no timer to pause, and `NatureRotation` only
+    // registers itself with `WidgetsBinding` when it owns one — so an observer
+    // on this state would be a no-op callback that only exists to be a
+    // `didChangeAppLifecycleState` someone has to reason about.
+    final brightness = Theme.of(context).brightness;
+    final existing = _rotation;
+    if (existing == null) {
+      _rotation = NatureRotation(
+        brightness: brightness,
+        random: widget.wallpaperSeed == null ? null : Random(widget.wallpaperSeed!),
+      );
+      return;
+    }
+    existing.brightness = brightness;
+  }
+
+  @override
+  void didUpdateWidget(_NaturePanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // **The card-to-card transition, and the only thing that moves this
+    // panel.** Not `reveal()`, which re-renders the whole card and changes
+    // nothing about which card it is — hence the comparison being on the id.
+    if (oldWidget.entryId != widget.entryId) rotation.advance();
+  }
+
+  @override
+  void dispose() {
+    _rotation?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final colour = isDark ? AppColors.primaryDark : AppColors.primaryLight;
-    return ColoredBox(
-      color: colour.withValues(alpha: isDark ? 0.24 : 0.16),
-      child: Center(
-        child: Icon(Icons.landscape_rounded, size: 44, color: colour),
+    return ListenableBuilder(
+      listenable: rotation,
+      builder: (context, _) => NaturePhoto(
+        assetPath: rotation.assetPath,
+        nextAssetPath: rotation.nextAssetPath,
       ),
     );
   }

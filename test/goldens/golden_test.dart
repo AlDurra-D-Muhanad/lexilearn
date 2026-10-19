@@ -18,6 +18,8 @@ import 'package:lexilearn/ui/quiz/quiz_result_screen.dart';
 import 'package:lexilearn/ui/quiz/quiz_screen.dart';
 import 'package:lexilearn/ui/quiz/quiz_setup_screen.dart';
 import 'package:lexilearn/ui/settings/app_info_screen.dart';
+import 'package:lexilearn/ui/wallpaper/nature_photo.dart';
+import 'package:lexilearn/ui/wallpaper/wallpaper_catalog.dart';
 import 'package:lexilearn/ui/word_detail/word_detail_screen.dart';
 import 'package:provider/provider.dart';
 
@@ -301,7 +303,9 @@ void main() {
   // controls present — which is what `brand-reference.png` draws on both phones.
   testWidgets('flashcards screen user shot, light', (tester) async {
     useAPhone(tester);
-    await _openDeck(tester);
+    await _openDeck(tester, wallpaperSeed: _wallpaperSeed);
+    expect(_panelPhoto(tester), _expectedPhoto(Brightness.light));
+    await _letThePhotographLoad(tester);
 
     await expectLater(
       find.byType(MaterialApp),
@@ -315,7 +319,9 @@ void main() {
     tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
     addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
 
-    await _openDeck(tester);
+    await _openDeck(tester, wallpaperSeed: _wallpaperSeed);
+    expect(_panelPhoto(tester), _expectedPhoto(Brightness.dark));
+    await _letThePhotographLoad(tester);
 
     await expectLater(
       find.byType(MaterialApp),
@@ -348,9 +354,24 @@ void main() {
     testWidgets('home screen user shot, $mode', (tester) async {
       useAPhone(tester);
       await _setMode(tester, brightness);
-      await pumpShell(tester, harness.repository);
+      await pumpShell(
+        tester,
+        harness.repository,
+        wallpaperSeed: _wallpaperSeed,
+      );
 
       expect(find.byType(HomeScreen), findsOneWidget);
+      // **The photograph is pinned, not merely asserted to be one of the set.**
+      // Without the seed above, every regeneration would photograph a different
+      // file and the reference image would be stale for no reason - the same
+      // objection this file records about the word of the day moving with the
+      // calendar.
+      expect(
+        _panelPhoto(tester),
+        _expectedPhoto(brightness),
+        reason: 'the seeded rotation must be the one this image was taken with',
+      );
+      await _letThePhotographLoad(tester);
       await expectLater(
         find.byType(MaterialApp),
         matchesGoldenFile('goldens/home_screen_user_shot_$mode.png'),
@@ -920,7 +941,7 @@ Future<void> _loadBundledFonts() async {
 ///   until Task 15's fix round. See `FlashcardController.entries` — the reason it
 ///   matters is `home_screen_test.dart`, whose only bar-destination tap mounts
 ///   this screen and which cannot finish while a read is still in flight.
-Future<void> _openDeck(WidgetTester tester) async {
+Future<void> _openDeck(WidgetTester tester, {int? wallpaperSeed}) async {
   // **Its own harness, not the shared one.** `HomeShell` resolves its active pack
   // from `PackDao.listPacks()`, which orders by `is_bundled DESC, imported_at
   // DESC`; this project's clock is pinned, so every pack in one harness shares one
@@ -968,7 +989,10 @@ Future<void> _openDeck(WidgetTester tester) async {
   await tester.pumpWidget(
     ChangeNotifierProvider<FlashcardController>.value(
       value: controller,
-      child: LexiLearnApp(repository: repository),
+      child: LexiLearnApp(
+        repository: repository,
+        wallpaperSeed: wallpaperSeed,
+      ),
     ),
   );
   await settleDatabase(tester); // the shell's own start-up read
@@ -1001,6 +1025,65 @@ const String _flashcardsBarLabel = 'البطاقات';
 /// the third card's id printed for each. Twelve of them reach `serenity-1` on
 /// the third draw (12, 41, 51, 58 among them) and 12 is the first.
 const int _flashcardSeed = 12;
+
+/// **The seed that fixes which photograph each reference image shows.**
+///
+/// **The same number for both surfaces and both modes.** A different seed per
+/// shot would photograph four unrelated pictures, and the point of a light and a
+/// dark image of one screen is that they are *the same screen in two modes* -
+/// which is the whole reason the deck's controller is seeded at all, recorded
+/// above [_openDeck]. Pinning the photograph is the same requirement for the
+/// same reason: without it, every `--update-goldens` run produces an image
+/// nobody can compare against the last one.
+///
+/// It is **asserted**, not merely used: each shot reads the photograph off the
+/// rendered tree and compares it with [_expectedPhoto], which re-derives the
+/// index from the same seed against the catalog. A seed that stopped producing
+/// this photograph fails loudly instead of quietly redrawing the images.
+const int _wallpaperSeed = 3;
+
+/// The photograph [_wallpaperSeed] produces in [brightness]'s set.
+///
+/// **Derived, not written down**, for the same reason the deck's term is
+/// asserted instead of merely photographed: a hard-coded path here would be a
+/// second place to update when a photograph is added or renamed.
+String _expectedPhoto(Brightness brightness) {
+  final set = Wallpapers.forBrightness(brightness);
+  return set[Random(_wallpaperSeed).nextInt(set.length)];
+}
+
+/// The photograph the panel under test is actually showing.
+String _panelPhoto(WidgetTester tester) =>
+    tester.widget<NaturePhoto>(find.byType(NaturePhoto)).assetPath;
+
+/// Gives the photograph a **real** turn of the event loop, so the reference
+/// image shows the picture rather than the surface fill behind it.
+///
+/// **This is not a workaround; it is the same reason `pumpShell` exists.**
+/// `Image.asset` resolves through `rootBundle`, whose future never completes
+/// inside a `testWidgets` fake-async zone, and `pumpAndSettle` is fake-async
+/// pumps only. Home's card is built from a *second* database read that lands on
+/// the last `runAsync` inside `pumpShell`, so the `Image` first resolves after
+/// the last real turn and the capture photographs an unresolved frame — a solid
+/// `#885CF6` panel, which is exactly what the first regeneration produced. The
+/// deck shots were unaffected only because `_openDeck` happens to take five more
+/// real turns after the panel mounts.
+///
+/// Measured, not assumed: without this call the light Home image reads a flat
+/// purple card and the dark one a flat navy card, and `_panelPhoto` still
+/// returns the right path — **a widget being in the tree says nothing about its
+/// pixels having arrived**, which is §6's whole point about a thumbnail.
+Future<void> _letThePhotographLoad(WidgetTester tester) async {
+  final photo = find.byType(NaturePhoto);
+  expect(photo, findsOneWidget, reason: 'this shot has a photograph in it');
+  await tester.runAsync(
+    () => precacheImage(
+      AssetImage(_panelPhoto(tester)),
+      tester.element(photo),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
 
 /// The deck's own fixture, separate from [_goldenPack].
 ///

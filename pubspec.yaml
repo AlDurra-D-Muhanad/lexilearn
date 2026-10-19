@@ -78,6 +78,20 @@ flutter:
   uses-material-design: true
   assets:
     - assets/packs/
+    # The user's own photographs, shipped as bundled local assets.
+    #
+    # **No network, no permission, nothing added to the offline guarantee.**
+    # `docs/engineering-standards.md` section 12 is unchanged by this line: an
+    # asset in the APK is bytes in the APK, and the merged release manifest
+    # still carries no INTERNET because nothing here can contribute one.
+    #
+    # The directory is declared as a whole so adding a photograph is a file drop,
+    # not a pubspec edit. `lib/ui/wallpaper/wallpaper_catalog.dart` is what
+    # actually names them, and `test/ui/wallpaper_catalog_test.dart` asserts the
+    # two lists agree - an asset on disk that no list mentions is a photograph
+    # the app can never show, which is the same failure shape as a golden image
+    # on disk that `tool/golden_census.ps1` never reads.
+    - assets/wallpapers/
 
   # Tajawal renders every Arabic string; Inter renders every English vocabulary
   # term and numeral. Both are bundled, never fetched, so the app never touches

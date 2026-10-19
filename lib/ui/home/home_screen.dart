@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 // `SearchController` is also a Material widget (`search_anchor.dart`), so the
 // app's own one is this file's `SearchController` and Material's is hidden.
@@ -14,6 +15,9 @@ import 'package:lexilearn/ui/search/search_controller.dart';
 import 'package:lexilearn/ui/settings/app_overflow_menu.dart';
 import 'package:lexilearn/ui/stats/stats_screen.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
+import 'package:lexilearn/ui/wallpaper/nature_photo.dart';
+import 'package:lexilearn/ui/wallpaper/nature_rotation.dart';
+import 'package:lexilearn/ui/wallpaper/wallpaper_scrim.dart';
 import 'package:provider/provider.dart';
 
 /// The chrome strings, taken from `docs/design/brand-reference.png`.
@@ -44,7 +48,27 @@ class HomeScreen extends StatefulWidget {
     required this.packKey,
     required this.onPackSelected,
     required this.onOpenWord,
+    this.wallpaperSeed,
   });
+
+  /// Seeds the rotation that chooses which photograph the word-of-the-day card
+  /// opens on. **Null means the app's own behaviour** — a fresh [Random], so two
+  /// launches begin on different photographs.
+  ///
+  /// The same seam `FlashcardController.random` and `QuizController.random`
+  /// already are, and for the same reason: `golden_test.dart` photographs this
+  /// screen, and a reference image that shows a different photograph on every
+  /// regeneration is a reference nobody can compare against.
+  ///
+  /// **An integer, not a `Random`, and the difference is not cosmetic.** A shared
+  /// generator is consumed in *construction order*, so whichever rotation was
+  /// built first takes draw one and the other takes draw two — and which is
+  /// which depends on the navigation. Measured, not argued: with one `Random(3)`
+  /// handed to both surfaces, `nextInt(8)` returns 7 and then 7 again, so a
+  /// **light** reference image passed by coincidence, while `nextInt(6)` returns
+  /// 5 on the second draw and the **dark** one failed loudly. An integer gives
+  /// every rotation its own generator, so each is reproducible on its own.
+  final int? wallpaperSeed;
 
   /// The pack every part of this screen is scoped to. Empty until `HomeShell`
   /// resolves it, and empty for good when nothing is installed.
@@ -73,6 +97,39 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Timer? _debounce;
 
+  /// **Home's rotating photograph.**
+  ///
+  /// Owned here and not inside the card, for two reasons that are the same
+  /// reason: a rotation built in `_WordOfTheDayCard` would be constructed again
+  /// on every rebuild of the card and would therefore **re-roll its starting
+  /// index every time** — which is exactly the flicker the user would see on
+  /// each hot rebuild. One instance per screen, created once, disposed in
+  /// [dispose], is the whole of ruling E's "pick the index once per session and
+  /// advance from it".
+  ///
+  /// **Timed, at `AppDurations.wallpaper`** — ten seconds, the user's own
+  /// figure. It is the same class the flashcard deck drives by hand with
+  /// `interval: null`; see `NatureRotation` for why they are two instances of
+  /// one class rather than one of two.
+  ///
+  /// A private generator per rotation, from [HomeScreen.wallpaperSeed]. Null
+  /// means `NatureRotation` builds its own, which is the app's real behaviour.
+  Random? get _seededGenerator =>
+      widget.wallpaperSeed == null ? null : Random(widget.wallpaperSeed!);
+
+  /// **Null until the first `didChangeDependencies`, and built with the real
+  /// brightness rather than corrected afterwards.** `initState` cannot read
+  /// `Theme.of` — that is an inherited dependency, and taking one from
+  /// `initState` is an assertion — so the first version constructed with a
+  /// placeholder and let [didChangeDependencies] fix it. That drew the starting
+  /// index **twice**, once per set, which is invisible on a device and fatal to
+  /// reproducibility: with a seed, `Random(3).nextInt(8)` followed by
+  /// `Random(3).nextInt(6)` is not `Random(3).nextInt(6)`, and the golden
+  /// capture's assertion of which photograph it photographed failed on exactly
+  /// the dark shots. Building it once, correctly, is both simpler and
+  /// reproducible.
+  NatureRotation? _rotation;
+
   /// The whole active pack, read once per pack switch.
   ///
   /// Held separately from the search results because the word of the day must be
@@ -87,6 +144,29 @@ class _HomeScreenState extends State<HomeScreen> {
     _search = SearchController(repository: context.read<VocabRepository>())
       ..addListener(_onSearchChanged);
     _loadPack(widget.packKey);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // The rotation's set follows the theme, and this is the only place a
+    // `State` may read an inherited widget it did not already depend on. It
+    // runs before the first `build`, so a dark phone never renders one frame of
+    // the light set, and **the very first call builds it with the brightness it
+    // is being created for** rather than correcting one built on a guess.
+    // `NatureRotation.brightness` is idempotent, so the repeated calls this
+    // method gets from ordinary rebuilds do nothing.
+    final brightness = Theme.of(context).brightness;
+    final existing = _rotation;
+    if (existing == null) {
+      _rotation = NatureRotation(
+        brightness: brightness,
+        interval: AppDurations.wallpaper,
+        random: _seededGenerator,
+      );
+      return;
+    }
+    existing.brightness = brightness;
   }
 
   @override
@@ -106,6 +186,12 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _debounce?.cancel();
+    // The rotation's timer and its lifecycle observer, in the same place as
+    // everything else this state owns. `NatureRotation.dispose` cancels the
+    // timer and marks the controller disposed, so a tick that was already in
+    // flight when the route popped is a no-op rather than a notification into a
+    // dead `State`.
+    _rotation?.dispose();
     _search
       ..removeListener(_onSearchChanged)
       ..dispose();
@@ -118,9 +204,23 @@ class _HomeScreenState extends State<HomeScreen> {
     // An empty key is the shell's start-up window, not a missing pack: it must
     // not be asked for, because the read would answer "no such pack" and the
     // screen would flash an error before it has ever shown anything.
-    final entries = packKey.isEmpty
-        ? const <VocabEntry>[]
-        : await repository.entries(packKey);
+    //
+    // The `try` is `favorites_screen.dart:133-148`'s, for `home_screen`'s reason:
+    // this read is genuinely in flight while the first frame is built, so a back
+    // that beats it -- or a teardown that closes the database under it -- leaves
+    // sqflite throwing `Bad state: This database has already been closed` with
+    // nobody to catch it. That arrived as an unhandled async error *after* the
+    // test body had finished, which `flutter_test` counts as a failure. The
+    // screen has no error state to invent one into, so an unmounted read is
+    // simply dropped -- the same call `favorites_screen.dart:179-184` makes.
+    List<VocabEntry> entries;
+    try {
+      entries = packKey.isEmpty
+          ? const <VocabEntry>[]
+          : await repository.entries(packKey);
+    } catch (_) {
+      return;
+    }
     // Two pack switches in quick succession race here; only the last one wins.
     if (!mounted || widget.packKey != packKey) return;
     setState(() => _entries = entries);
@@ -214,6 +314,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _WordOfTheDayCard(
             entry: wordOfTheDay,
             onOpenWord: widget.onOpenWord,
+            rotation: _rotation!,
           ),
           const SizedBox(height: AppSpacing.m),
         ],
@@ -461,24 +562,43 @@ class _SearchField extends StatelessWidget {
 
 /// The word-of-the-day card.
 ///
-/// The brand fills it with the primary colour — see
-/// `docs/design/brand-reference.md` — and the artwork fills it with a
-/// photograph, which is out of scope by user decision. So it is the one surface
-/// on this screen that is not the neutral surface, and it says so through
-/// `AppSurface`'s `fill` rather than by reaching for a `Card` (which would trade
-/// the brand's shadow for Material's elevation shadow, that this rasteriser
-/// strokes as an opaque black keyline) or for a private `Container` (which would
-/// quietly stop sharing the radius and shadow rules). Every surface on this
-/// screen is an `AppSurface`; this one is the named exception.
+/// **The brand fills it with the primary colour and the artwork fills it with a
+/// photograph, and the photograph is now the user's own file.** So the card
+/// keeps `AppSurface`'s `fill` as the colour *underneath* the picture — the
+/// frame before the first decode, and the fill if a photograph ever fails to
+/// load — and the label, the term and the phonetic sit on top of it.
 ///
-/// Dark mode takes the neutral surface fill rather than the primary: a light
-/// purple card at full strength would be the loudest thing on an already dark
-/// screen, and the artwork's dark phone draws this card as a dark surface too.
+/// **Every surface on this screen is still an `AppSurface`, and this one
+/// included.** The photograph is a child, not a replacement: it goes in a
+/// `Stack` behind the column, so the card keeps the brand's radius, hairline
+/// rule and light-mode shadow exactly as they were. Reaching for a bare `Card`
+/// or a private `Container` here would trade the brand's shadow for Material's
+/// elevation shadow, that this rasteriser strokes as an opaque black keyline;
+/// `test/ui/home_screen_test.dart` asserts every surface here is an `AppSurface`.
+///
+/// **The photograph fills the card rather than sitting in a panel of its own,
+/// and that is a measurement.** The card is a content-sized column: it measured
+/// **328 x 201 logical on the golden phone, 1080x2340 at 3x, which is 1.6318:1**,
+/// so it has no fixed proportion for a panel to match and a panel would have to
+/// invent one and change the card's height. `NaturePhoto` draws `BoxFit.cover`,
+/// which crops and never distorts.
+///
+/// **The text on the photograph is why `WallpaperScrim` exists.** Its strength
+/// was solved from the pixels of all fourteen photographs rather than chosen by
+/// eye, and `test/ui/wallpaper_legibility_test.dart` re-measures it every run.
 class _WordOfTheDayCard extends StatelessWidget {
-  const _WordOfTheDayCard({required this.entry, required this.onOpenWord});
+  const _WordOfTheDayCard({
+    required this.entry,
+    required this.onOpenWord,
+    required this.rotation,
+  });
 
   final VocabEntry entry;
   final ValueChanged<VocabEntry> onOpenWord;
+
+  /// The rotation this card draws. Owned by `_HomeScreenState`, not created
+  /// here.
+  final NatureRotation rotation;
 
   @override
   Widget build(BuildContext context) {
@@ -489,10 +609,42 @@ class _WordOfTheDayCard extends StatelessWidget {
 
     return AppSurface(
       fill: fill,
-      padding: const EdgeInsets.all(AppSpacing.l),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
+      // The card's own padding moves onto the column, because the photograph
+      // and the scrim have to reach the card's edges for either of them to be
+      // worth having.
+      padding: EdgeInsets.zero,
+      child: ClipRRect(
+        // `AppSurface`'s own radius. Named twice, deliberately: `AppSurface`
+        // rounds its *decoration* and does not clip its child, so without this
+        // the photograph's square corners would sit on top of its rounded ones.
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        child: Stack(
+          children: <Widget>[
+            Positioned.fill(
+              child: ListenableBuilder(
+                listenable: rotation,
+                builder: (context, _) => NaturePhoto(
+                  assetPath: rotation.assetPath,
+                  nextAssetPath: rotation.nextAssetPath,
+                ),
+              ),
+            ),
+            // Above the photograph, below the text. A gradient rather than a
+            // flat wash: it holds its strength exactly where the label, the
+            // term and the phonetic sit, and lets go above the button, so the
+            // bottom third of the card is the photograph at full strength.
+            // See `lib/ui/wallpaper/wallpaper_scrim.dart` for how the strength
+            // was arrived at.
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(gradient: WallpaperScrim.gradient),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(AppSpacing.l),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
           Text(
             _wordOfTheDayLabel,
             style: AppText.latin.copyWith(fontSize: 13, color: onFill),
@@ -553,7 +705,11 @@ class _WordOfTheDayCard extends StatelessWidget {
               child: const Text(_meaningButton),
             ),
           ),
-        ],
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

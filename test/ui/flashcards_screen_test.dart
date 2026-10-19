@@ -12,6 +12,8 @@ import 'package:lexilearn/ui/settings/app_settings_controller.dart';
 import 'package:lexilearn/ui/home/home_screen.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
 import 'package:lexilearn/ui/theme/app_theme.dart';
+import 'package:lexilearn/ui/wallpaper/nature_photo.dart';
+import 'package:lexilearn/ui/wallpaper/wallpaper_catalog.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 
@@ -325,17 +327,111 @@ void main() {
       expect(find.byType(Card), findsNothing);
     });
 
-    testWidgets('the illustrated nature panel the artwork draws is present',
-        (tester) async {
+    testWidgets('the panel is one of the user\'s photographs, at the artwork\'s '
+        '2:1, and not the glyph that used to stand there', (tester) async {
       await _pumpDeck(tester, controller: await _dealt(tester));
 
-      // §4ج: «الصورة التوضيحية: صورة طبيعة مروسة». There is no image asset in
-      // this repository and photographs are out of scope by user decision, so
-      // the panel is drawn rather than loaded — see the screen's own note. What
-      // is pinned here is that the slot exists, at the artwork's proportion, and
-      // that it is a glyph rather than a broken image.
-      expect(find.byIcon(Icons.landscape_rounded), findsOneWidget);
-      expect(tester.takeException(), isNull);
+      // §4ج: «الصورة التوضيحية: صورة طبيعة مروسة». The slot was there before the
+      // photographs were; what is pinned now is that it is filled by the user's
+      // own file rather than by a brand glyph.
+      expect(find.byIcon(Icons.landscape_rounded), findsNothing,
+          reason: 'the stand-in glyph is gone, and it must not come back');
+
+      final photo = find.byType(NaturePhoto);
+      expect(photo, findsOneWidget);
+      final shown = tester.widget<NaturePhoto>(photo);
+      expect(shown.assetPath, isIn(Wallpapers.light),
+          reason: 'the light card draws the light set, as the user filed it');
+      expect(shown.assetPath, startsWith('assets/wallpapers/'));
+
+      // **2:1 measured off the rendered tree, not read off the constant.**
+      // `_natureAspect` is 2 and every staged file is 2.0000:1, so this is the
+      // assertion that the drop-in really was a drop-in: a panel at any other
+      // proportion would crop or letterbox the photograph.
+      final panel = tester.getRect(photo);
+      expect(panel.width / panel.height, closeTo(2, 0.01),
+          reason: 'the panel is ${panel.width}x${panel.height}');
+    });
+
+    testWidgets('there is no scrim on this panel: no ink is drawn on the '
+        'photograph at all', (tester) async {
+      // The reason is structural, and this is what says it: the term, its
+      // pronunciation and its meaning are all on the surface *below* the panel.
+      // Adding a scrim here would dim the picture for text that is not on it.
+      await _pumpDeck(tester, controller: await _dealt(tester));
+
+      final panel = find.ancestor(
+        of: find.byType(NaturePhoto),
+        matching: find.byType(ClipRRect),
+      );
+      expect(panel, findsWidgets, reason: 'the panel is clipped by the card');
+      expect(
+        find.descendant(of: panel.first, matching: find.byType(Text)),
+        findsNothing,
+        reason: 'nothing is drawn over the photograph, so nothing needs a scrim',
+      );
+      expect(
+        find.descendant(of: panel.first, matching: find.byType(DecoratedBox)),
+        findsNothing,
+      );
+    });
+
+    testWidgets('the dark card draws the dark set, the light card the light one',
+        (tester) async {
+      await _pumpDeck(
+        tester,
+        controller: await _dealt(tester),
+        brightness: Brightness.dark,
+      );
+      final dark =
+          tester.widget<NaturePhoto>(find.byType(NaturePhoto)).assetPath;
+      expect(dark, isIn(Wallpapers.dark));
+      expect(dark, isNot(isIn(Wallpapers.light)));
+
+      await _pumpDeck(tester, controller: await _dealt(tester));
+      final light =
+          tester.widget<NaturePhoto>(find.byType(NaturePhoto)).assetPath;
+      expect(light, isIn(Wallpapers.light));
+      expect(light, isNot(isIn(Wallpapers.dark)));
+    });
+
+    testWidgets('the photograph changes on every card-to-card transition',
+        (tester) async {
+      final controller = await _dealt(tester, cardCount: 3);
+      await _pumpDeck(tester, controller: controller);
+
+      String shown() => tester.widget<NaturePhoto>(find.byType(NaturePhoto)).assetPath;
+      var seen = <String>{shown()};
+      expect(seen, hasLength(1));
+
+      for (var i = 0; i < 2; i++) {
+        await _tapAction(tester, find.widgetWithText(FilledButton, _knowIt));
+        await tester.pumpAndSettle();
+        seen.add(shown());
+        expect(seen, hasLength(i + 2),
+            reason: 'the photograph did not move with the card');
+      }
+    });
+
+    testWidgets('but it does not move when the meaning is revealed, because '
+        'that is the same card', (tester) async {
+      // The distinction the panel turns on: `reveal()` re-renders the whole
+      // card, so a panel that advanced on every rebuild would change the
+      // photograph out from under a word the user is reading.
+      final controller = await _dealt(tester);
+      await _pumpDeck(tester, controller: controller);
+      final before =
+          tester.widget<NaturePhoto>(find.byType(NaturePhoto)).assetPath;
+
+      await _tapAction(tester, find.widgetWithText(TextButton, _reveal));
+      await tester.pumpAndSettle();
+
+      expect(inDeck(_meaning), findsOneWidget,
+          reason: 'the reveal really did happen');
+      expect(
+        tester.widget<NaturePhoto>(find.byType(NaturePhoto)).assetPath,
+        before,
+      );
     });
   });
 
