@@ -230,7 +230,11 @@ void main() {
     testWidgets('the active pack is named on the screen', (tester) async {
       await _pumpApp(tester, harness.repository);
 
-      expect(inHome('en_ar'), findsOneWidget);
+      // **The name, not the key.** The key was on this chip in front of the
+      // user — `dictionary_en_ar` — and a pack key is an identifier.
+      expect(inHome('English to Arabic'), findsOneWidget);
+      expect(inHome('en_ar'), findsNothing,
+          reason: 'a pack key is an identifier and must not reach the user');
     });
 
     testWidgets('the field takes its outline from the theme, not from itself',

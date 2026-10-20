@@ -146,6 +146,25 @@ class VocabRepository {
             summary,
       ];
 
+  /// The title a pack is shown under.
+  ///
+  /// **Never a key.** A pack's key is an identifier — `dictionary_en_ar`,
+  /// `english_ar_v1` — and it was on the home screen's chip, in front of the
+  /// user, where a name belongs. This is the one place that answers "what is
+  /// this pack called", and every screen that shows a pack chip asks it.
+  ///
+  /// The two packs the app ships are named here; an imported pack is named by
+  /// the file the user chose, which is in the database already. A key with no
+  /// pack behind it answers with the empty string, and the chip draws its
+  /// placeholder instead of inventing a name.
+  Future<String> packTitle(String packKey) async {
+    if (packKey.isEmpty) return '';
+    if (packKey == dictionaryPackKey) return dictionaryPackTitle;
+    if (packKey == starterPackKey) return starterPackTitle;
+    final row = await _packs.packRow(packKey);
+    return row?.title ?? '';
+  }
+
   /// The pack's words.
   ///
   /// **The dictionary's words come from the dictionary, not from this

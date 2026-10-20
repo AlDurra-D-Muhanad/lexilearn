@@ -75,6 +75,26 @@ void main() {
       expect(packs.first.packKey, dictionaryPackKey);
     });
 
+    test('the dictionary is named for the user, not by its key', () async {
+      // **The user's ruling, verbatim: «القاموس الكامل».**
+      //
+      // The home screen's pack chip showed the raw identifier
+      // `dictionary_en_ar`, in front of the user, where a name belongs. The
+      // key stays what it is — it is the foreign key every dictionary
+      // favourite is filed under — and the name the user reads is this one.
+      //
+      // **The literal, not the constant**, because a test that compares the
+      // constant with itself passes whatever the constant says.
+      expect(dictionaryPackTitle, 'القاموس الكامل');
+      final packs = await repository.packs();
+      expect(
+        packs.firstWhere((p) => p.packKey == dictionaryPackKey).title,
+        'القاموس الكامل',
+      );
+      expect(dictionaryPackTitle, isNot(contains(dictionaryPackKey)),
+          reason: 'a key is an identifier and must not reach the user');
+    });
+
     test('the dictionary pack carries no entries, and the real size',
         () async {
       final packs = await repository.packs();

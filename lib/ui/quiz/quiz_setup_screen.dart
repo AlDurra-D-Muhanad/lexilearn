@@ -55,11 +55,20 @@ class QuizSetupScreen extends StatelessWidget {
   const QuizSetupScreen({
     super.key,
     required this.packKey,
+    this.packTitle = '',
     required this.onPackSelected,
   });
 
   /// The pack the quiz would be drawn from. Empty until the shell resolves it.
   final String packKey;
+
+  /// The pack's **name**, for the pill above the pack picker.
+  ///
+  /// **The name, never the key.** The key is `dictionary_en_ar` — an
+  /// identifier, and this pill is in front of the user. The shell resolves it
+  /// with the pack list it reads at start-up and hands it down, so the pill is
+  /// on screen the instant this destination mounts and never waits on a read.
+  final String packTitle;
 
   /// Switches the active pack for the whole app, as on Home and More.
   final ValueChanged<String> onPackSelected;
@@ -83,6 +92,7 @@ class QuizSetupScreen extends StatelessWidget {
         body: SafeArea(
           child: _QuizSetupForm(
             packKey: packKey,
+            packTitle: packTitle,
             onPackSelected: onPackSelected,
           ),
         ),
@@ -93,9 +103,16 @@ class QuizSetupScreen extends StatelessWidget {
 
 /// The pack picker, the length field, and the start button.
 class _QuizSetupForm extends StatefulWidget {
-  const _QuizSetupForm({required this.packKey, required this.onPackSelected});
+  const _QuizSetupForm({
+    required this.packKey,
+    required this.packTitle,
+    required this.onPackSelected,
+  });
 
   final String packKey;
+
+  /// The pack's display name, for the pill.
+  final String packTitle;
   final ValueChanged<String> onPackSelected;
 
   @override
@@ -168,9 +185,9 @@ class _QuizSetupFormState extends State<_QuizSetupForm> {
         Text(_packLabel, style: theme.textTheme.titleMedium),
         const SizedBox(height: AppSpacing.s),
         // Deliberately outside the `FutureBuilder` below: the pill is drawn from
-        // the key `HomeShell` already resolved, so it must not wait on a read it
+        // the name the shell already resolved, so it must not wait on a read it
         // does not need. See [_PackPill].
-        _PackPill(packKey: widget.packKey),
+        _PackPill(title: widget.packTitle),
         const SizedBox(height: AppSpacing.s),
         FutureBuilder<List<PackSummary>>(
           future: _packs,
@@ -291,19 +308,21 @@ class _QuizSetupFormState extends State<_QuizSetupForm> {
 
 /// The active pack, named.
 ///
-/// Drawn from the key `HomeShell` resolved and hands in, rather than from a read
+/// Drawn from the name `HomeShell` resolved and hands in, rather than from a read
 /// of its own — so it is on screen the instant this destination mounts, and
 /// cannot disagree with the pack the quiz would actually draw from. That is also
 /// what `test/ui/home_shell_test.dart` asserts on every destination, and that
 /// test switches here and `pumpAndSettle()`s without a `runAsync` turn for the
 /// pack list below, so anything waiting on that read would never be found.
 ///
-/// The bare key, not a label with the key inside it: the assertion is a whole
-/// string. `HomeScreen` and `MoreScreen` draw the same pill the same way.
+/// **The name, not the key.** A pack's key is an identifier — `dictionary_en_ar`
+/// — and this pill is in front of the user. `HomeScreen` and `MoreScreen` draw
+/// the same pill the same way.
 class _PackPill extends StatelessWidget {
-  const _PackPill({required this.packKey});
+  const _PackPill({required this.title});
 
-  final String packKey;
+  /// The pack's display name, or the empty string while it is resolving.
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -311,6 +330,9 @@ class _PackPill extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final secondary =
         isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
+    // The name may be Arabic and it may be Latin, and the direction is the
+    // paragraph's - the same rule the pack list applies to a pack's title.
+    final isArabic = _writesArabic(title);
 
     return Align(
       alignment: AlignmentDirectional.centerStart,
@@ -326,14 +348,30 @@ class _PackPill extends StatelessWidget {
             color: isDark ? AppColors.borderDark : AppColors.borderLight,
           ),
         ),
-        // A pack key is a Latin run, so Inter and LTR rather than the ambient
-        // family — the same treatment `HomeScreen`'s pill gives it.
         child: Text(
-          packKey.isEmpty ? '—' : packKey,
-          textDirection: TextDirection.ltr,
-          style: AppText.latin.copyWith(fontSize: AppText.caption, color: secondary),
+          // The em dash is the shell's start-up window rather than a missing
+          // pack. A Latin pack name asks for Inter and LTR rather than the
+          // ambient family; an Arabic one keeps the ambient family and the
+          // app's direction.
+          title.isEmpty ? '—' : title,
+          textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
+          style: isArabic
+              ? theme.textTheme.bodySmall?.copyWith(color: secondary)
+              : AppText.latin
+                  .copyWith(fontSize: AppText.caption, color: secondary),
         ),
       ),
     );
   }
 }
+
+/// Whether [value] carries an Arabic letter.
+///
+/// **The same block the app's other screens use** — U+0600 to U+06FF, plus the
+/// Arabic Supplement and Extended-A blocks — so "is this Arabic?" is answered
+/// the same way everywhere it is asked.
+bool _writesArabic(String value) => value.runes.any(
+      (rune) => (rune >= 0x0600 && rune <= 0x06FF) ||
+          (rune >= 0x0750 && rune <= 0x077F) ||
+          (rune >= 0x08A0 && rune <= 0x08FF),
+    );

@@ -616,9 +616,16 @@ const int spellingCandidateLimit = 512;
 
 /// How many headwords an Arabic search answers with.
 ///
-/// **A hundred, and not twenty, because the data says so.** The most-shared
-/// normalised Arabic key in the shipped dictionary resolves to more headwords
-/// than a list of twenty could hold, and the brief is explicit that the
-/// search path must "cope with 68 hits". A limit that drops the tail of the
-/// answer is a limit that lies about what the dictionary contains.
-const int defaultArabicSearchLimit = 100;
+/// **Two hundred, and the number is measured rather than chosen.** The
+/// brief's figure — "one Arabic key can resolve to up to 68 headwords" — is a
+/// count of *senses*, and the sense and the headword are not the same thing:
+/// the most-shared key in the shipped dictionary, `حكم`, is carried by **68
+/// senses** and by **47 distinct headwords**. The three bands together — the
+/// exact key, the keys that start with it, and the keys that hold it inside a
+/// comma-separated synonym list — answer that key with **56 headwords**.
+///
+/// The limit has to be a number, and no number holds everything: the
+/// two-character fragments `ال` (2,017 headwords) and `ان` (994) are larger
+/// than any list. Two hundred holds every answer that is a *word* rather than
+/// a fragment, and the largest of those measured is `عمل` at 112.
+const int defaultArabicSearchLimit = 200;

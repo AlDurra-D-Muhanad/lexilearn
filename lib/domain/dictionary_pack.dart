@@ -26,7 +26,14 @@ library;
 const String dictionaryPackKey = 'dictionary_en_ar';
 
 /// The title of the dictionary pack, as the pack list shows it.
-const String dictionaryPackTitle = 'English–Arabic Dictionary';
+///
+/// **The user's ruling, verbatim: «القاموس الكامل».**
+///
+/// The pack's key is `dictionary_en_ar`, and it was on the home screen's chip
+/// in front of the user — a technical identifier, in the place the app names
+/// itself. The key stays what it is (it is the foreign key every dictionary
+/// favourite is filed under); **the name the user reads is this one.**
+const String dictionaryPackTitle = 'القاموس الكامل';
 
 /// The pack key of the bundled starter set.
 ///

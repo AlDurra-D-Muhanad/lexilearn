@@ -273,7 +273,7 @@ $root = Split-Path -Parent $PSScriptRoot
 # Measured independently rather than read out of this script: a plain
 # `HashSet[string]` sweep over each committed PNG returns exactly these numbers.
 $ExpectedColourCount = [ordered]@{
-  'test/goldens/goldens/home_shell_user_shot.png'              = 772
+  'test/goldens/goldens/home_shell_user_shot.png'              = 1321
   'test/goldens/goldens/stats_screen_user_shot_light.png'     = 1203
   'test/goldens/goldens/stats_screen_user_shot_dark.png'      = 1243
   'test/goldens/goldens/favorites_screen_user_shot_light.png' = 177
@@ -311,8 +311,8 @@ $ExpectedColourCount = [ordered]@{
   # standalone HashSet sweep over each committed PNG - deliberately NOT read out
   # of this script's own run, so the baseline and the check are two independent
   # measurements rather than one number agreeing with itself.
-  'test/goldens/goldens/home_screen_user_shot_light.png'            = 50336
-  'test/goldens/goldens/home_screen_user_shot_dark.png'             = 20715
+  'test/goldens/goldens/home_screen_user_shot_light.png'            = 50228
+  'test/goldens/goldens/home_screen_user_shot_dark.png'             = 20637
   'test/goldens/goldens/more_screen_user_shot_light.png'            = 627
   'test/goldens/goldens/more_screen_user_shot_dark.png'             = 684
   'test/goldens/goldens/quiz_setup_screen_user_shot_light.png'      = 461
@@ -332,8 +332,8 @@ $ExpectedColourCount = [ordered]@{
   # screen is text and rules. The search screens carry the user's photograph
   # and so carry tens of thousands of colours - the same reason the Home
   # screens' counts are orders of magnitude larger than every other baseline.
-  'test/goldens/goldens/dictionary_search_user_shot_light.png'      = 638
-  'test/goldens/goldens/dictionary_search_user_shot_dark.png'       = 810
+  'test/goldens/goldens/dictionary_search_user_shot_light.png'      = 661
+  'test/goldens/goldens/dictionary_search_user_shot_dark.png'       = 836
   'test/goldens/goldens/dictionary_word_user_shot_light.png'        = 191
   'test/goldens/goldens/dictionary_word_user_shot_dark.png'         = 202
   'test/goldens/goldens/attribution_screen_user_shot_light.png'     = 191
@@ -378,26 +378,26 @@ $ExpectedDominantCount = [ordered]@{
   'test/goldens/goldens/favorites_screen_user_shot_dark.png'      = 1913231
   'test/goldens/goldens/word_detail_user_shot_light.png'          = 1227391
   'test/goldens/goldens/word_detail_user_shot_dark.png'           = 1265044
-  'test/goldens/goldens/flashcards_screen_user_shot_light.png'     = 921611
-  'test/goldens/goldens/flashcards_screen_user_shot_dark.png'      = 945889
+  'test/goldens/goldens/flashcards_screen_user_shot_light.png'     = 921575
+  'test/goldens/goldens/flashcards_screen_user_shot_dark.png'      = 945853
   'test/goldens/goldens/quiz_screen_unanswered_user_shot_light.png' = 1278082
   'test/goldens/goldens/quiz_screen_unanswered_user_shot_dark.png'  = 1337070
   'test/goldens/goldens/quiz_screen_correct_user_shot_light.png'    = 1167703
   'test/goldens/goldens/quiz_screen_correct_user_shot_dark.png'     = 1227236
   'test/goldens/goldens/quiz_screen_wrong_user_shot_light.png'      = 1161793
   'test/goldens/goldens/quiz_screen_wrong_user_shot_dark.png'       = 1221325
-  'test/goldens/goldens/home_screen_user_shot_light.png'            = 1081342
+  'test/goldens/goldens/home_screen_user_shot_light.png'            = 1078730
   'test/goldens/goldens/home_screen_user_shot_dark.png'             = 1079747
-  'test/goldens/goldens/more_screen_user_shot_light.png'            = 1785364
-  'test/goldens/goldens/more_screen_user_shot_dark.png'             = 1798675
-  'test/goldens/goldens/quiz_setup_screen_user_shot_light.png'      = 1770787
-  'test/goldens/goldens/quiz_setup_screen_user_shot_dark.png'       = 1772024
+  'test/goldens/goldens/more_screen_user_shot_light.png'            = 1782275
+  'test/goldens/goldens/more_screen_user_shot_dark.png'             = 1795590
+  'test/goldens/goldens/quiz_setup_screen_user_shot_light.png'      = 1767661
+  'test/goldens/goldens/quiz_setup_screen_user_shot_dark.png'       = 1768904
   'test/goldens/goldens/quiz_result_screen_user_shot_light.png'     = 2092810
   'test/goldens/goldens/quiz_result_screen_user_shot_dark.png'      = 2100071
   'test/goldens/goldens/app_info_screen_user_shot_light.png'        = 1466611
   'test/goldens/goldens/app_info_screen_user_shot_dark.png'         = 1502005
-  'test/goldens/goldens/dictionary_search_user_shot_light.png'      = 2102166
-  'test/goldens/goldens/dictionary_search_user_shot_dark.png'       = 2102150
+  'test/goldens/goldens/dictionary_search_user_shot_light.png'      = 2051106
+  'test/goldens/goldens/dictionary_search_user_shot_dark.png'       = 2051092
   'test/goldens/goldens/dictionary_word_user_shot_light.png'        = 1766343
   'test/goldens/goldens/dictionary_word_user_shot_dark.png'         = 1766343
   'test/goldens/goldens/attribution_screen_user_shot_light.png'     = 1611901

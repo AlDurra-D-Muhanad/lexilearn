@@ -178,6 +178,10 @@ void main() {
       // This `skip:` also means `--update-goldens` will NOT write the file. To
       // regenerate: comment this line out, run with `--update-goldens`, look at
       // the PNG, then put the line back.
+      //
+      // **The image was regenerated on 2026-10-20**: the pack chip on this
+      // screen shows the pack's *name* rather than its key, so the committed
+      // PNG was stale until it was taken again.
       skip: 'platform-dependent; run locally with --update-goldens and inspect the PNG',
     );
   });

@@ -96,6 +96,7 @@ class FlashcardsScreen extends StatelessWidget {
   const FlashcardsScreen({
     super.key,
     required this.packKey,
+    this.packTitle = '',
     this.wallpaperSeed,
   });
 
@@ -113,25 +114,71 @@ class FlashcardsScreen extends StatelessWidget {
   /// empty for good when nothing is installed.
   final String packKey;
 
+  /// The pack's **name**, for the badge that names it.
+  ///
+  /// **The name, never the key.** The key is `dictionary_en_ar` - an
+  /// identifier, and this badge is in front of the user. The shell resolves it
+  /// with the pack list it reads at start-up and hands it down.
+  final String packTitle;
+
   @override
   Widget build(BuildContext context) {
     final injected = context.read<FlashcardController?>();
     if (injected != null) {
-      return _DeckBody(
+      return _InjectedDeck(
         controller: injected,
         packKey: packKey,
+        packTitle: packTitle,
         wallpaperSeed: wallpaperSeed,
       );
     }
-    return _DeckOwner(packKey: packKey, wallpaperSeed: wallpaperSeed);
+    return _DeckOwner(
+      packKey: packKey,
+      packTitle: packTitle,
+      wallpaperSeed: wallpaperSeed,
+    );
   }
+}
+
+/// The screen with a controller handed in from outside.
+///
+/// **The pack's name comes with the widget**, so the injected path draws the
+/// same badge the app's own path does, and the badge never falls back to the
+/// key.
+class _InjectedDeck extends StatelessWidget {
+  const _InjectedDeck({
+    required this.controller,
+    required this.packKey,
+    required this.packTitle,
+    this.wallpaperSeed,
+  });
+
+  final FlashcardController controller;
+  final String packKey;
+  final String packTitle;
+  final int? wallpaperSeed;
+
+  @override
+  Widget build(BuildContext context) => _DeckBody(
+        controller: controller,
+        packKey: packKey,
+        packTitle: packTitle,
+        wallpaperSeed: wallpaperSeed,
+      );
 }
 
 /// Owns the controller for the app's path, where nothing else provides one.
 class _DeckOwner extends StatefulWidget {
-  const _DeckOwner({required this.packKey, this.wallpaperSeed});
+  const _DeckOwner({
+    required this.packKey,
+    required this.packTitle,
+    this.wallpaperSeed,
+  });
 
   final String packKey;
+
+  /// The pack's display name, for the badge.
+  final String packTitle;
 
   final int? wallpaperSeed;
 
@@ -241,15 +288,16 @@ class _DeckOwnerState extends State<_DeckOwner> {
     if (controller == null) {
       return _DeckNotice(
         message: _loading,
-        packKey: widget.packKey,
+        packTitle: widget.packTitle,
         // This notice replaces the whole screen, so there is no AppBar to carry
-        // the pack key and this is the only place it can be named.
-        showPackKey: true,
+        // the pack's name and this is the only place it can be named.
+        showPackName: true,
       );
     }
     return _DeckBody(
       controller: controller,
       packKey: widget.packKey,
+      packTitle: widget.packTitle,
       wallpaperSeed: widget.wallpaperSeed,
     );
   }
@@ -260,6 +308,7 @@ class _DeckBody extends StatelessWidget {
   const _DeckBody({
     required this.controller,
     required this.packKey,
+    required this.packTitle,
     this.wallpaperSeed,
   });
 
@@ -270,10 +319,13 @@ class _DeckBody extends StatelessWidget {
   /// Shown in the bar's action slot and in the empty-pack notice.
   ///
   /// Read from the widget rather than from the controller so that an **injected**
-  /// controller still names the pack it is drawing from — the key is a fact about
-  /// the screen, not about the deal, and the shell's own test asserts it on every
-  /// destination whichever controller happens to be driving the card.
+  /// controller still names the pack it is drawing from - the name is a fact
+  /// about the screen, not about the deal, and the shell's own test asserts it
+  /// on every destination whichever controller happens to be driving the card.
   final String packKey;
+
+  /// The pack's display name, for the badge.
+  final String packTitle;
 
   @override
   Widget build(BuildContext context) {
@@ -304,9 +356,9 @@ class _DeckBody extends StatelessWidget {
           // **The pack key, in the bar's own actions slot.**
           //
           // `HomeShell` resolves the active pack once and threads the key to all
-          // four destinations, and `test/ui/home_shell_test.dart` asserts the key
-          // is *visible* on every one of them — "what proves the shell threads
-          // state around rather than merely swapping four widgets". The
+          // four destinations, and `test/ui/home_shell_test.dart` asserts the
+          // pack is *visible* on every one of them - "what proves the shell
+          // threads state around rather than merely swapping four widgets". The
           // placeholder this screen replaces met that with a pill in the body,
           // and the artwork has no room for one: its header is the title, a back
           // arrow and the progress row, and nothing else.
@@ -320,9 +372,9 @@ class _DeckBody extends StatelessWidget {
           // artwork has no room for; the menu is the second thing it has no room
           // for, and dropping either to make room would be a worse trade than a
           // bar that is 48px wider than the mock. The menu itself is the same
-          // widget on all four destinations — see `AppOverflowMenu`.
+          // widget on all four destinations - see `AppOverflowMenu`.
           actions: <Widget>[
-            _PackKeyBadge(packKey: packKey),
+            _PackKeyBadge(title: packTitle),
             const AppOverflowMenu(),
           ],
           ),
@@ -348,7 +400,7 @@ class _DeckBody extends StatelessWidget {
     // that touches it. Same decision, same reason, as `stats_screen.dart`.
     if (card == null) {
       if (!controller.isFinished) {
-        return _DeckNotice(message: _loading, packKey: packKey);
+        return _DeckNotice(message: _loading, packTitle: packTitle);
       }
       // **Finished having answered nothing can only mean the pack had no words.**
       // `_cardCount` is clamped to at least 1, so a deck that ran its course
@@ -359,7 +411,7 @@ class _DeckBody extends StatelessWidget {
         return _DeckNotice(
           message: _emptyPack,
           supporting: _emptyPackSupporting,
-          packKey: packKey,
+          packTitle: packTitle,
         );
       }
       return _FinishedDeck(controller: controller);
@@ -914,9 +966,9 @@ class _FinishedDeck extends StatelessWidget {
 class _DeckNotice extends StatelessWidget {
   const _DeckNotice({
     required this.message,
-    required this.packKey,
+    required this.packTitle,
     this.supporting,
-    this.showPackKey = false,
+    this.showPackName = false,
   });
 
   final String message;
@@ -925,7 +977,7 @@ class _DeckNotice extends StatelessWidget {
   /// Named here as well as in the bar, because the bar is not always on screen:
   /// [_DeckOwnerState.build] returns a notice *instead of* [_DeckBody], so there
   /// is no Scaffold and no AppBar and nothing else would name the pack.
-  final String packKey;
+  final String packTitle;
 
   /// **Exactly one place on the screen names the pack.**
   /// `home_shell_test.dart` asserts `findsOneWidget`, not `findsWidgets`. A notice
@@ -933,7 +985,7 @@ class _DeckNotice extends StatelessWidget {
   /// widget is *inside* that Scaffold — so drawing a second one there found two
   /// copies and failed the assertion. `true` only for the notice that replaces the
   /// whole screen.
-  final bool showPackKey;
+  final bool showPackName;
 
   @override
   Widget build(BuildContext context) {
@@ -961,9 +1013,9 @@ class _DeckNotice extends StatelessWidget {
                 style: theme.textTheme.bodyMedium?.copyWith(color: secondary),
               ),
             ],
-            if (showPackKey) ...<Widget>[
+            if (showPackName) ...<Widget>[
               const SizedBox(height: AppSpacing.m),
-              _PackKeyBadge(packKey: packKey),
+              _PackKeyBadge(title: packTitle),
             ],
           ],
         ),
@@ -984,9 +1036,10 @@ class _DeckNotice extends StatelessWidget {
 /// showing — those two states replace the body, and the bar's own AppBar does not
 /// come with them.
 class _PackKeyBadge extends StatelessWidget {
-  const _PackKeyBadge({required this.packKey});
+  const _PackKeyBadge({required this.title});
 
-  final String packKey;
+  /// The pack's display name, or the empty string while it is resolving.
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -994,21 +1047,37 @@ class _PackKeyBadge extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final secondary =
         isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
+    // The name may be Arabic and it may be Latin, and the direction is the
+    // paragraph's - the same rule the pack list applies to a pack's title.
+    final isArabic = _writesArabic(title);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
       child: Text(
-        // The em dash is `home_screen.dart`'s stand-in for a key the shell has
-        // not resolved yet. A pack key is a Latin run, so it names Inter and asks
-        // for LTR explicitly rather than inheriting Tajawal's own Latin — the
-        // same call `_PackPill` and `_Header` make.
-        packKey.isEmpty ? '—' : packKey,
-        textDirection: TextDirection.ltr,
-        style: AppText.latin.copyWith(fontSize: AppText.caption, color: secondary),
+        // The em dash is `home_screen.dart`'s stand-in for a pack the shell has
+        // not resolved yet. A Latin pack name asks for Inter and LTR
+        // explicitly rather than inheriting Tajawal's own Latin; an Arabic one
+        // keeps the ambient family and the app's direction.
+        title.isEmpty ? '—' : title,
+        textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
+        style: isArabic
+            ? theme.textTheme.bodySmall?.copyWith(color: secondary)
+            : AppText.latin.copyWith(fontSize: AppText.caption, color: secondary),
       ),
     );
   }
 }
+
+/// Whether [value] carries an Arabic letter.
+///
+/// **The same block the app's other screens use** — U+0600 to U+06FF, plus the
+/// Arabic Supplement and Extended-A blocks — so "is this Arabic?" is answered
+/// the same way everywhere it is asked.
+bool _writesArabic(String value) => value.runes.any(
+      (rune) => (rune >= 0x0600 && rune <= 0x06FF) ||
+          (rune >= 0x0750 && rune <= 0x077F) ||
+          (rune >= 0x08A0 && rune <= 0x08FF),
+    );
 
 /// Shown while the pack size is being read, and again between that and the first
 /// card being dealt. §4ج draws neither state; a sentence is what this app uses

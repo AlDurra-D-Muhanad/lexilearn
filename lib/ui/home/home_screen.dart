@@ -53,6 +53,7 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
     required this.packKey,
+    this.packTitle = '',
     required this.onPackSelected,
     required this.onOpenWord,
     this.onOpenDictionaryWord,
@@ -81,6 +82,14 @@ class HomeScreen extends StatefulWidget {
   /// The pack every part of this screen is scoped to. Empty until `HomeShell`
   /// resolves it, and empty for good when nothing is installed.
   final String packKey;
+
+  /// The pack's **name**, for the chip in the header.
+  ///
+  /// **The name, never the key.** The key is `dictionary_en_ar` — an
+  /// identifier, and this chip is the one place the user read it. The shell
+  /// resolves it with the pack list it reads at start-up and hands it down, so
+  /// this screen has it without a read of its own.
+  final String packTitle;
 
   /// Switches the active pack.
   ///
@@ -357,7 +366,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            _Header(packKey: widget.packKey),
+            _Header(title: widget.packTitle),
             const SizedBox(height: AppSpacing.m),
             _SearchField(
               controller: _field,
@@ -562,9 +571,10 @@ class _HomeScreenState extends State<HomeScreen> {
 /// looks like once it is inside an Arabic screen. Material's own convention is
 /// followed here, as it is in the golden this file's screen is measured against.
 class _Header extends StatelessWidget {
-  const _Header({required this.packKey});
+  const _Header({required this.title});
 
-  final String packKey;
+  /// The active pack's display name.
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -604,7 +614,15 @@ class _Header extends StatelessWidget {
             ),
           ),
           const SizedBox(width: AppSpacing.s),
-          _PackPill(packKey: packKey),
+          // **The pill is the one thing in this row that may shrink.** The
+          // greeting is the brand's headline, the mark and the overflow menu
+          // are the artwork's, and the pack's *name* is metadata: a pack the
+          // user imported can have a name of any length, and a name that does
+          // not fit has to be shortened rather than push the row off the
+          // screen. Measured on the artwork's phone: the row is 328 px wide,
+          // the mark and the menu and the gaps take 112 of them, and the
+          // greeting needs the rest.
+          Flexible(child: _PackPill(title: title)),
           const SizedBox(width: AppSpacing.s),
           const _BookMark(),
           const SizedBox(width: AppSpacing.s),
@@ -623,15 +641,32 @@ class _Header extends StatelessWidget {
   }
 }
 
+/// Whether [value] carries an Arabic letter.
+///
+/// **The same block the app's other screens use** — U+0600 to U+06FF, plus the
+/// Arabic Supplement and Extended-A blocks — so "is this Arabic?" is answered
+/// the same way everywhere it is asked.
+bool _writesArabic(String value) => value.runes.any(
+      (rune) => (rune >= 0x0600 && rune <= 0x06FF) ||
+          (rune >= 0x0750 && rune <= 0x077F) ||
+          (rune >= 0x08A0 && rune <= 0x08FF),
+    );
+
 /// The pack this screen is scoped to, named.
 ///
 /// Not decoration: `HomeShell` resolves the active pack once and hands the same
 /// key to all four destinations, so this is what proves the screen is reading
 /// that state rather than standing still.
+///
+/// **The pack's name, never its key.** The key is `dictionary_en_ar` — a
+/// technical identifier, and this chip is the one place the user read it. The
+/// name is «القاموس الكامل» for the dictionary and the starter set's own
+/// title for the 297-word pack.
 class _PackPill extends StatelessWidget {
-  const _PackPill({required this.packKey});
+  const _PackPill({required this.title});
 
-  final String packKey;
+  /// The pack's display name, or the empty string while it is still resolving.
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -639,6 +674,10 @@ class _PackPill extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final secondary =
         isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
+    // The name may be Arabic and it may be Latin, and the chip is a run of
+    // text in the app's own direction — so the direction is the paragraph's,
+    // not a decision this widget makes.
+    final isArabic = _writesArabic(title);
 
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -653,11 +692,17 @@ class _PackPill extends StatelessWidget {
         ),
       ),
       child: Text(
-        // A pack key is a Latin run, so it asks for Inter explicitly instead of
-        // inheriting Tajawal's own Latin.
-        packKey.isEmpty ? '—' : packKey,
-        textDirection: TextDirection.ltr,
-        style: AppText.latin.copyWith(fontSize: 12, color: secondary),
+        // The em dash is the shell's start-up window rather than a missing
+        // pack: the key has not been resolved yet, so the name is not known.
+        title.isEmpty ? '—' : title,
+        textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
+        // **One line, shortened rather than wrapped.** The name is metadata
+        // and the row has no room for two lines of it.
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: isArabic
+            ? theme.textTheme.bodySmall?.copyWith(color: secondary)
+            : AppText.latin.copyWith(fontSize: 12, color: secondary),
       ),
     );
   }

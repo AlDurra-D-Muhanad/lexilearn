@@ -1,4 +1,6 @@
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:lexilearn/data/dictionary/dictionary_models.dart';
 import 'package:lexilearn/domain/dictionary_pack.dart';
@@ -50,6 +52,19 @@ class _HomeShellState extends State<HomeShell> {
   /// The pack every destination is scoped to. Empty until [widget.repository]
   /// answers, and empty for good when no pack is installed.
   String _activePackKey = '';
+
+  /// The active pack's **name**, as every destination's chip shows it.
+  ///
+  /// **The name, never the key.** The key is `dictionary_en_ar` — an
+  /// identifier, and the chip is in front of the user.
+  ///
+  /// **It is read once, here, and handed down.** The shell already reads the
+  /// pack list at start-up, so the title comes with it and every destination
+  /// has it without a read of its own — which matters, because
+  /// `test/ui/home_shell_test.dart` switches to a destination and settles
+  /// without giving the real event loop a turn, so anything waiting on a read
+  /// there never arrives.
+  String _activePackTitle = '';
 
   /// The dictionary's controller, so the shell can react to it becoming
   /// ready.
@@ -170,7 +185,10 @@ class _HomeShellState extends State<HomeShell> {
     if (!mounted || _userChosePack) return;
     if (!_dictionary.isReady) return;
     if (_activePackKey == dictionaryPackKey) return;
-    setState(() => _activePackKey = dictionaryPackKey);
+    setState(() {
+      _activePackKey = dictionaryPackKey;
+      _activePackTitle = dictionaryPackTitle;
+    });
   }
 
   Future<void> _loadActivePack() async {
@@ -178,12 +196,33 @@ class _HomeShellState extends State<HomeShell> {
     // A shell torn down mid-query, or an install with no pack at all, leaves
     // the key empty and every screen renders its own empty state.
     if (!mounted || packs.isEmpty) return;
-    setState(() => _activePackKey = packs.first.packKey);
+    setState(() {
+      _activePackKey = packs.first.packKey;
+      _activePackTitle = packs.first.title;
+    });
   }
 
   void _selectPack(String packKey) {
     _userChosePack = true;
-    setState(() => _activePackKey = packKey);
+    // The title is cleared rather than left stale: a chip that still names the
+    // pack the app was on a moment ago is worse than a chip that says nothing
+    // for the fraction of a second the new name takes to arrive.
+    setState(() {
+      _activePackKey = packKey;
+      _activePackTitle = '';
+    });
+    unawaited(_readPackTitle(packKey));
+  }
+
+  /// The name of the pack the user just picked.
+  ///
+  /// **A read of its own, because the shell's start-up list may not have the
+  /// pack in it** — a pack imported after the app opened is not in the list the
+  /// shell read at start-up.
+  Future<void> _readPackTitle(String packKey) async {
+    final title = await widget.repository.packTitle(packKey);
+    if (!mounted || _activePackKey != packKey) return;
+    setState(() => _activePackTitle = title);
   }
 
   /// Switches the bottom bar to [index].
@@ -250,6 +289,7 @@ class _HomeShellState extends State<HomeShell> {
     final screens = <Widget>[
       HomeScreen(
         packKey: _activePackKey,
+        packTitle: _activePackTitle,
         onPackSelected: _selectPack,
         onOpenWord: _openWordDetail,
         onOpenDictionaryWord: _openDictionaryWord,
@@ -257,10 +297,19 @@ class _HomeShellState extends State<HomeShell> {
       ),
       FlashcardsScreen(
         packKey: _activePackKey,
+        packTitle: _activePackTitle,
         wallpaperSeed: widget.wallpaperSeed,
       ),
-      QuizSetupScreen(packKey: _activePackKey, onPackSelected: _selectPack),
-      MoreScreen(packKey: _activePackKey, onPackSelected: _selectPack),
+      QuizSetupScreen(
+        packKey: _activePackKey,
+        packTitle: _activePackTitle,
+        onPackSelected: _selectPack,
+      ),
+      MoreScreen(
+        packKey: _activePackKey,
+        packTitle: _activePackTitle,
+        onPackSelected: _selectPack,
+      ),
     ];
 
     return Scaffold(

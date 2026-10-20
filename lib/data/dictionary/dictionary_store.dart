@@ -312,10 +312,27 @@ class DictionaryStore {
 
   /// The headwords whose Arabic **list** holds [key] anywhere inside it.
   ///
-  /// **Three LIKE patterns, because the element can be first, in the middle
-  /// or last.** The stored `norm_ar` is the normalised whole list with its
-  /// separators intact - `a, b, c` - so `, b,` finds the middle, `, b` the
-  /// last and `b,` the first.
+  /// **This is the band that makes the multi-hit case work, and the first
+  /// version of it did not.** 30,567 of the dictionary's Arabic senses are
+  /// stored as a comma-separated list of synonyms - `رضيع, طفل, حدث, صبيّ,
+  /// غلام` is one key - and a user who types the *second* of those words has
+  /// to reach the row that visibly contains it.
+  ///
+  /// **The separator is a comma and a space, and the first version's patterns
+  /// did not say so.** The stored key is the normalised whole list, and the
+  /// normalisation collapses the whitespace, so the separator is `, ` -
+  /// measured over the shipped file: 23,396 senses hold a comma and **one**
+  /// of them holds a comma that is not followed by a space. The patterns that
+  /// ignored the space therefore matched the *first* element of a list and
+  /// nothing else, and the second and third words of every synonym list in
+  /// the dictionary were unreachable. **Measured: the key `حكم` is carried by
+  /// 44 headwords and the band found 17 of them.**
+  ///
+  /// **The element check is in Dart, and it is exact.** A `LIKE` says "this
+  /// text contains these characters"; it cannot say "this text contains this
+  /// *element*". The stored list is split on the comma and each element is
+  /// compared with the key, and both sides are normalised, so the comparison
+  /// is exact.
   ///
   /// **The wildcards in the key are escaped.** `LIKE` treats `%` and `_` as
   /// wildcards, and a key is a user's typing: without the escape, a query of
@@ -327,38 +344,64 @@ class DictionaryStore {
     if (limit <= 0) return const <ArabicSenseHit>[];
     final escaped = _escapeLike(key);
     final rows = await query(
-      'SELECT MIN(e.id) AS id, MIN(e.word) AS word, MIN(e.norm) AS norm, '
-      'MIN(e.ipa) AS ipa, MIN(e.has_ar) AS has_ar, '
-      'MIN(s.pos) AS pos, MIN(s.ar) AS ar, MIN(s.en) AS en '
+      'SELECT e.id AS id, e.word AS word, e.norm AS norm, '
+      'e.ipa AS ipa, e.has_ar AS has_ar, s.norm_ar AS norm_ar, '
+      's.pos AS pos, s.ar AS ar '
       'FROM senses s JOIN entries e ON e.id = s.entry_id '
       "WHERE s.norm_ar IS NOT NULL AND ("
       "s.norm_ar LIKE ? ESCAPE '\\' OR "
       "s.norm_ar LIKE ? ESCAPE '\\' OR "
+      "s.norm_ar LIKE ? ESCAPE '\\' OR "
+      "s.norm_ar LIKE ? ESCAPE '\\' OR "
       "s.norm_ar LIKE ? ESCAPE '\\') "
-      'GROUP BY e.id ORDER BY word LIMIT ?',
+      'ORDER BY e.word LIMIT ?',
       <Object?>[
+        // The key is the first element, whatever follows the comma.
         '$escaped,%',
+        // The key is a middle element, with and without the space.
+        '%, $escaped,%',
         '%,$escaped,%',
+        // The key is the last element, with and without the space.
+        '%, $escaped',
         '%,$escaped',
-        limit,
+        // **Four times the answer**, because the rows are the *senses* and one
+        // headword can carry several of them.
+        limit * 4,
       ],
     );
-    return <ArabicSenseHit>[
-      for (final row in rows)
-        ArabicSenseHit(
-          entry: DictionaryEntry(
-            id: row['id']! as int,
-            word: row['word']! as String,
-            norm: row['norm']! as String,
-            ipa: row['ipa'] as String?,
-            hasArabic: (row['has_ar']! as int) != 0,
-          ),
-          arabic: row['ar'] as String?,
-          partOfSpeech: row['pos'] as String?,
+    final seen = <int>{};
+    final hits = <ArabicSenseHit>[];
+    for (final row in rows) {
+      if (!_holdsElement(row['norm_ar']! as String, key)) continue;
+      final id = row['id']! as int;
+      if (!seen.add(id)) continue;
+      hits.add(ArabicSenseHit(
+        entry: DictionaryEntry(
+          id: id,
+          word: row['word']! as String,
+          norm: row['norm']! as String,
+          ipa: row['ipa'] as String?,
+          hasArabic: (row['has_ar']! as int) != 0,
         ),
-    ];
+        arabic: row['ar'] as String?,
+        partOfSpeech: row['pos'] as String?,
+      ));
+      if (hits.length >= limit) break;
+    }
+    return hits;
   }
 
+  /// Whether the comma-separated [list] holds [key] as one of its elements.
+  ///
+  /// **The elements are compared exactly, and both sides are normalised.** The
+  /// stored list is the normalised whole string, so its elements are the
+  /// normalised words with the separator's space trimmed off.
+  static bool _holdsElement(String list, String key) {
+    for (final part in list.split(',')) {
+      if (part.trim() == key) return true;
+    }
+    return false;
+  }
   /// The `LIKE` wildcards in [value], escaped.
   static String _escapeLike(String value) => value
       .replaceAll('\\', '\\\\')
@@ -562,9 +605,10 @@ class DictionaryStore {
   /// it. The stored `norm_ar` is the normalised *whole list*, so the element
   /// has to be matched inside it.
   ///
-  /// **Three patterns, because the element can be first, in the middle or
-  /// last.** The list is normalised with its separators intact - `a, b, c` -
-  /// so `, b,` finds the middle, `, b` the last and `b,` the first.
+  /// **The separator is a comma and a space, and the patterns say so.** The
+  /// middle element is `, key,` and not `,key,`. Measured over the shipped
+  /// file: 23,396 senses hold a comma and one of them holds a comma that is
+  /// not followed by a space.
   Future<List<Map<String, Object?>>> sensesContainingArabicKey(String key) {
     if (key.isEmpty) return Future<List<Map<String, Object?>>>.value(const []);
     return query(
@@ -578,6 +622,7 @@ class DictionaryStore {
       's.norm_ar = ? OR '
       "s.norm_ar LIKE ? OR "
       "s.norm_ar LIKE ? OR "
+      "s.norm_ar LIKE ? OR "
       "s.norm_ar LIKE ?) "
       'ORDER BY rank ASC, s.entry_id ASC',
       <Object?>[
@@ -585,8 +630,9 @@ class DictionaryStore {
         '$key,%',
         key,
         '$key,%',
+        '%, $key,%',
         '%,$key,%',
-        '%,$key',
+        '%, $key',
       ],
     );
   }

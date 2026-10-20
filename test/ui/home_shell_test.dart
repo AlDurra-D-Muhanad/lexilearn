@@ -95,9 +95,16 @@ void main() {
     // The shell resolves the active pack once at start-up and hands the key to
     // every destination. Asserting that key on every screen is what proves the
     // shell threads state around rather than merely swapping four widgets.
+    //
+    // **The pack's *name*, not its key.** The key was on every one of these
+    // screens in front of the user, and a key is an identifier. The name is
+    // read with the pack list the shell already reads and handed down, so it
+    // is there without a read of its own.
     expect(find.byType(HomeScreen), findsOneWidget);
     expect(find.text('الرئيسية'), findsWidgets);
-    expect(find.text('en_ar'), findsOneWidget);
+    expect(find.text('English to Arabic'), findsWidgets);
+    expect(find.text('en_ar'), findsNothing,
+        reason: 'a pack key is an identifier and must not reach the user');
 
     for (final destination in _destinations.skip(1)) {
       await _openDestination(tester, find.byIcon(destination.icon));
@@ -109,8 +116,8 @@ void main() {
       );
       expect(find.text(destination.label), findsWidgets);
       expect(
-        find.text('en_ar'),
-        findsOneWidget,
+        find.text('English to Arabic'),
+        findsWidgets,
         reason: '${destination.screen} was handed no active pack',
       );
     }

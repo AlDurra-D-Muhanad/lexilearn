@@ -57,8 +57,7 @@ const VocabPack _secondPack = VocabPack(
 /// The picker labels, spelled out rather than interpolated into the assertions.
 const String _packTitle = 'P';
 const int _packEntries = 4;
-const String _secondTitle = 'Second';
-const int _secondEntries = 3;
+const String _secondTitle = 'Second';const int _secondEntries = 3;
 
 /// The chrome these tests assert on.
 ///
@@ -825,7 +824,12 @@ void main() {
 
     // The field opens on the pack it was handed, named.
     expect(find.text('$_packTitle ($_packEntries)'), findsOneWidget);
-    expect(find.text('p'), findsOneWidget);
+    // **The pill names the pack by its title, not by its key.** It used to
+    // show the key — `p` — and a pack key is an identifier: the shell reads
+    // the pack list and hands the *name* down.
+    expect(find.text(_packTitle), findsOneWidget);
+    expect(find.text('p'), findsNothing,
+        reason: 'a pack key is an identifier and must not reach the user');
 
     await _tap(tester, find.byType(DropdownButton<String>));
     await _tap(tester, find.text('$_secondTitle ($_secondEntries)').last);
@@ -845,8 +849,13 @@ void main() {
     // the key leaves this whole test green — verified, not assumed. What this
     // test pins is the *end behaviour*; the key is defensive only, and the
     // comment on it in `quiz_setup_screen.dart` says so.
-    expect(find.text('q'), findsOneWidget);
-    expect(find.text('p'), findsNothing);
+    // **The pill names the pack by its title.** It used to name it by its key
+    // — `q` — and a pack key is an identifier; the shell reads the pack list
+    // and hands the *name* down.
+    expect(find.text(_secondTitle), findsOneWidget);
+    expect(find.text('q'), findsNothing,
+        reason: 'a pack key is an identifier and must not reach the user');
+    expect(find.text(_packTitle), findsNothing);
 
     // 3. Re-choosing the pack that is already active must not report it again:
     //    the guard is what stops a no-op tap from resetting the whole app's
@@ -925,10 +934,17 @@ class _SetupHostState extends State<_SetupHost> {
   /// first, so this is the same starting state the real app reaches.
   String _packKey = 'p';
 
+  /// The pack's **name**, as the shell hands it down.
+  ///
+  /// **The name and not the key**, for the same reason the app does it: a
+  /// pack key is an identifier and the pill is in front of the user.
+  String get _packName => _packKey == 'p' ? _packTitle : _secondTitle;
+
   @override
   Widget build(BuildContext context) {
     return QuizSetupScreen(
       packKey: _packKey,
+      packTitle: _packName,
       onPackSelected: (packKey) {
         widget.selected.add(packKey);
         setState(() => _packKey = packKey);

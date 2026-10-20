@@ -134,7 +134,19 @@ class DictionarySearchController extends ChangeNotifier {
     ];
   }
 
-  /// The English path: an exact word, a suggestion, or nothing at all.
+  /// The English path: **four bands, in order, each one a fallback for the
+  /// one before it.**
+  ///
+  /// * **the exact word** — the user typed a headword and this is it;
+  /// * **the prefix matches** — the headwords that start with what they typed,
+  ///   which is the band that used to be missing: a search for `child` returned
+  ///   one row and hid `childhood`, `childish` and `childless`;
+  /// * **the near-misses** — the spelling checker, which only runs when
+  ///   nothing else answered, because it is the most expensive band and the
+  ///   least likely to be the right one;
+  /// * **the entries whose own definition contains the query** — the mirror of
+  ///   the Arabic band's third case, and the answer to a query that is a
+  ///   description rather than a word.
   ///
   /// **A stem is never shown as if the user had typed it.** The lookup hands
   /// back a sealed hierarchy, and the stem case becomes a *suggestion card*
@@ -143,37 +155,75 @@ class DictionarySearchController extends ChangeNotifier {
   /// the app offers the nearest thing that is.
   Future<List<DictionarySearchItem>> _searchEnglish(String query) async {
     final lookup = await engine.lookupEnglish(query);
+    final items = <DictionarySearchItem>[];
+
+    // The norms already on the list as words the query reached. **A word is
+    // reached or it is offered, never both**: `chid` reaches `child` through
+    // the prefix band, and offering `child` again as a spelling near-miss
+    // would put the same word on the screen twice, once as the answer and
+    // once as a question.
+    final reached = <String>{};
+
     if (lookup is ExactWord) {
-      return <DictionarySearchItem>[
-        DictionaryWordItem(
-          entry: lookup.entry,
-          arabic: _firstArabic(lookup.entry),
-        ),
-      ];
+      reached.add(lookup.entry.norm);
+      items.add(DictionaryWordItem(
+        entry: lookup.entry,
+        arabic: _firstArabic(lookup.entry),
+      ));
+    } else if (lookup is StemSuggestion) {
+      items.add(DictionarySuggestionItem(
+        typed: lookup.typed,
+        entry: lookup.entry,
+        reason: 'stem',
+      ));
     }
-    if (lookup is StemSuggestion) {
-      return <DictionarySearchItem>[
-        DictionarySuggestionItem(
-          typed: lookup.typed,
-          entry: lookup.entry,
-          reason: 'stem',
-        ),
-      ];
+
+    // The prefix band. **It runs whether or not the query was a headword**,
+    // which is the whole of the fix: the exact answer and the words that
+    // start with it are two different questions and the user asked both.
+    for (final entry in await engine.searchEnglishPrefix(query)) {
+      if (!reached.add(entry.norm)) continue;
+      items.add(DictionaryWordItem(
+        entry: entry,
+        arabic: _firstArabic(entry),
+      ));
     }
-    // Nothing matched. The near-misses come first, and the type-ahead
-    // follows them.
-    final near = await engine.spellingSuggestions(query);
-    final prefix = await engine.autocomplete.search(query);
-    return <DictionarySearchItem>[
-      for (final suggestion in near.suggestions)
-        DictionarySuggestionItem(
+
+    // The text band: the entries whose own English definition holds the
+    // query. A user who types "port city" is asking for the entry whose
+    // gloss says "A port city in northern Israel", and no other band can
+    // answer that.
+    //
+    // **It comes before the near-misses**, and the reason is the difference
+    // between the two kinds of answer: a word the query *reached* is shown as
+    // the word the user typed, and a word the app is *offering* is shown as a
+    // question. The user's own words are in this entry, so it is reached.
+    if (items.isEmpty) {
+      for (final entry in await engine.searchEnglishText(query)) {
+        if (!reached.add(entry.norm)) continue;
+        items.add(DictionaryWordItem(
+          entry: entry,
+          arabic: _firstArabic(entry),
+        ));
+      }
+    }
+
+    // The near-misses, and only when nothing has answered yet. The spell
+    // checker is a fallback by design — see `DictionaryEngine.spellingSuggestions`
+    // — and running it after the prefix band has answered would cost 40 to
+    // 120 ms to offer a word the list is already showing.
+    if (items.isEmpty) {
+      final near = await engine.spellingSuggestions(query);
+      for (final suggestion in near.suggestions) {
+        items.add(DictionarySuggestionItem(
           typed: query,
           entry: suggestion.entry,
           reason: 'spelling',
-        ),
-      for (final entry in prefix)
-        DictionaryWordItem(entry: entry, arabic: _firstArabic(entry)),
-    ];
+        ));
+      }
+    }
+
+    return items;
   }
 
   /// The first Arabic a headword carries, or null.

@@ -167,6 +167,7 @@ Future<void> _pumpMore(
   WidgetTester tester,
   VocabRepository repository, {
   String packKey = 'en_ar',
+  String packTitle = 'English to Arabic',
   PickJsonFile? pickJsonFile,
   Brightness brightness = Brightness.light,
   PacksController? controller,
@@ -181,6 +182,7 @@ Future<void> _pumpMore(
       repository: repository,
       packs: packs,
       packKey: packKey,
+      packTitle: packTitle,
       brightness: brightness,
       settings: createAppSettings(repository),
     ),
@@ -193,6 +195,7 @@ class _MoreApp extends StatelessWidget {
     required this.repository,
     required this.packs,
     required this.packKey,
+    required this.packTitle,
     required this.brightness,
     required this.settings,
   });
@@ -200,6 +203,12 @@ class _MoreApp extends StatelessWidget {
   final VocabRepository repository;
   final PacksController packs;
   final String packKey;
+
+  /// The pack's **name**, as the shell hands it down.
+  ///
+  /// **The name and not the key**, for the same reason the app does it: a
+  /// pack key is an identifier and the pill is in front of the user.
+  final String packTitle;
   final Brightness brightness;
 
   /// The theme/launcher seams `LexiLearnApp` would have installed. `MoreScreen`
@@ -222,7 +231,11 @@ class _MoreApp extends StatelessWidget {
             brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
         builder: (context, child) =>
             Directionality(textDirection: TextDirection.rtl, child: child!),
-        home: MoreScreen(packKey: packKey, onPackSelected: (_) {}),
+        home: MoreScreen(
+          packKey: packKey,
+          packTitle: packTitle,
+          onPackSelected: (_) {},
+        ),
       ),
     );
   }
@@ -291,8 +304,12 @@ void main() {
         (tester) async {
       await _pumpMore(tester, harness.repository);
 
-      expect(inMore('en_ar'), findsOneWidget);
-      expect(inMore('English to Arabic'), findsOneWidget);
+      // **The name, not the key.** The key was in the pill in front of the user.
+      // The pill above the list and the pack's own row both name it.
+      expect(inMore('English to Arabic'), findsNWidgets(2),
+          reason: 'the pill above the list and the pack\'s own row');
+      expect(inMore('en_ar'), findsNothing,
+          reason: 'a pack key is an identifier and must not reach the user');
       expect(inMore(_bundledChip), findsOneWidget);
       expect(inMore(_noAnswers), findsOneWidget);
     });
@@ -364,6 +381,7 @@ void main() {
             pickJsonFile: () async => null,
           ),
           packKey: 'en_ar',
+          packTitle: 'English to Arabic',
           brightness: Brightness.light,
           settings: createAppSettings(harness.repository),
         ),
@@ -555,19 +573,33 @@ void main() {
 
       expect(inMore('حزمة مستوردة'), findsOneWidget);
       expect(find.byIcon(Icons.delete_outline), findsOneWidget);
-      // The active pack is named **once**, in the pill above the rows, so the
-      // key is not repeated per row. `test/ui/home_shell_test.dart` asserts each
-      // destination shows it exactly once, and this is the shape that satisfies
-      // that whether one pack is installed or five.
-      expect(inMore('en_ar'), findsOneWidget);
+      // The active pack is named **once** in the pill above the rows and once
+      // in its own row, and the key is not named at all: `en_ar` is an
+      // identifier, not a name. `test/ui/home_shell_test.dart` asserts each
+      // destination shows the pack, and this is the shape that satisfies that
+      // whether one pack is installed or five.
+      expect(inMore('English to Arabic'), findsNWidgets(2),
+          reason: 'the pill above the list and the pack\'s own row');
+      expect(inMore('en_ar'), findsNothing,
+          reason: 'a pack key is an identifier and must not reach the user');
       expect(inMore('en_ar_2'), findsNothing);
-
       // Arabic keeps the ambient family and the app's direction; a Latin title
       // names Inter and asks for LTR. Both directions are asserted, because a
       // screen that always picked one would still draw every string legibly.
       expect(tester.widget<Text>(inMore('حزمة مستوردة')).textDirection, isNull);
-      expect(tester.widget<Text>(inMore('English to Arabic')).textDirection,
-          TextDirection.ltr);
+      // **Two Latin names on this page** — the pill above the list and the
+      // pack's own row — and both of them ask for LTR.
+      final latin = inMore('English to Arabic');
+      expect(
+        tester.widget<Text>(latin.first).textDirection,
+        TextDirection.ltr,
+        reason: 'the pill',
+      );
+      expect(
+        tester.widget<Text>(latin.last).textDirection,
+        TextDirection.ltr,
+        reason: 'the pack row',
+      );
     });
 
     testWidgets('says so in words when there is no pack at all', (tester) async {
@@ -640,7 +672,8 @@ void main() {
       // ends in a `FormatException` message whose wording is the SDK's, not
       // this app's, so pinning the whole string would make this a test of Dart.
       expect(inMoreContaining('This file is not valid JSON'), findsOneWidget);
-      expect(inMore('English to Arabic'), findsOneWidget);
+      expect(inMore('English to Arabic'), findsNWidgets(2),
+          reason: 'the pill above the list and the pack\'s own row');
       expect(tester.takeException(), isNull);
     });
 
@@ -915,7 +948,12 @@ void main() {
       await settleDatabase(tester);
 
       expect(find.byType(MoreScreen), findsOneWidget);
-      expect(inMore('en_ar'), findsOneWidget);
+      // **The name, not the key.** The key was in the pill in front of the
+      // user, and a pack key is an identifier.
+      expect(inMore('English to Arabic'), findsNWidgets(2),
+          reason: 'the pill above the list and the pack\'s own row');
+      expect(inMore('en_ar'), findsNothing,
+          reason: 'a pack key is an identifier and must not reach the user');
       expect(inMore(_packsHeading), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
