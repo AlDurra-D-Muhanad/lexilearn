@@ -22,7 +22,7 @@ import 'package:lexilearn/ui/stats/stats_screen.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
 import 'package:lexilearn/ui/wallpaper/nature_photo.dart';
 import 'package:lexilearn/ui/wallpaper/nature_rotation.dart';
-import 'package:lexilearn/ui/wallpaper/wallpaper_scrim.dart';
+import 'package:lexilearn/ui/wallpaper/wallpaper_gradient.dart';
 import 'package:provider/provider.dart';
 
 /// The chrome strings, taken from `docs/design/brand-reference.png`.
@@ -814,9 +814,35 @@ class _SearchField extends StatelessWidget {
 /// invent one and change the card's height. `NaturePhoto` draws `BoxFit.cover`,
 /// which crops and never distorts.
 ///
-/// **The text on the photograph is why `WallpaperScrim` exists.** Its strength
-/// was solved from the pixels of all fourteen photographs rather than chosen by
-/// eye, and `test/ui/wallpaper_legibility_test.dart` re-measures it every run.
+/// **The text on the photograph is why `WallpaperGradient` exists.** Its shape
+/// was recomputed from the artwork's own card and its strength was solved from
+/// the pixels of all thirteen photographs rather than chosen by eye, and
+/// `test/ui/wallpaper_legibility_test.dart` re-measures it every run.
+///
+/// **The scrim this replaced is gone.** It held `#0F172A` at 0.60 across the
+/// **top 58%** of the card and released to nothing below it, which is the
+/// opposite of the user's ruling — "a gradient that dims the bottom gradually,
+/// chosen over a hard scrim" — and it flattened the sky to a navy band.
+///
+/// **What the ramp does to the photograph's own contrast, measured rather than
+/// claimed.** Sampled in the card's left half, where the right-aligned text
+/// never reaches, against the same photograph before and after:
+///
+/// | the card's band | the photograph's own spread | under the scrim | under the ramp |
+/// |---|---|---|---|
+/// | the label | 0.040 | 16% | **253%** |
+/// | the word | 0.277 | 15% | 15% |
+/// | the phonetic | 0.213 | 15% | 15% |
+/// | the button | 0.448 | 53% | **16%** |
+///
+/// So the word's band is compressed **exactly as much as it was** — the peak
+/// had to be 0.60 for the white ink to clear AA over a pure-white photograph,
+/// and that is not negotiable. What the ramp buys is the **label** and the
+/// **top quarter**, which the scrim had flattened; what it costs is the
+/// **button and the bottom third**, which is what "a gradient that dims the
+/// bottom gradually" asks for. The artwork draws **no overlay at all**: raw
+/// photograph, a soft dark shadow behind the text, a translucent button and an
+/// amber speaker.
 class _WordOfTheDayCard extends StatelessWidget {
   const _WordOfTheDayCard({
     required this.entry,
@@ -835,7 +861,12 @@ class _WordOfTheDayCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final onFill = isDark ? AppColors.textDark : AppColors.surfaceLight;
+    // **White in both modes**, and the artwork is the reason: its light card
+    // draws "serenity" in white and its dark card draws "ambition" in white.
+    // The app's dark *body* ink `#F9FAFB` is 3.3% the weaker over the same
+    // photograph, and that put the word over one of the user's photographs at
+    // 4.497:1 — 0.003 below AA. See `AppColors.onPhoto`.
+    final onFill = AppColors.onPhoto;
     final fill = isDark ? AppColors.surfaceDark : AppColors.primaryLight;
 
     return AppSurface(
@@ -860,15 +891,15 @@ class _WordOfTheDayCard extends StatelessWidget {
                 ),
               ),
             ),
-            // Above the photograph, below the text. A gradient rather than a
-            // flat wash: it holds its strength exactly where the label, the
-            // term and the phonetic sit, and lets go above the button, so the
-            // bottom third of the card is the photograph at full strength.
-            // See `lib/ui/wallpaper/wallpaper_scrim.dart` for how the strength
-            // was arrived at.
+            // Above the photograph, below the text. **A gradient, not a scrim**,
+            // and not the artwork's flat wash either: the ink is zero on the
+            // top edge, reaches 0.60 by the word's band and holds to the
+            // bottom, so the card dims *gradually toward the bottom* with no
+            // edge anywhere. See `lib/ui/wallpaper/wallpaper_gradient.dart` for
+            // how the shape was recomputed from the artwork's own card.
             Positioned.fill(
               child: DecoratedBox(
-                decoration: BoxDecoration(gradient: WallpaperScrim.gradient),
+                decoration: BoxDecoration(gradient: WallpaperGradient.gradient),
               ),
             ),
             Padding(
@@ -878,7 +909,14 @@ class _WordOfTheDayCard extends StatelessWidget {
                 children: <Widget>[
           Text(
             _wordOfTheDayLabel,
-            style: AppText.latin.copyWith(fontSize: 13, color: onFill),
+            // **The artwork's shadow.** The label, the term and the phonetic all
+            // sit on the photograph, and the artwork keeps them legible with a
+            // soft dark halo rather than with a band of ink over the picture.
+            style: AppText.latin.copyWith(
+              fontSize: 13,
+              color: onFill,
+              shadows: AppShadows.onPhoto,
+            ),
           ),
           const SizedBox(height: AppSpacing.s),
           Row(
@@ -890,8 +928,11 @@ class _WordOfTheDayCard extends StatelessWidget {
                   textDirection: TextDirection.ltr,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AppText.latinDisplay
-                      .copyWith(fontSize: AppText.wordOfTheDay, color: onFill),
+                  style: AppText.latinDisplay.copyWith(
+                    fontSize: AppText.wordOfTheDay,
+                    color: onFill,
+                    shadows: AppShadows.onPhoto,
+                  ),
                 ),
               ),
               // Static, never played: text-to-speech is out of scope by user
@@ -904,7 +945,11 @@ class _WordOfTheDayCard extends StatelessWidget {
             Text(
               entry.phonetic,
               textDirection: TextDirection.ltr,
-              style: AppText.latin.copyWith(fontSize: 14, color: onFill),
+              style: AppText.latin.copyWith(
+                fontSize: 14,
+                color: onFill,
+                shadows: AppShadows.onPhoto,
+              ),
             ),
           const SizedBox(height: AppSpacing.m),
           Align(
@@ -912,15 +957,24 @@ class _WordOfTheDayCard extends StatelessWidget {
             child: ElevatedButton(
               onPressed: () => onOpenWord(entry),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.accent,
-                foregroundColor: AppColors.textLight,
+                // **The artwork's button: a translucent dark pill with a thin
+                // light outline**, not an opaque amber one. The fill carries
+                // 45% of the app's darkest neutral and the rim is 70% white,
+                // both measured against the artwork and against the user's own
+                // brightest photographs — see `design_tokens.dart`.
+                backgroundColor: AppColors.photoButtonFill,
+                foregroundColor: AppColors.onPhoto,
+                side: const BorderSide(
+                  color: AppColors.photoButtonOutline,
+                  width: AppColors.photoButtonOutlineWidth,
+                ),
                 shape: const StadiumBorder(),
                 // `ElevatedButton` is the one Material 3 family that rests at
                 // elevation **1.0** (`elevated_button.dart:570-585`), and that
                 // is the same `canvas.drawShadow` defect the cards used to have:
                 // the test rasteriser strokes it as an opaque black keyline around
                 // the pill, 2,363 pixels of them the last time it was measured.
-                // The amber fill carries the button on its own.
+                // The translucent fill carries the button on its own.
                 //
                 // **`app_theme.dart` now zeroes `elevatedButtonTheme` too**, so
                 // this local line is redundant for *this* build and the comment
@@ -933,7 +987,15 @@ class _WordOfTheDayCard extends StatelessWidget {
                 // `test/design/app_theme_test.dart`.
                 elevation: 0,
               ),
-              child: const Text(_meaningButton),
+              child: const Text(
+                _meaningButton,
+                // The artwork draws the button's own label with the same halo
+                // as the rest of the card's text.
+                style: TextStyle(
+                  color: AppColors.onPhoto,
+                  shadows: AppShadows.onPhoto,
+                ),
+              ),
             ),
           ),
                 ],

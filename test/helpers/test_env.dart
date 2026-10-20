@@ -532,6 +532,38 @@ void useAPhone(WidgetTester tester) {
   addTearDown(tester.view.reset);
 }
 
+/// Where Home's word-of-the-day card puts its four runs of text, as
+/// fractions of the **card's** height.
+///
+/// **Measured off the rendered tree, not copied from a note.** On the golden
+/// phone (1080×2340 at 3×) the card is 328×201 logical, and the four runs
+/// land at:
+///
+/// | run | top | bottom |
+/// |---|---|---|
+/// | the "Word of the Day" label | `0.12438` | `0.21891` |
+/// | the word | `0.25871` | `0.45771` |
+/// | the phonetic | `0.45771` | `0.55721` |
+/// | the "معرفة المعنى" button | `0.70647` | `0.80597` |
+///
+/// **They live here and not in a screen's test file because two files need
+/// them and a copy is a copy.** `test/ui/wallpaper_legibility_test.dart`
+/// samples the photographs over these bands, and `test/ui/home_screen_test.dart`
+/// measures the rendered tree and asserts it against them, so a layout change
+/// goes red in the place that owns the number rather than quietly leaving the
+/// other place measuring a card that no longer exists.
+///
+/// **The card's fraction of height is the photograph's fraction of height**,
+/// because the card shows the photograph's full height and crops 9.2% off each
+/// side: the photograph is 1080×540 and the card is 328×201, so `BoxFit.cover`
+/// scales it to 402×201 and cuts 37 logical pixels off each side.
+const Map<String, List<double>> wordOfTheDayBands = <String, List<double>>{
+  'label': <double>[0.12438, 0.21891],
+  'word': <double>[0.25871, 0.45771],
+  'phonetic': <double>[0.45771, 0.55721],
+  'button': <double>[0.70647, 0.80597],
+};
+
 /// How long the shell's start-up query used to be given on the real event loop.
 ///
 /// **Gone, and its removal is the point.** This was a fixed budget: long enough

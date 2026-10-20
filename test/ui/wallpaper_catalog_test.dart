@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -9,17 +10,45 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group("the user's photographs, as filed", () {
-    test('there are fourteen of them, six dark and eight light', () {
+    test('there are thirteen of them, six dark and seven light', () {
       expect(Wallpapers.dark, hasLength(6));
-      expect(Wallpapers.light, hasLength(8));
-      expect(Wallpapers.all, hasLength(14));
+      expect(Wallpapers.light, hasLength(7));
+      expect(Wallpapers.all, hasLength(13));
+    });
+
+    test('the duplicated photograph is gone, and only the copy of it', () {
+      // **The user's ruling**: `light-2` and
+      // `light-6-hiker-beneath-giant-mushrooms-copy.jpg` are the same
+      // photograph — 64,800 sampled points, 2,323 differing by more than 12 of
+      // 765, a maximum per-pixel channel difference of 92 — so the copy ships
+      // no more. The original stays, because it is a photograph the user filed.
+      expect(
+        Wallpapers.all,
+        isNot(contains('assets/wallpapers/'
+            'light-6-hiker-beneath-giant-mushrooms-copy.jpg')),
+        reason: 'the duplicate wallpaper still ships',
+      );
+      expect(
+        Wallpapers.all,
+        contains('assets/wallpapers/light-2-hiker-beneath-giant-mushrooms.jpg'),
+        reason: 'the original of the pair was withdrawn instead of the copy',
+      );
+      // And the file is gone from the bundle, not merely unlisted: an asset on
+      // disk that nothing lists is still 300 KB in the APK.
+      expect(
+        File('assets/wallpapers/'
+                'light-6-hiker-beneath-giant-mushrooms-copy.jpg')
+            .existsSync(),
+        isFalse,
+        reason: 'the duplicate file is still on disk and still in the APK',
+      );
     });
 
     test('every path is inside the declared directory and uniquely named', () {
       for (final path in Wallpapers.all) {
         expect(path, startsWith('assets/wallpapers/'), reason: path);
       }
-      expect(Wallpapers.all.toSet(), hasLength(14),
+      expect(Wallpapers.all.toSet(), hasLength(13),
           reason: 'the same file is listed twice, so one photograph is unfiled');
     });
 
@@ -88,14 +117,14 @@ void main() {
       expect(decodedWallpaperBytes, 2332800);
     });
 
-    test('all fourteen resident would be 32.66 MB, which is why there are three',
+    test('all thirteen resident would be 30.33 MB, which is why there are three',
         () {
-      final allFourteen = decodedWallpaperBytes * Wallpapers.all.length;
-      expect(allFourteen, 14 * 2332800);
-      expect(allFourteen, 32659200);
-      expect(allFourteen / 1000000, closeTo(32.66, 0.01),
+      final allThirteen = decodedWallpaperBytes * Wallpapers.all.length;
+      expect(allThirteen, 13 * 2332800);
+      expect(allThirteen, 30326400);
+      expect(allThirteen / 1000000, closeTo(30.33, 0.01),
           reason: 'MB, decimal');
-      expect(allFourteen / 1048576, closeTo(31.14, 0.01),
+      expect(allThirteen / 1048576, closeTo(28.92, 0.01),
           reason: 'MiB, binary');
     });
 

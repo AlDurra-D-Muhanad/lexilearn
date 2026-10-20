@@ -273,7 +273,7 @@ $root = Split-Path -Parent $PSScriptRoot
 # Measured independently rather than read out of this script: a plain
 # `HashSet[string]` sweep over each committed PNG returns exactly these numbers.
 $ExpectedColourCount = [ordered]@{
-  'test/goldens/goldens/home_shell_user_shot.png'              = 1321
+  'test/goldens/goldens/home_shell_user_shot.png'              = 2346
   'test/goldens/goldens/stats_screen_user_shot_light.png'     = 1203
   'test/goldens/goldens/stats_screen_user_shot_dark.png'      = 1243
   'test/goldens/goldens/favorites_screen_user_shot_light.png' = 177
@@ -311,8 +311,20 @@ $ExpectedColourCount = [ordered]@{
   # standalone HashSet sweep over each committed PNG - deliberately NOT read out
   # of this script's own run, so the baseline and the check are two independent
   # measurements rather than one number agreeing with itself.
-  'test/goldens/goldens/home_screen_user_shot_light.png'            = 50228
-  'test/goldens/goldens/home_screen_user_shot_dark.png'             = 20637
+  #
+  # **The two Home counts moved on 2026-10-20, and the reason is the card.**
+  # The light one fell from 50,228 to 16,971 and the dark one rose from 20,637
+  # to 38,947. The scrim they replace held `#0F172A` at 0.60 across the top
+  # 58% and released to nothing at the bottom edge; the ramp that replaced it
+  # is zero on the top edge, reaches 0.60 at the word's band and HOLDS it to the
+  # bottom. So the card now carries ink over 74% of its height instead of 58%,
+  # and a 0.60 wash over a photograph quantises it to a fraction of its colours
+  # - the light image's count falls because more of it is washed than before, and
+  # the dark one's rises because the picture it shows has more colour in it to
+  # begin with. **The word's band carries exactly the same 0.60 it did**; the
+  # label's carries less, because the sky above it is now raw.
+  'test/goldens/goldens/home_screen_user_shot_light.png'            = 16971
+  'test/goldens/goldens/home_screen_user_shot_dark.png'             = 38947
   'test/goldens/goldens/more_screen_user_shot_light.png'            = 627
   'test/goldens/goldens/more_screen_user_shot_dark.png'             = 684
   'test/goldens/goldens/quiz_setup_screen_user_shot_light.png'      = 461
@@ -371,7 +383,7 @@ $ExpectedColourCount = [ordered]@{
 # to the pixel checks - the git staleness proxy below is the only thing that
 # sees an uncommitted rewrite.
 $ExpectedDominantCount = [ordered]@{
-  'test/goldens/goldens/home_shell_user_shot.png'                = 1078730
+  'test/goldens/goldens/home_shell_user_shot.png'                = 1080140
   'test/goldens/goldens/stats_screen_user_shot_light.png'         = 1270125
   'test/goldens/goldens/stats_screen_user_shot_dark.png'          = 1270125
   'test/goldens/goldens/favorites_screen_user_shot_light.png'     = 1889635
@@ -386,8 +398,8 @@ $ExpectedDominantCount = [ordered]@{
   'test/goldens/goldens/quiz_screen_correct_user_shot_dark.png'     = 1227236
   'test/goldens/goldens/quiz_screen_wrong_user_shot_light.png'      = 1161793
   'test/goldens/goldens/quiz_screen_wrong_user_shot_dark.png'       = 1221325
-  'test/goldens/goldens/home_screen_user_shot_light.png'            = 1078730
-  'test/goldens/goldens/home_screen_user_shot_dark.png'             = 1079747
+  'test/goldens/goldens/home_screen_user_shot_light.png'            = 1080140
+  'test/goldens/goldens/home_screen_user_shot_dark.png'             = 1079706
   'test/goldens/goldens/more_screen_user_shot_light.png'            = 1782275
   'test/goldens/goldens/more_screen_user_shot_dark.png'             = 1795590
   'test/goldens/goldens/quiz_setup_screen_user_shot_light.png'      = 1767661

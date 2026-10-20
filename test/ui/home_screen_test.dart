@@ -15,7 +15,7 @@ import 'package:lexilearn/ui/theme/app_surface.dart';
 import 'package:lexilearn/ui/theme/app_theme.dart';
 import 'package:lexilearn/ui/wallpaper/nature_photo.dart';
 import 'package:lexilearn/ui/wallpaper/wallpaper_catalog.dart';
-import 'package:lexilearn/ui/wallpaper/wallpaper_scrim.dart';
+import 'package:lexilearn/ui/wallpaper/wallpaper_gradient.dart';
 import 'package:provider/provider.dart';
 
 import '../helpers/test_env.dart';
@@ -140,14 +140,35 @@ Future<void> _pumpHome(
 
 /// The pack under test, as literals.
 ///
+/// **Every entry carries a phonetic**, so the card's third line is always
+/// drawn. Without one the phonetic branch of the card never renders, and a
+/// test that says "the phonetic carries the artwork's shadow" would be
+/// asserting nothing on the days the word of the day happens to be an entry
+/// without a phonetic.
+///
 /// Declared once and used for *both* the installed pack and the expected word of
 /// the day. Reading them back out of the database inside a `testWidgets` body
 /// would be the fake-async trap `test_env.dart` documents: a real sqflite future
 /// never completes in that zone, and the test hangs instead of failing.
 const _fixtureEntries = <VocabEntry>[
-  VocabEntry(id: 'a', term: 'ghost clusters', translations: <String>['أشباح عنقودية']),
-  VocabEntry(id: 'b', term: 'Buried', translations: <String>['دفن', 'مدفون']),
-  VocabEntry(id: 'c', term: 'check up', translations: <String>['فحص - مراجعة']),
+  VocabEntry(
+    id: 'a',
+    term: 'ghost clusters',
+    translations: <String>['أشباح عنقودية'],
+    phonetic: '/ɡoʊst klˈʌstərz/',
+  ),
+  VocabEntry(
+    id: 'b',
+    term: 'Buried',
+    translations: <String>['دفن', 'مدفون'],
+    phonetic: '/ˈbɛrid/',
+  ),
+  VocabEntry(
+    id: 'c',
+    term: 'check up',
+    translations: <String>['فحص - مراجعة'],
+    phonetic: '/tʃɛk ʌp/',
+  ),
 ];
 
 void main() {
@@ -342,8 +363,8 @@ void main() {
       expect(find.byType(Image), findsOneWidget);
     });
 
-    testWidgets('the label, the term and the phonetic sit on the scrim, and '
-        'the scrim stops above the button', (tester) async {
+    testWidgets('the label, the term and the phonetic sit inside the ramp, and '
+        'the ramp holds past the button', (tester) async {
       await _pumpApp(tester, harness.repository);
 
       final surface = find.ancestor(
@@ -351,25 +372,43 @@ void main() {
         matching: find.byType(AppSurface),
       );
       final card = tester.getRect(surface);
-      double bandOf(Finder text) {
+      double topOf(Finder text) {
+        final r = tester.getRect(text);
+        return (r.top - card.top) / card.height;
+      }
+
+      double bottomOf(Finder text) {
         final r = tester.getRect(text);
         return (r.bottom - card.top) / card.height;
       }
 
-      // Measured off this very tree, so the constant `WallpaperScrim.holdFraction`
-      // is checked against the layout it exists for rather than against a
-      // comment about a layout that might have moved.
-      expect(bandOf(inHome(_wordOfTheDayLabel)), lessThan(WallpaperScrim.holdFraction));
-      expect(bandOf(inHome(WordOfTheDay.pick(_fixtureEntries, DateTime.now()).term)),
-          lessThan(WallpaperScrim.holdFraction));
+      // Measured off this very tree, so the constant
+      // `WallpaperGradient.wordBandTop` is checked against the layout it exists
+      // for rather than against a comment about a layout that might have moved.
+      //
+      // **The knee is the word's *top*, not its bottom.** The ramp has to be at
+      // its peak across the *whole* of the word, so the word's top is the last
+      // moment the ramp can still reach 0.60.
+      expect(topOf(inHome(_wordOfTheDayLabel)),
+          lessThan(WallpaperGradient.wordBandTop));
+      expect(bottomOf(inHome(_wordOfTheDayLabel)),
+          lessThan(WallpaperGradient.wordBandTop),
+          reason: 'the label sits entirely above the knee, on bare photograph');
       expect(
-        bandOf(inHome(_meaningButton)),
-        greaterThan(WallpaperScrim.holdFraction),
-        reason: 'the button is an opaque amber pill; it needs no scrim, and '
-            'one drawn over it would dim the picture for nothing',
+        topOf(inHome(WordOfTheDay.pick(_fixtureEntries, DateTime.now()).term)),
+        lessThanOrEqualTo(WallpaperGradient.wordBandTop),
+        reason: 'the ramp has to be at its peak before the word starts',
+      );
+      // And the ramp holds past the button, because the artwork's card is dark
+      // from the word to the bottom edge.
+      expect(
+        topOf(inHome(_meaningButton)),
+        greaterThan(WallpaperGradient.wordBandTop),
+        reason: 'the button is inside the ramp\'s held region, which is what '
+            'the scrim never had',
       );
 
-      // And the scrim really is a gradient that reaches zero at the bottom.
+      // And the card really carries one gradient, in the ramp's shape.
       // **Found by its gradient, not by being the first DecoratedBox** — the
       // card contains several (the button's own among them) and `.first` picked
       // one of those, which is how the first version of this assertion died on
@@ -384,10 +423,182 @@ void main() {
         }
       }
       expect(gradients, hasLength(1),
-          reason: 'the card carries exactly one scrim');
+          reason: 'the card carries exactly one ink ramp');
       final gradient = gradients.single as LinearGradient;
-      expect(gradient.colors.last.a, 0.0);
-      expect(gradient.colors.first.a, WallpaperScrim.topAlpha);
+      // **The scrim's shape is gone.** It held 0.60 across the top 58% and
+      // released to nothing at the bottom; this one starts at nothing on the
+      // top edge and holds 0.60 to the bottom.
+      expect(gradient.colors.first.a, 0.0,
+          reason: 'the top of the card is bare photograph, as in the artwork');
+      expect(gradient.colors.last.a, WallpaperGradient.peakAlpha,
+          reason: 'the ramp dims the bottom gradually and holds');
+      expect(gradient.stops![1], WallpaperGradient.wordBandTop);
+    });
+
+    testWidgets('the card\'s text is white in light mode, as the artwork '
+        'draws it', (tester) async {
+      await _pumpApp(tester, harness.repository);
+
+      // **The artwork draws "serenity" in white** on its light card, and the
+      // card's text sits on a photograph — so the ink is the app's white, not
+      // the light mode's body ink.
+      final label = tester.widget<Text>(inHome(_wordOfTheDayLabel));
+      expect(label.style?.color, AppColors.onPhoto);
+      expect(AppColors.onPhoto, const Color(0xFFFFFFFF));
+    });
+
+    testWidgets('the card\'s text is white in dark mode too', (tester) async {
+      // **The artwork draws "ambition" in white** on its dark card, and the
+      // photograph does not change with the phone's theme. The app's dark
+      // *body* ink `#F9FAFB` is 3.3% the weaker over the same photograph, and
+      // that put the word over one of the user's photographs at 4.497:1 —
+      // 0.003 below AA. See `AppColors.onPhoto`.
+      tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+      addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+      await _pumpApp(tester, harness.repository);
+
+      final label = tester.widget<Text>(inHome(_wordOfTheDayLabel));
+      expect(label.style?.color, AppColors.onPhoto);
+      expect(label.style?.color, isNot(AppColors.textDark),
+          reason: 'the card\'s ink is white on a photograph, not the app\'s '
+              'dark body ink');
+    });
+
+    testWidgets('the card\'s text bands are the ones the legibility test '
+        'measures over', (tester) async {
+      // **The four bands are shared, and this is what keeps them honest.**
+      // `test/ui/wallpaper_legibility_test.dart` samples the photographs over
+      // these four bands, and it cannot see the tree — so if the card's layout
+      // moved and the shared numbers did not, the legibility numbers would
+      // quietly be about a card that no longer exists. This measures the
+      // rendered tree and compares it.
+      //
+      // **On the golden phone**, because the bands are fractions of the card's
+      // height and the card is as wide as the phone: at the default 800x600
+      // surface the card is a different shape and the fractions are different
+      // numbers, so the comparison would be against a card that is not the
+      // shipped one.
+      _useAPhone(tester);
+      await _pumpApp(tester, harness.repository);
+
+      final surface = find.ancestor(
+        of: inHome(_meaningButton),
+        matching: find.byType(AppSurface),
+      );
+      final card = tester.getRect(surface);
+      final entry = WordOfTheDay.pick(_fixtureEntries, DateTime.now());
+
+      List<double> bandOf(Finder text) {
+        final r = tester.getRect(text);
+        return <double>[
+          (r.top - card.top) / card.height,
+          (r.bottom - card.top) / card.height,
+        ];
+      }
+
+      final measured = <String, List<double>>{
+        'label': bandOf(inHome(_wordOfTheDayLabel)),
+        'word': bandOf(inHome(entry.term)),
+        'phonetic': bandOf(inHome(entry.phonetic)),
+        'button': bandOf(inHome(_meaningButton)),
+      };
+
+      for (final name in measured.keys) {
+        final expected = wordOfTheDayBands[name]!;
+        expect(measured[name]![0], closeTo(expected[0], 0.002),
+            reason: 'the $name band has moved: the legibility test samples '
+                'the photographs over the shared number, not over this one');
+        expect(measured[name]![1], closeTo(expected[1], 0.002),
+            reason: 'the $name band has moved: the legibility test samples '
+                'the photographs over the shared number, not over this one');
+      }
+    });
+
+    testWidgets('the label, the word and the phonetic carry the artwork\'s '
+        'text shadow', (tester) async {
+      await _pumpApp(tester, harness.repository);
+
+      // **The artwork keeps its text legible with a soft dark shadow, not with
+      // a band of ink over the picture.** Every run of text that sits on the
+      // photograph carries it.
+      final shadow = AppShadows.onPhoto.single;
+      expect(shadow.color.a, greaterThan(0.5),
+          reason: 'the shadow has to be dark enough to read as one');
+      expect(shadow.blurRadius, greaterThan(0.0));
+
+      final onPhoto = <Finder>[
+        inHome(_wordOfTheDayLabel),
+        inHome(WordOfTheDay.pick(_fixtureEntries, DateTime.now()).term),
+      ];
+      for (final finder in onPhoto) {
+        final style = tester.widget<Text>(finder).style;
+        expect(style?.shadows, AppShadows.onPhoto,
+            reason: 'this text sits on the photograph and needs the shadow');
+      }
+    });
+
+    testWidgets('the phonetic carries the artwork\'s text shadow too',
+        (tester) async {
+      await _pumpApp(tester, harness.repository);
+
+      final entry = WordOfTheDay.pick(_fixtureEntries, DateTime.now());
+      expect(entry.phonetic, isNotEmpty,
+          reason: 'every fixture entry carries a phonetic, so this test is not '
+              'vacuous');
+      final phonetic = find.descendant(
+        of: find.byType(HomeScreen),
+        matching: find.text(entry.phonetic),
+      );
+      expect(phonetic, findsOneWidget);
+      final style = tester.widget<Text>(phonetic).style;
+      expect(style?.shadows, AppShadows.onPhoto);
+    });
+
+    testWidgets('the pronunciation icon is the artwork\'s amber',
+        (tester) async {
+      await _pumpApp(tester, harness.repository);
+
+      // **The artwork draws the speaker in gold.** The brand's own palette in
+      // the same file names the accent `#F59E0B`.
+      expect(AppColors.accent, const Color(0xFFF59E0B));
+
+      // `find.byIcon`, not `find.widgetWithIcon(Icon, …)`: the latter is
+      // `find.ancestor(of: find.byIcon(icon), matching: find.byType(Icon))`,
+      // and an `Icon` is not its own ancestor, so it finds nothing.
+      final speaker = tester.widget<Icon>(find.byIcon(Icons.volume_up_rounded));
+      expect(speaker.color, AppColors.accent);
+      expect(speaker.color, isNot(AppColors.surfaceLight),
+          reason: 'the artwork draws the speaker in amber, not in white');
+    });
+
+    testWidgets('the button is a translucent dark pill with a thin light '
+        'outline', (tester) async {
+      await _pumpApp(tester, harness.repository);
+
+      final button = tester.widget<ElevatedButton>(
+        find.widgetWithText(ElevatedButton, _meaningButton),
+      );
+      final style = button.style;
+      expect(style, isNotNull);
+
+      final fill = style!.backgroundColor!.resolve(<WidgetState>{});
+      expect(fill!.a, lessThan(1.0),
+          reason: 'the artwork\'s button is translucent, not an opaque pill');
+      expect(fill.a, greaterThan(0.0));
+      expect(fill.r, lessThan(fill.b),
+          reason: 'the fill is the app\'s dark ink, not a light one');
+
+      final side = style.side!.resolve(<WidgetState>{})!;
+      expect(side.color.a, greaterThan(0.5),
+          reason: 'the outline is a light one');
+      expect(side.width, greaterThan(0.0));
+      expect(side.width, lessThanOrEqualTo(2.0),
+          reason: 'the artwork draws a thin outline');
+
+      // And the label on it is white, because the fill is dark now.
+      final label = tester.widget<Text>(find.text(_meaningButton));
+      expect(label.style?.color ?? AppColors.surfaceLight,
+          AppColors.surfaceLight);
     });
   });
 

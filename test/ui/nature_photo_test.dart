@@ -95,12 +95,12 @@ void main() {
     expect(NaturePhoto.crossFade, greaterThan(Duration.zero));
   });
 
-  testWidgets('at most two photographs are ever resident, out of fourteen',
+  testWidgets('at most two photographs are ever resident, out of thirteen',
       (tester) async {
     // **Ruling C made checkable.** The constraint is not "the cache is small"
     // but "the widget tree never asks for more than the cross-fade needs". A
     // future edit that precached the whole set would show three or more here.
-    expect(Wallpapers.all.length, 14);
+    expect(Wallpapers.all.length, 13);
 
     await tester.pumpWidget(
       MaterialApp(home: _PhotoHost(path: Wallpapers.light[0])),

@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 /// **These are the user's files.** They were selected, cropped and filed by
 /// hand; nothing here re-grades, re-orders or re-classifies them. The dark and
 /// light split is **exactly as filed**, including the fact that five of the
-/// eight light images measure mid-tone — see
+/// light images measure mid-tone — see
 /// `docs/engineering-standards.md` §1 for why that is recorded rather than
 /// silently corrected.
 ///
@@ -38,13 +38,20 @@ class Wallpapers {
     '$_directory/dark-6-full-moon-over-a-still-lake.jpg',
   ];
 
-  /// The eight filed for the **light** screen, in the order they were filed.
+  /// The **seven** filed for the **light** screen, in the order they were filed.
   ///
-  /// `light-2` and `light-6` are the **same photograph** — the user filed it
-  /// twice, and both copies ship. Measured, not guessed: sampling 64,800 points
-  /// across the two files finds 2,323 differing by more than 12/765 and a
-  /// maximum per-pixel channel difference of 92, i.e. two encodes of one
-  /// picture rather than two pictures.
+  /// **There were eight, and one of them came out.** `light-2` and
+  /// `light-6-hiker-beneath-giant-mushrooms-copy.jpg` are the **same
+  /// photograph** — the user filed it twice, and both copies shipped.
+  /// Measured, not guessed: sampling 64,800 points across the two files found
+  /// 2,323 differing by more than 12/765 and a maximum per-pixel channel
+  /// difference of 92, i.e. two encodes of one picture rather than two
+  /// pictures. The copy was withdrawn; the original stayed.
+  ///
+  /// **The numbering keeps its gap on purpose.** `light-6` is not `light-7`
+  /// now, because a renumbering would erase the record that a file was
+  /// withdrawn; the sequence says what was filed, and the comment above says
+  /// what changed.
   static const List<String> light = <String>[
     // a teal wave cresting under a golden sky
     '$_directory/light-1-wave-under-a-golden-sky.jpg',
@@ -56,8 +63,6 @@ class Wallpapers {
     '$_directory/light-4-turquoise-foam-from-above.jpg',
     // wolves standing in golden mist, a planet and stars above
     '$_directory/light-5-wolves-in-golden-mist.jpg',
-    // the same hiker-and-mushrooms photograph the user filed a second time
-    '$_directory/light-6-hiker-beneath-giant-mushrooms-copy.jpg',
     // a painted blue-hour valley: a gnarled tree, snow-dusted hills, a water tower
     '$_directory/light-7-painted-blue-hour-valley.jpg',
     // pale snow mountains above a sea of cream-coloured cloud
@@ -85,10 +90,10 @@ class Wallpapers {
 /// rather than taken from a note.
 ///
 /// 1080 x 540 x 4 bytes = **2,332,800 bytes** per decoded bitmap (2.2246 MiB).
-/// **All fourteen resident would be 32,659,200 bytes — 32.66 MB, 31.14 MiB** —
+/// **All thirteen resident would be 30,326,400 bytes — 30.33 MB, 28.92 MiB** —
 /// on a phone, held for as long as the image cache holds them. That is the
 /// number ruling C exists to prevent, and it is why [residentWallpapers] is 3
-/// rather than 14.
+/// rather than 13.
 const int wallpaperPixelWidth = 1080;
 const int wallpaperPixelHeight = 540;
 
@@ -107,7 +112,7 @@ const int decodedWallpaperBytes =
 ///    fine;
 /// 3. the one `precacheImage` is warming while 1 and 2 are both still up.
 ///
-/// A fourth would be a spare nobody holds at any instant, and a fourteenth is
+/// A fourth would be a spare nobody holds at any instant, and a thirteenth is
 /// the number this whole section is about.
 const int residentWallpapers = 3;
 

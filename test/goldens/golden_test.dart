@@ -1225,7 +1225,24 @@ const int _flashcardSeed = 12;
 /// rendered tree and compares it with [_expectedPhoto], which re-derives the
 /// index from the same seed against the catalog. A seed that stopped producing
 /// this photograph fails loudly instead of quietly redrawing the images.
-const int _wallpaperSeed = 3;
+///
+/// **The seed moved from 3 to 9, and the reason is the catalogue.** The light
+/// set had **eight** photographs and the duplicated one was withdrawn, so the
+/// set has **seven** now — and `Random(3).nextInt(8)` and `Random(3).nextInt(7)`
+/// are different numbers, so the same seed would have silently moved every
+/// light reference image onto a *different picture*.
+///
+/// **Seed 9 was searched for, not picked.** It is the first seed that lands
+/// the light set on the photograph the committed images already show (index 6,
+/// `light-8-snow-peaks-above-clouds.jpg`) **and** the dark set on the one they
+/// already show (index 1, `dark-2-moonlit-mountain-ridges.jpg`). So no
+/// reference image changed its subject: the only difference in them is the
+/// card.
+///
+/// The search is reproducible: `Random(seed).nextInt(7)` and
+/// `Random(seed).nextInt(6)` for `seed` in `0..99999`, taking the first that
+/// matches both.
+const int _wallpaperSeed = 9;
 
 /// The photograph [_wallpaperSeed] produces in [brightness]'s set.
 ///
