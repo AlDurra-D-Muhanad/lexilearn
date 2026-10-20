@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -209,10 +210,27 @@ void main() {
       // is still outstanding and is recorded as such rather than claimed.
       const appManifest =
           'android/app/src/main/AndroidManifest.xml';
-      const pluginManifest =
-          r'D:\pub-cache\hosted\pub.dev\url_launcher_android-6.3.33\android\src\main\AndroidManifest.xml';
 
-      for (final path in <String>[appManifest, pluginManifest]) {
+      // **The plugin's manifest is found through the resolved package config,
+      // not through a path written into the test.**
+      //
+      // It used to name `D:\pub-cache\hosted\pub.dev\url_launcher_android-6.3.33\...`
+      // -- an absolute path on one machine. **A test that names an absolute
+      // path can only pass on the machine that wrote it**, and it did: it was
+      // green locally through every round, and it went red only on the Linux
+      // CI runner, where the file it was asserting about does not exist. The
+      // assertion that was supposed to be the guard on section 12 was asserting
+      // nothing on half the machines that ran it.
+      //
+      // The package config names the version that was actually resolved, so
+      // this is a stronger check than the path was: it cannot drift from the
+      // dependency without going red.
+      final pluginManifest = _resolvedManifestOf('url_launcher_android');
+      expect(pluginManifest, isNotNull,
+          reason: 'url_launcher_android must be in the resolved package config; '
+              'if it was dropped, the check below would be asserting nothing');
+
+      for (final path in <String>[appManifest, pluginManifest!]) {
         final file = File(path);
         expect(file.existsSync(), isTrue,
             reason: '$path is the manifest the merger reads; if it moved, this '
@@ -401,3 +419,49 @@ bool _isChecked(String label) => find
 /// The theme rows currently ticked, in the order the menu draws them.
 List<String> _checkedThemeLabels(List<String> labels) =>
     <String>[for (final label in labels) if (_isChecked(label)) label];
+
+/// The `AndroidManifest.xml` of a resolved package, found through the package
+/// config rather than through a path written into the test.
+///
+/// **A path written into a test is a test that can only pass on the machine
+/// that wrote it.** The version of this check that named
+/// `D:\pub-cache\...\url_launcher_android-6.3.33\...` was green on Windows for
+/// every round of this project and red on the Linux CI runner, where the file
+/// it was guarding simply did not exist -- so the guard was guarding nothing on
+/// half the machines that ran it.
+///
+/// The package config names the version that was **actually resolved**, so this
+/// is a stronger check than the hardcoded path was: it cannot drift away from
+/// the dependency without going red. It is also portable, so the same
+/// assertion runs on every platform the project builds on.
+///
+/// Returns null when the package is not in the config at all -- the caller
+/// asserts on that, because a check that quietly resolves to nothing is the
+/// failure this function exists to prevent.
+String? _resolvedManifestOf(String packageName) {
+  final config = File('.dart_tool/package_config.json');
+  if (!config.existsSync()) return null;
+  final Object? decoded = jsonDecode(config.readAsStringSync());
+  if (decoded is! Map) return null;
+  final Object? packages = decoded['packages'];
+  if (packages is! List) return null;
+
+  for (final Object? entry in packages) {
+    if (entry is! Map) continue;
+    if (entry['name'] != packageName) continue;
+    final Object? root = entry['rootUri'];
+    if (root is! String) return null;
+
+    // `rootUri` is normally an absolute `file:` URI; when it is relative it is
+    // relative to the config file itself.
+    var rootUri = Uri.parse(root);
+    if (!rootUri.hasScheme) {
+      rootUri = config.uri.resolveUri(rootUri);
+    }
+    final manifest = Directory.fromUri(rootUri)
+        .uri
+        .resolve('android/src/main/AndroidManifest.xml');
+    return manifest.toFilePath();
+  }
+  return null;
+}
