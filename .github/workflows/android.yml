@@ -138,11 +138,13 @@ jobs:
       # nor refresh a golden, on purpose. Regenerate them locally and commit the
       # PNG.
       #
-      # Expect exactly 9 skips on every run, all from this one file: "home shell
-      # user shot", plus a light/dark pair each for stats, favorites, word
-      # detail and flashcards. Measured, not counted by eye -- `flutter test
-      # --coverage` on the authoring machine ends `+415 ~9: All tests passed!`.
-      # They are reported as skipped, not failed.
+      # Expect exactly 31 skips on every run, all from this one file. It was 9
+      # for a long time and the count grew as screens were added: the golden
+      # images are a light/dark pair for every screen in lib/ui/, so the
+      # number now tracks that list rather than a fixed handful. Measured, not
+      # counted by eye -- `flutter test --coverage` on the authoring machine
+      # ends `+710 ~31: All tests passed!`. They are reported as skipped, not
+      # failed.
       - run: flutter test --coverage
 
       # Builds with NO android/key.properties and NO android/app/*.jks, on

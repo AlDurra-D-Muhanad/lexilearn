@@ -469,18 +469,28 @@ class _Sense {
 /// 150 x 6 = 900 placeholders - under SQLite's historical 999-variable limit,
 /// so the build does not depend on the version of SQLite that happens to be
 /// installed.
+///
+/// **It is a constant and not a constructor parameter.** It was one, and
+/// nothing ever passed it -- which the analyser says plainly, as
+/// `unused_element_parameter`, and CI treats as an error. **A parameter that
+/// no caller sets is a parameter that lies about being configurable.** The
+/// limit it encodes is a property of the schema, not a choice a caller gets
+/// to make, and a caller who could raise it would produce a database that
+/// fails to open on an older SQLite.
 class _Chunked {
-  _Chunked(this.batch, this.table, this.columns, {this.chunk = 150});
+  _Chunked(this.batch, this.table, this.columns);
+
+  /// See the class comment: 150 x 6 = 900 placeholders, under the 999 limit.
+  static const int chunkSize = 150;
 
   final Batch batch;
   final String table;
   final List<String> columns;
-  final int chunk;
   final List<List<Object?>> _rows = <List<Object?>>[];
 
   void add(List<Object?> row) {
     _rows.add(row);
-    if (_rows.length >= chunk) flush();
+    if (_rows.length >= chunkSize) flush();
   }
 
   void flush() {
