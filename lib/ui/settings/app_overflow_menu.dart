@@ -10,7 +10,7 @@ import 'package:provider/provider.dart';
 
 /// The menu's copy. Arabic, like every other chrome string in this app.
 const String _appInfoLabel = 'معلومات التطبيق';
-const String _attributionLabel = 'النسب';
+const String _attributionLabel = 'المصادر';
 const String _themeSystem = 'حسب النظام';
 const String _themeLight = 'فاتح';
 const String _themeDark = 'داكن';

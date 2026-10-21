@@ -667,9 +667,9 @@ const String _appInfoMenuLabel = 'معلومات التطبيق';
 /// The overflow menu's attribution entry, as `app_overflow_menu.dart` spells
 /// it.
 ///
-/// **النسب**, and the wording is the ruling's: the row names the licences and
-/// the credits, and the screen it opens is titled «المصادر والنسب».
-const String _attributionMenuLabel = 'النسب';
+/// **المصادر**, and the wording is the ruling's: the row names the licences and
+/// the credits, and the screen it opens is titled «المصادر والمصادر».
+const String _attributionMenuLabel = 'المصادر';
 
 /// The query the dictionary search is driven with, so the reference image
 /// shows a **named** word rather than whichever one the dictionary offered.

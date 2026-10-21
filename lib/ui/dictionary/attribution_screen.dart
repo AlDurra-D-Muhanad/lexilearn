@@ -6,7 +6,7 @@ import 'package:lexilearn/ui/theme/app_surface.dart';
 import 'package:provider/provider.dart';
 
 /// The chrome, in Arabic.
-const String _title = 'المصادر والنسب';
+const String _title = 'المصادر';
 const String _licenseHeading = 'الترخيص';
 const String _sourcesHeading = 'المصادر';
 const String _countsHeading = 'الأرقام';
