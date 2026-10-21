@@ -5,6 +5,7 @@ import 'package:lexilearn/data/dictionary/dictionary_models.dart';
 import 'package:lexilearn/domain/dictionary_pack.dart';
 import 'package:lexilearn/domain/backup_codec.dart';
 import 'package:lexilearn/domain/backup_document.dart';
+import 'package:lexilearn/domain/my_favourites_pack.dart';
 import 'package:lexilearn/domain/pack_codec.dart';
 import 'package:lexilearn/domain/quiz_session_result.dart';
 import 'package:lexilearn/domain/search_matcher.dart';
@@ -88,15 +89,49 @@ class VocabRepository {
   /// The starter pack keeps its own row and its own title; the title says
   /// "starter set", because it is one and because the dictionary is 31,600
   /// entries wide.
+  ///
+  /// **The derived "My Favourites" pack is LAST, and that is load-bearing.**
+  /// `HomeShell` takes `packs.first` as the active pack, and the active pack
+  /// is what the word of the day and the flashcards draw from — so a derived
+  /// pack that sorted first would take over the app the moment a user saved
+  /// one word. It must be selectable, and it must not become active by
+  /// accident; `test/data/my_favourites_test.dart` → *the derived pack never
+  /// becomes the active pack by accident* is what holds that.
+  ///
+  /// **And it is in the list only when it has at least one entry.** A pack with
+  /// nothing in it is not a pack: an empty «مفضلتي» in the list would be a
+  /// promise of words the user has not saved.
   Future<List<PackSummary>> packs() async {
     final installed = await _packs.listPacks();
     final dictionary = _dictionary;
-    if (dictionary == null) return _withStarterTitle(installed);
-    return <PackSummary>[
-      _dictionarySummary(installed),
+    final summaries = <PackSummary>[
+      if (dictionary != null) _dictionarySummary(installed),
       ..._withStarterTitle(installed),
     ];
+    final favourites = await myFavourites();
+    if (favourites.isNotEmpty) {
+      summaries.add(_favouritesSummary(favourites.length));
+    }
+    return summaries;
   }
+
+  /// The derived pack's own row, with the size it really is.
+  ///
+  /// **`isBundled` is true, and the reason is that it cannot be deleted.** The
+  /// pack list uses that flag for exactly one thing — to hide the delete
+  /// control — and the derived pack must not be deletable: it is not a
+  /// dataset on the device, it is the user's own favourites read a second
+  /// way. Its row says where its words come from instead, so the chip on it
+  /// is not the «مدمجة» one.
+  PackSummary _favouritesSummary(int entryCount) => PackSummary(
+        packKey: myFavouritesPackKey,
+        title: myFavouritesPackTitle,
+        sourceLanguage: 'en',
+        targetLanguage: 'ar',
+        entryCount: entryCount,
+        isBundled: true,
+        importedAt: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      );
 
   /// The dictionary's own row, with the size the dictionary really is.
   PackSummary _dictionarySummary(List<PackSummary> installed) {
@@ -157,10 +192,16 @@ class VocabRepository {
   /// the file the user chose, which is in the database already. A key with no
   /// pack behind it answers with the empty string, and the chip draws its
   /// placeholder instead of inventing a name.
+  ///
+  /// **The derived pack is named here too**, and it is named before the
+  /// database is asked: it has no row, so `_packs.packRow` would answer with
+  /// nothing and the chip would draw a dash on the very pack the user just
+  /// chose.
   Future<String> packTitle(String packKey) async {
     if (packKey.isEmpty) return '';
     if (packKey == dictionaryPackKey) return dictionaryPackTitle;
     if (packKey == starterPackKey) return starterPackTitle;
+    if (packKey == myFavouritesPackKey) return myFavouritesPackTitle;
     final row = await _packs.packRow(packKey);
     return row?.title ?? '';
   }
@@ -177,7 +218,12 @@ class VocabRepository {
   /// deck of ten cards and a quiz of ten questions need a few dozen words,
   /// and reading 31,600 of them on every screen mount would be a second of
   /// waiting for nothing.
+  ///
+  /// **The derived pack's words come from the favourites table**, for the same
+  /// reason the dictionary's do not come from this table: it has no rows
+  /// anywhere. See [myFavourites].
   Future<List<VocabEntry>> entries(String packKey) async {
+    if (packKey == myFavouritesPackKey) return myFavourites();
     if (packKey == dictionaryPackKey) {
       final engine = _dictionary;
       if (engine == null) return const <VocabEntry>[];
@@ -246,23 +292,197 @@ class VocabRepository {
     );
   }
 
+  /// **THE DERIVATION.** Every word the user has starred, in either integrated
+  /// pack, as one pack's worth of entries.
+  ///
+  /// **Derived, never stored.** There is no row for this pack in `packs`, no
+  /// rows for it in `entries`, and no rows for it in `favorites`: the contents
+  /// are computed from the favourites table every time the pack list is read.
+  /// So it cannot drift from the favourites, and it cannot be deleted or
+  /// imported — there is nothing to delete and nothing to import.
+  ///
+  /// **The two sources are different places, and each favourite is resolved
+  /// against the one that owns it:**
+  ///
+  /// * a favourite filed under a stored pack's key is resolved against that
+  ///   pack's rows in `entries`, **in the pack's own `sort_index` order** —
+  ///   the same order the favourites list and the search results use;
+  /// * a favourite filed under the dictionary's key is resolved through the
+  ///   **dictionary engine**, because the dictionary's words are in a
+  ///   read-only file of their own and not in this database at all.
+  ///
+  /// **A favourite whose word cannot be resolved is dropped, not guessed.** A
+  /// word the user saved and then deleted from its pack is still a row in
+  /// `favorites` — there is no foreign key onto `entries`, on purpose — and
+  /// the derived pack has no entry to show for it. The same is true of a
+  /// dictionary favourite while the dictionary's copy is still landing: the
+  /// engine is not there yet, so the word cannot be read, so it is not in the
+  /// pack. A pack of entries it cannot describe would be a lie.
+  ///
+  /// **The ids are namespaced and stable.** Each entry carries
+  /// `myfav:<sourcePackKey>:<sourceEntryId>`, so the same favourite produces
+  /// the same id on every derivation — the progress recorded against it
+  /// survives a rebuild — and two packs holding the same English word produce
+  /// two different entries under two different ids.
+  ///
+  /// **The order is the favourites table's own**, because the table is asked
+  /// for it rather than assumed: the derived pack has to read the same on
+  /// every derivation or the reference images taken of it would move.
+  Future<List<VocabEntry>> myFavourites() async {
+    final rows = await _favorites.allFavorites();
+    if (rows.isEmpty) return const <VocabEntry>[];
+    return _resolveFavourites(rows, namespaced: true);
+  }
+
+  /// Turns favourite rows into entries, resolving each against its own source.
+  ///
+  /// **One place, because the derived pack and the favourites list must agree
+  /// about the same truth.** The derived pack is "every saved word"; the
+  /// favourites list is "the saved words of this pack". If the two resolved
+  /// their words differently they would be two answers to one question, and
+  /// the user would see a word in one and not the other.
+  ///
+  /// **[namespaced] is the difference between the two views, and it is only the
+  /// id.** The derived pack's entries carry
+  /// `myfav:<sourcePackKey>:<sourceEntryId>`, so the same word can be in the
+  /// derived pack twice — once from each source — and the progress recorded
+  /// against it survives a rebuild. The favourites list's entries carry
+  /// **the pack's own ids**, because that list removes a word by writing
+  /// `(pack_key, entry_id)` and the row it has to write is the pack's own.
+  Future<List<VocabEntry>> _resolveFavourites(
+    List<({String packKey, String entryId})> rows, {
+    bool namespaced = false,
+  }) async {
+    if (rows.isEmpty) return const <VocabEntry>[];
+
+    // Split by the source that owns each row.
+    final stored = <String, List<String>>{};
+    final dictionaryNorms = <String>[];
+    for (final row in rows) {
+      if (row.packKey == dictionaryPackKey) {
+        final norm = dictionaryNormFromEntryId(row.entryId);
+        if (norm == null) continue;
+        dictionaryNorms.add(norm);
+        continue;
+      }
+      (stored[row.packKey] ??= <String>[]).add(row.entryId);
+    }
+
+    final entries = <VocabEntry>[];
+
+    // **The stored packs, in the pack's own order.** The loop walks the pack's
+    // entries and tests membership rather than walking the id set, because
+    // that is what puts the words in `sort_index` order — the order a search
+    // result, the favourites list and the flashcards deck all use.
+    final storedKeys = stored.keys.toList()..sort();
+    for (final packKey in storedKeys) {
+      final wanted = stored[packKey]!.toSet();
+      if (wanted.isEmpty) continue;
+      final all = await _packs.entriesOf(packKey);
+      for (final entry in all) {
+        if (!wanted.contains(entry.id)) continue;
+        entries.add(namespaced
+            ? entry.copyWith(id: myFavouritesEntryId(packKey, entry.id))
+            : entry);
+      }
+    }
+
+    // **The dictionary, through its own engine.** One batched read for every
+    // saved dictionary word, not one per word, and the answers are keyed by
+    // the norm rather than by position — a norm that is not a headword is
+    // simply absent from the answer.
+    final engine = _dictionary;
+    if (engine != null && dictionaryNorms.isNotEmpty) {
+      final heads = await engine.entriesByNorms(
+        dictionaryNorms,
+        // **With the examples**, so a saved dictionary word opens with the
+        // same entry the dictionary's own word screen shows.
+        withExamples: true,
+      );
+      final byNorm = <String, DictionaryEntry>{
+        for (final head in heads) head.norm: head,
+      };
+      for (final norm in dictionaryNorms) {
+        final head = byNorm[norm];
+        if (head == null) continue;
+        final entryId = dictionaryEntryId(norm);
+        final entry = _toVocabEntry(head);
+        entries.add(namespaced
+            ? entry.copyWith(id: myFavouritesEntryId(dictionaryPackKey, entryId))
+            : entry);
+      }
+    }
+
+    return entries;
+  }
+
+  /// The saved word behind a derived pack's entry id, or null.
+  ///
+  /// **Found by recomputing the id, never by parsing it.** The derived id is
+  /// `myfav:<sourcePackKey>:<sourceEntryId>`, and the source entry id carries a
+  /// colon of its own (`dict:abandon`) while an imported pack's key is
+  /// whatever its file said — so there is no rule that splits the id back into
+  /// its two halves. Recomputing it from the favourites table is exact: those
+  /// rows are the only place the answer can be got right.
+  ///
+  /// This is what makes the derived pack **a second view of the same truth**
+  /// rather than a copy of it: saving or unsaving through the derived pack
+  /// writes the row it really belongs to, in the pack it really belongs to.
+  Future<({String packKey, String entryId})?> _sourceOfDerivedEntry(
+    String derivedEntryId,
+  ) async {
+    final rows = await _favorites.allFavorites();
+    for (final row in rows) {
+      if (myFavouritesEntryId(row.packKey, row.entryId) == derivedEntryId) {
+        return row;
+      }
+    }
+    return null;
+  }
+
   /// Looks the pack up, then hands the comparison to `SearchMatcher`.
   ///
   /// The matching rule itself lives in `lib/domain/search_matcher.dart` and is
   /// not restated here: two copies of a normalisation rule is how a bidi mark
   /// ends up stripped on one path and not the other.
+  ///
+  /// **The derived pack is searched through its own entries**, because it has
+  /// no rows in `entries` to search — the same reason [entries] resolves it
+  /// through the favourites.
   Future<List<VocabEntry>> search({
     required String packKey,
     required String query,
-  }) async =>
-      SearchMatcher.filter(await _packs.entriesOf(packKey), query);
+  }) async {
+    if (packKey == myFavouritesPackKey) {
+      return SearchMatcher.filter(await myFavourites(), query);
+    }
+    return SearchMatcher.filter(await _packs.entriesOf(packKey), query);
+  }
 
   Future<VocabPack> importPack(String jsonText) async {
     // Decode first: a bad file must never reach the database, so a failed
     // import leaves the previous state exactly as it was.
     final pack = PackCodec.decodePack(jsonText);
+    _refuseReservedKey(pack.packId);
     await _packs.insertPack(pack, isBundled: false, importedAt: _clock());
     return pack;
+  }
+
+  /// Refuses a stored pack that claims the derived pack's key.
+  ///
+  /// **The key is reserved, and a reservation that can be claimed is not a
+  /// reservation.** The derived pack has no row of its own, so an imported
+  /// pack that took its key would appear in the pack list *twice* — once as
+  /// the user's own favourites and once as somebody's dataset — and the two
+  /// would be told apart by nothing at all.
+  ///
+  /// **Checked before anything is written**, so a refused import leaves the
+  /// device exactly as it was.
+  void _refuseReservedKey(String packId) {
+    if (packId != myFavouritesPackKey) return;
+    throw const PackDecodeException(
+        'This file claims the reserved pack id "my_favourites", which belongs '
+        'to "My favourites" and cannot be imported.');
   }
 
   Future<String> exportPackJson(String packKey) async {
@@ -274,6 +494,16 @@ class VocabRepository {
         'the app and is installed on first launch.',
       );
     }
+    if (packKey == myFavouritesPackKey) {
+      // **The derived pack is not exportable either, and for the mirror
+      // reason.** It is not a dataset on the device: it is computed from the
+      // favourites, and the favourites are already in the backup. Exporting it
+      // would put a copy of the user's own curation into a file that is
+      // already carrying it.
+      throw const PackDecodeException(
+        '"My favourites" is computed from the words you save, and those words '
+        'are already in the backup. It is not exported as a pack.');
+    }
     final pack = await _packs.getPack(packKey);
     if (pack == null) {
       throw PackDecodeException('No vocabulary pack named "$packKey" is installed.');
@@ -281,32 +511,86 @@ class VocabRepository {
     return PackCodec.encodePack(pack);
   }
 
-  Future<void> deletePack(String packKey) => _packs.deletePack(packKey);
+  Future<void> deletePack(String packKey) async {
+    // **The derived pack is not deletable, and the reason is that it is not
+    // there.** It has no row in `packs` and no rows in `entries`, so a delete
+    // would find nothing to delete — and it would take the user's own saved
+    // words with it, because those rows are filed under the packs they came
+    // from. A pack that fills itself from the user's favourites cannot be
+    // emptied by deleting a row that was never there.
+    if (packKey == myFavouritesPackKey) {
+      throw const PackDecodeException(
+          '"My favourites" is filled and emptied by the words you save, so it '
+          'cannot be deleted. Unsave the words instead.');
+    }
+    await _packs.deletePack(packKey);
+  }
 
   /// Saves or removes one word, per [isFavorite].
   ///
   /// Sets the state rather than inverting it; see
   /// [FavoriteDao.toggle] for why that is the shape worth having.
+  ///
+  /// **The derived pack writes the row it really belongs to.** A word in the
+  /// derived pack is a view of a word in a real pack, so saving or unsaving it
+  /// through the derived pack writes the `favorites` row under *that* pack's
+  /// key — and the derived pack, which is computed from those rows, changes
+  /// with it. That is what makes it a second view of the same truth rather
+  /// than a copy of it.
   Future<void> setFavorite({
     required String packKey,
     required String entryId,
     required bool isFavorite,
-  }) =>
-      _favorites.toggle(
+  }) async {
+    if (packKey != myFavouritesPackKey) {
+      await _favorites.toggle(
         packKey: packKey,
         entryId: entryId,
         isFavorite: isFavorite,
       );
+      return;
+    }
+    final source = await _sourceOfDerivedEntry(entryId);
+    if (source == null) {
+      // **Removing a word that is not saved is not an error.** The derived
+      // pack holds only saved words, so this is a tap on a word that was
+      // already unsaved — the same state the write would have produced.
+      if (!isFavorite) return;
+      // **Saving is impossible without a source**, and saying so is better than
+      // writing a row under a key nobody owns. The id is not a favourite of any
+      // pack, so there is no pack to file it under.
+      throw StateError(
+          'Cannot save "$entryId" through the derived pack: it is not a saved '
+          'word of any pack, so there is no pack to file it under.');
+    }
+    await _favorites.toggle(
+      packKey: source.packKey,
+      entryId: source.entryId,
+      isFavorite: isFavorite,
+    );
+  }
 
   /// Whether one word in [packKey] is saved.
   ///
   /// What the word detail screen's heart needs on opening, and the only reason
   /// [FavoriteDao] has a method beyond the two the favourites list itself uses.
+  ///
+  /// **The derived pack answers for the word it is a view of**, so the heart on
+  /// a word reached through the derived pack is filled — the word *is* saved.
   Future<bool> isFavorite({
     required String packKey,
     required String entryId,
-  }) =>
-      _favorites.isFavorite(packKey: packKey, entryId: entryId);
+  }) async {
+    if (packKey != myFavouritesPackKey) {
+      return _favorites.isFavorite(packKey: packKey, entryId: entryId);
+    }
+    final source = await _sourceOfDerivedEntry(entryId);
+    if (source == null) return false;
+    return _favorites.isFavorite(
+      packKey: source.packKey,
+      entryId: source.entryId,
+    );
+  }
 
   /// Every saved word in [packKey], as entries, in the pack's own order.
   ///
@@ -325,12 +609,25 @@ class VocabRepository {
   /// reason `HomeScreen._loadPack` gives: an empty key is `HomeShell`'s start-up
   /// window, not a missing pack, and asking would turn a normal frame into an
   /// error state.
+  ///
+  /// **The derived pack answers with every saved word**, in both packs — the
+  /// same list the derived pack itself holds, so the two views of the truth
+  /// cannot disagree.
+  ///
+  /// **And the dictionary answers with its own saved words**, resolved through
+  /// the dictionary engine rather than through this database's `entries` table.
+  /// It used to answer with nothing at all: the dictionary has no rows here, so
+  /// the favourites list was empty for a user whose active pack was the
+  /// dictionary — while the derived pack, which resolves the same rows against
+  /// the right source, showed them. Two views of one truth must agree.
   Future<List<VocabEntry>> favorites(String packKey) async {
     if (packKey.isEmpty) return const <VocabEntry>[];
+    if (packKey == myFavouritesPackKey) return myFavourites();
     final ids = await _favorites.favoritesIn(packKey);
     if (ids.isEmpty) return const <VocabEntry>[];
-    final all = await _packs.entriesOf(packKey);
-    return all.where((entry) => ids.contains(entry.id)).toList();
+    return _resolveFavourites(<({String packKey, String entryId})>[
+      for (final id in ids) (packKey: packKey, entryId: id),
+    ]);
   }
 
   /// Installs the bundled asset on first launch, and after the user deletes it.
@@ -420,6 +717,14 @@ class VocabRepository {
   /// `favorites` are both keyed on `(pack_key, entry_id)`, so a backup has to
   /// gather one pack's rows at a time rather than assume there is a single active
   /// pack.
+  ///
+  /// **The derived "My Favourites" pack is not walked, and adds nothing to the
+  /// file.** It has no row in `packs`, so the walk never reaches it — and it
+  /// does not need to: its contents *are* the `favorites` rows below, filed
+  /// under the packs the words came from. The backup document is therefore
+  /// **exactly what it was before this pack existed**: same schema, same
+  /// version, and no new pack key anywhere in it. The derived pack is rebuilt
+  /// from the restored favourites, which is the whole point of deriving it.
   Future<String> exportBackupJson() async {
     final summaries = await _packs.listPacks();
     final packs = <VocabPack>[];
@@ -473,7 +778,7 @@ class VocabRepository {
   /// [importPack] uses, and for the same reason.
   ///
   /// **CRITICAL: every DAO call inside the transaction receives `executor: txn`,
-  /// and there are EIGHT of them.** A call made without the transaction's handle
+  /// and there are TEN of them.** A call made without the transaction's handle
   /// does not fail fast — **it waits**, with no exception, no log line and no
   /// timeout message you wrote. `docs/engineering-standards.md` §3, and the
   /// mechanism is read out of `sqflite_common-2.5.14` rather than recalled:
@@ -512,6 +817,19 @@ class VocabRepository {
   /// | 7 | `_progress.replace(..., executor: txn)` | written by this task, in the same loop |
   /// | 8 | `_sessions.insert(..., executor: txn)` | same |
   ///
+  /// **And two more, added with the derived pack, for the same reason.** The
+  /// derived pack has **no row in `packs`**, so the loop over the stored packs
+  /// never reaches it — and a restore that leaves its rows behind would leave
+  /// a pack whose contents had just been replaced by somebody else's device's
+  /// contents, carrying progress and sessions that belonged to a different set
+  /// of words. A restore replaces everything; the derived pack's own rows are
+  /// part of "everything".
+  ///
+  /// | # | Call | Easy to forget because |
+  /// |---|---|---|
+  /// | 9 | `_progress.reset(myFavouritesPackKey, executor: txn)` | the pack has no row, so nothing in the loop above mentions it |
+  /// | 10 | `_sessions.deleteForPack(myFavouritesPackKey, executor: txn)` | same |
+  ///
   /// Because the failure mode is a hang and not an error, a missing argument is
   /// invisible to CI. `test/data/vocab_repository_test.dart` → *restore completes
   /// inside five seconds* is the guard: it bounds the future with
@@ -521,6 +839,13 @@ class VocabRepository {
   /// and look complete.
   Future<int> importBackupJson(String jsonText) async {
     final backup = BackupCodec.decode(jsonText);
+    // **The reserved key is checked before the transaction opens**, so a file
+    // that claims it is refused without the device being touched at all. A
+    // stored pack under the derived pack's key would put two packs with the
+    // same key in the pack list — one of them the user's own favourites.
+    for (final pack in backup.packs) {
+      _refuseReservedKey(pack.packId);
+    }
     await _db.transaction((txn) async {
       // **A LANDMINE, and this comment is the only thing standing in front of
       // it.** Sites 2 and 3 below look redundant: `PackDao.deletePack` already
@@ -544,6 +869,13 @@ class VocabRepository {
         await _sessions.deleteForPack(summary.packKey, executor: txn);
         await _packs.deletePack(summary.packKey, executor: txn);
       }
+      // **The derived pack's own rows go too**, for the reason the table above
+      // gives: it has no row in `packs`, so the loop above never reaches it,
+      // and a restore that left them behind would carry the previous device's
+      // progress and sessions into a pack whose contents are about to be
+      // somebody else's.
+      await _progress.reset(myFavouritesPackKey, executor: txn);
+      await _sessions.deleteForPack(myFavouritesPackKey, executor: txn);
       for (final pack in backup.packs) {
         await _packs.insertPack(pack,
             isBundled: false, importedAt: _clock(), executor: txn);

@@ -604,9 +604,22 @@ void main() {
     // `test/domain/backup_codec_test.dart`.) A file written by an older build
     // therefore has to be refused, and refused in words a user can act on, rather
     // than half-read.
-    final before = await _snapshot(harness);
+    //
+    // **The snapshot is taken AFTER the word is saved, and that is the point.**
+    // Saving a word adds the derived "My Favourites" pack to the pack list —
+    // it is computed from the favourites — so a snapshot taken before the save
+    // would differ afterwards for a reason that has nothing to do with the
+    // restore. The claim under test is "a refused file changes nothing", and
+    // that is measured over the window around the refusal alone.
+    //
+    // **And the snapshot now covers the derived pack**, because `_snapshot`
+    // walks `packs()` and then each pack's entries. The derived pack is in
+    // that list, so a restore that disturbed it would be visible here — which
+    // it was not before this pack existed.
     await harness.repository.setFavorite(
         packKey: 'en_ar', entryId: 'fever-1', isFavorite: true);
+    final before = await _snapshot(harness);
+    expect(before, isNotEmpty);
     final json = '{"kind":"backup","schemaVersion":1,'
         '"exportedAt":"2026-10-14T12:00:00.000Z","packs":[],'
         '"progress":[],"sessions":[]}';

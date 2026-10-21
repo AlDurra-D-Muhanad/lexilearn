@@ -144,4 +144,37 @@ class FavoriteDao {
     );
     return rows.map((row) => row['entry_id']! as String).toSet();
   }
+
+  /// Every saved word on the device, with the pack it was saved from.
+  ///
+  /// **The whole table, not one pack's slice of it.** The derived "My
+  /// Favourites" pack is built from the favourites of *both* integrated packs,
+  /// and the two live in different places — the starter set in this table, the
+  /// dictionary in a read-only file of its own — so the only place that knows
+  /// about every saved word at once is this one.
+  ///
+  /// **Ordered by `(pack_key, entry_id)`, and the order is the point.** The
+  /// derived pack's contents have to be the same on every derivation, or the
+  /// progress recorded against them and the reference images taken of them
+  /// would move under the reader's feet. The table's own row order is not
+  /// guaranteed by SQLite, so the order is asked for rather than assumed.
+  ///
+  /// **Rows, not entries.** Which source owns a row is a fact only the caller
+  /// can act on — it has to resolve the entry against the right source — and a
+  /// join here would make this DAO know about `entries` and about the
+  /// dictionary, which it has no other reason to.
+  Future<List<({String packKey, String entryId})>> allFavorites() async {
+    final rows = await _db.query(
+      'favorites',
+      columns: <String>['pack_key', 'entry_id'],
+      orderBy: 'pack_key ASC, entry_id ASC',
+    );
+    return <({String packKey, String entryId})>[
+      for (final row in rows)
+        (
+          packKey: row['pack_key']! as String,
+          entryId: row['entry_id']! as String,
+        ),
+    ];
+  }
 }

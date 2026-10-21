@@ -50,15 +50,58 @@ const String starterPackKey = 'english_ar_v1';
 /// the difference between a pack of 31,600 entries and a pack of 297.
 const String starterPackTitle = 'English to Arabic — starter set';
 
+/// The prefix a dictionary entry id carries.
+///
+/// **Named, so the two halves of the id can be read apart without a literal
+/// being written twice.** `dictionaryEntryId` builds the id and
+/// [dictionaryNormFromEntryId] takes it apart, and a prefix written out in two
+/// places is two places for it to drift.
+const String dictionaryEntryPrefix = 'dict:';
+
 /// The entry id of a dictionary headword.
 ///
 /// **Namespaced, so the two packs cannot collide.** The starter pack's ids
 /// are `term-slug-hash` (`ghost-clusters-4da03e`); these are `dict:<norm>`.
 /// No starter id can begin with `dict:` and no dictionary id can be mistaken
 /// for one.
-String dictionaryEntryId(String norm) => 'dict:$norm';
+String dictionaryEntryId(String norm) => '$dictionaryEntryPrefix$norm';
+
+/// The normalised headword behind a dictionary entry id, or null.
+///
+/// **The other half of [dictionaryEntryId].** A favourite against a dictionary
+/// word is filed under the *entry id*, not the word, so anything that has to
+/// get from the id back to the word — the derived pack's resolution of a
+/// dictionary favourite, for one — comes through here. Null rather than an
+/// exception for an id that is not a dictionary id at all: the caller is
+/// filtering, not parsing, and an id from another source is not an error.
+String? dictionaryNormFromEntryId(String entryId) =>
+    entryId.startsWith(dictionaryEntryPrefix)
+        ? entryId.substring(dictionaryEntryPrefix.length)
+        : null;
 
 /// The pack key a dictionary entry's favourite is filed under.
+///
+/// **The dictionary's favourites, seen under the dictionary's own key — and
+/// NOT the "My Favourites" pack.**
+///
+/// These two are different things and they live side by side:
+///
+/// | | this constant | `myFavouritesPackKey` |
+/// |---|---|---|
+/// | what it names | the dictionary's own favourites, filed where the dictionary files them | **every** favourite, in **either** integrated pack |
+/// | where the rows live | `favorites`, under `(dictionary_en_ar, dict:<norm>)` | nowhere — the pack is derived from those rows |
+/// | what a word in it is | a dictionary word | any word the user starred, from any pack |
+///
+/// **They coexist because they answer different questions.** This one answers
+/// "which dictionary words has this user saved?", and the answer is a set of
+/// rows in the `favorites` table under the dictionary's key. The derived pack
+/// answers "which words has this user saved?", and its answer is *computed*
+/// from every `favorites` row, whichever pack filed it — the dictionary's
+/// included. So the derived pack is a superset that **contains** this one, and
+/// the two never collide: the derived pack's entries carry
+/// `myfav:dictionary_en_ar:dict:<norm>`, which is a different string from the
+/// `dict:<norm>` filed under this key, and the derived pack has no rows of its
+/// own under either key.
 const String dictionaryFavoritesPackKey = dictionaryPackKey;
 
 /// How many dictionary words the study surfaces draw from at once.

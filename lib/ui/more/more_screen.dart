@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:lexilearn/data/pack_dao.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/design/design_tokens.dart';
+import 'package:lexilearn/domain/my_favourites_pack.dart';
 import 'package:lexilearn/ui/packs/packs_controller.dart';
 import 'package:lexilearn/ui/home_shell.dart';
 import 'package:lexilearn/ui/settings/app_overflow_menu.dart';
@@ -700,7 +701,19 @@ class _PackRow extends StatelessWidget {
             // and re-seeds it on the next start, so a control here would promise
             // a change the next launch silently undoes. The chip says so in
             // words instead of leaving the user to wonder.
-            if (pack.isBundled)
+            //
+            // **And the derived "My Favourites" pack cannot be deleted either,
+            // for a different reason** — it has no rows on the device at all;
+            // it is computed from the words the user has saved. So it gets its
+            // own chip, and the chip says where its words come from rather
+            // than calling it "bundled": the two integrated packs are the ones
+            // the user called «المدمجتين», and this one is «حزمة جديدة يتم
+            // ملؤها و تفريغها من قبل المستخدم». The key is checked rather
+            // than a flag, because the flag means "re-seeded on the next
+            // launch" and that is not what is true of this one.
+            if (pack.packKey == myFavouritesPackKey)
+              const _FavouritesChip()
+            else if (pack.isBundled)
               const _BundledChip()
             else
               IconButton(
@@ -740,6 +753,28 @@ class _BundledChip extends StatelessWidget {
         // amber `ElevatedButton` carried; it is kept because `app_theme.dart` now
         // pins the same value for every chip app-wide and a reader of *this* file
         // should not have to leave it to find that out.
+        elevation: 0,
+        visualDensity: VisualDensity.compact,
+      );
+}
+
+/// The chip on the derived "My Favourites" pack's row.
+///
+/// **Its own chip, and not the «مدمجة» one.** The bundled chip says "this pack
+/// is re-seeded on the next launch, so you cannot delete it". The derived pack
+/// cannot be deleted for a different reason — it is not on the device at all,
+/// it is computed from the words the user has saved — and calling it
+/// "bundled" would say it is a third dataset shipped with the app, which is
+/// the opposite of what it is. The words in it are the user's own curation.
+///
+/// `elevation: 0` for the same reason as `_BundledChip`, and the theme pins it
+/// app-wide anyway.
+class _FavouritesChip extends StatelessWidget {
+  const _FavouritesChip();
+
+  @override
+  Widget build(BuildContext context) => Chip(
+        label: const Text(myFavouritesPackChip),
         elevation: 0,
         visualDensity: VisualDensity.compact,
       );

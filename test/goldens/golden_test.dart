@@ -406,6 +406,38 @@ void main() {
         );
     });
 
+    testWidgets('more screen with favourites user shot, $mode', (tester) async {
+      // **The same screen with the derived "My Favourites" pack in the list.**
+      //
+      // **A second image of a screen that already has one, and the reason is
+      // that the pack list has a new row in it.** The shot above shows the
+      // list without the derived pack — which is what a device with no saved
+      // words looks like, and it is the right picture for that state. This one
+      // shows the state the feature actually produces: the user's own pack,
+      // named, with its size, and with its own chip rather than the «مدمجة»
+      // one the bundled packs carry.
+      //
+      // **Without it, the new chip would never be photographed** — the census
+      // reads colours, not glyphs, so a chip drawn in the wrong colour would
+      // be invisible to every check in the suite. That is the whole reason
+      // `tool/golden_census.ps1` exists, and it is the reason this image is
+      // here.
+      useAPhone(tester);
+      await _setMode(tester, brightness);
+      await _seedFavourites(tester, harness.repository);
+      await _openBarDestination(tester, harness.repository, Icons.apps);
+      expect(find.byType(MoreScreen), findsOneWidget);
+      // **The derived pack is on the page**, so the image is of the state this
+      // feature produces and not of the one above.
+      expect(find.text('مفضلتي'), findsOneWidget);
+
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/more_screen_favourites_user_shot_$mode.png'),
+        skip: _goldenSkipReason,
+        );
+    });
+
     testWidgets('quiz setup screen user shot, $mode', (tester) async {
       useAPhone(tester);
       await _setMode(tester, brightness);
@@ -969,6 +1001,20 @@ Future<void> _seedStats(WidgetTester tester, VocabRepository repository) async {
     await session(12, 2);
   });
 }
+
+/// Saves one word, so the derived "My Favourites" pack is on the More
+/// screen's pack list and can be photographed there.
+///
+/// `tester.runAsync`, not a bare `await`: a `testWidgets` body runs in a
+/// fake-async zone where a real sqflite future never answers. Awaited inside
+/// `runAsync` rather than fired and delayed, because the tree is not mounted
+/// yet and there is nothing for pumps to be useful to.
+Future<void> _seedFavourites(
+  WidgetTester tester,
+  VocabRepository repository,
+) =>
+    tester.runAsync(() => repository.setFavorite(
+          packKey: 'en_ar', entryId: 'serenity-1', isFavorite: true));
 
 /// Taps the `إحصائياتك` tile and lets the screen it pushes finish reading.
 ///

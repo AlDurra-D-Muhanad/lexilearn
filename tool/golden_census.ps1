@@ -210,6 +210,16 @@ param(
     'test/goldens/goldens/home_screen_user_shot_dark.png',
     'test/goldens/goldens/more_screen_user_shot_light.png',
     'test/goldens/goldens/more_screen_user_shot_dark.png',
+    # The same screen with the derived "My Favourites" pack in the list.
+    # **A second image of a screen that already has one, and the reason is
+    # that the pack list has a new row in it.** The shot above is a device with
+    # no saved words; this one is the state the feature actually produces, with
+    # the user's own pack, its size and its own chip. Without it the new chip
+    # would never be photographed, and the census reads colours rather than
+    # glyphs - so a chip drawn in the wrong colour would be invisible to every
+    # check in the suite.
+    'test/goldens/goldens/more_screen_favourites_user_shot_light.png',
+    'test/goldens/goldens/more_screen_favourites_user_shot_dark.png',
     'test/goldens/goldens/quiz_setup_screen_user_shot_light.png',
     'test/goldens/goldens/quiz_setup_screen_user_shot_dark.png',
     'test/goldens/goldens/quiz_result_screen_user_shot_light.png',
@@ -288,6 +298,8 @@ $ExpectedColourCount = [ordered]@{
   'test/goldens/goldens/home_screen_user_shot_dark.png'                     = 39105
   'test/goldens/goldens/home_screen_user_shot_light.png'                    = 15318
   'test/goldens/goldens/home_shell_user_shot.png'                           = 1864
+  'test/goldens/goldens/more_screen_favourites_user_shot_dark.png'          = 899
+  'test/goldens/goldens/more_screen_favourites_user_shot_light.png'         = 702
   'test/goldens/goldens/more_screen_user_shot_dark.png'                     = 784
   'test/goldens/goldens/more_screen_user_shot_light.png'                    = 683
   'test/goldens/goldens/quiz_result_screen_user_shot_dark.png'              = 385
@@ -352,6 +364,8 @@ $ExpectedDominantCount = [ordered]@{
   'test/goldens/goldens/home_screen_user_shot_dark.png'                     = 803196
   'test/goldens/goldens/home_screen_user_shot_light.png'                    = 1020191
   'test/goldens/goldens/home_shell_user_shot.png'                           = 1020191
+  'test/goldens/goldens/more_screen_favourites_user_shot_dark.png'          = 1511768
+  'test/goldens/goldens/more_screen_favourites_user_shot_light.png'         = 1485350
   'test/goldens/goldens/more_screen_user_shot_dark.png'                     = 1802169
   'test/goldens/goldens/more_screen_user_shot_light.png'                    = 1787548
   'test/goldens/goldens/quiz_result_screen_user_shot_dark.png'              = 2100067

@@ -261,6 +261,26 @@ final class DictionaryEngine {
   }) =>
       _store.studyableEntries(limit: limit, salt: salt);
 
+  /// The headwords at [norms], with their senses — **one query for the whole
+  /// batch**, not one per word.
+  ///
+  /// **This is how a saved dictionary word is found again.** A favourite
+  /// against a dictionary word is filed under the word's *entry id*
+  /// (`dict:<norm>`), and the derived "My Favourites" pack has to turn that id
+  /// back into a word it can show. Asking the store one word at a time would
+  /// make a pack of twenty saved words twenty round trips; the store's own
+  /// `entriesByNormsWithSenses` takes the whole list and answers in two
+  /// queries.
+  ///
+  /// **The answers are keyed by [DictionaryEntry.norm], not by position.** A
+  /// norm that is not a headword is simply absent from the answer, so a caller
+  /// that matched by index would take the wrong word for a missing one.
+  Future<List<DictionaryEntry>> entriesByNorms(
+    List<String> norms, {
+    bool withExamples = false,
+  }) =>
+      _store.entriesByNormsWithSenses(norms, withExamples: withExamples);
+
   /// How many headwords the study surface admits.
   Future<int> countStudyableEntries() => _store.countStudyableEntries();
 
