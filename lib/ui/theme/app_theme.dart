@@ -172,16 +172,44 @@ class AppTheme {
         // the artwork — and it is not the card surface.
         backgroundColor:
             isDark ? AppColors.bottomBarDark : AppColors.surfaceLight,
-        // **The primary as a FILL.** The active destination sits on a solid
-        // gold pill, and the icon on it is the gold's own ink so it can be
-        // read: `#020E24` on `#F3AC43` is **9.90 : 1**.
-        indicatorColor: AppColors.gold,
+        // **The active destination's field: the brand gold, translucent, with a
+        // stronger gold edge around it.**
+        //
+        // **The reference, not a solid gold pill.** The reference's active tab
+        // is a *glass* field: a translucent gold over the bar's navy, ringed
+        // with the same gold a little stronger, with the icon in the full
+        // gold. The user named all three — «الايقونة ... ذهبية محاطة بدائرة
+        // ذهبية شفافة ذات حافة ذهبية اعتم قليلا للتباين».
+        //
+        // **The alphas are fitted**, not chosen — see `AppColors.goldField` and
+        // `AppColors.goldEdge` for the composite and the residuals.
+        indicatorColor: AppColors.goldField,
+        // **The edge is the shape's own side**, so `ShapeDecoration` fills the
+        // field inside it and `RoundedRectangleBorder` strokes the gold ring
+        // around it. One shape, one fill, one ring — and no colour at this
+        // call site that is not a token.
+        //
+        // **The radius is the reference's**: the badge's corner measures 20
+        // image px, which is 8.5 logical px on a 360-px phone, and
+        // `AppRadii.sm` is 8.
+        indicatorShape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadii.sm),
+          side: const BorderSide(color: AppColors.goldEdge, width: 1),
+        ),
         // **The icon, per state.** Material resolves this with
         // `WidgetState.selected`, so the selected destination's icon takes the
-        // gold's ink and the three unselected ones take the muted ink.
+        // accent ink and the three unselected ones take the muted ink.
+        //
+        // **The accent ink, and not the gold's own dark ink.** The reference
+        // draws the active tab's icon in the *full* gold, inside the
+        // translucent gold field — «الايقونة ... ذهبية محاطة بدائرة ذهبية
+        // شفافة». The icon is ink rather than a fill, so `accentInk` carries
+        // the rule: the gold in dark mode, where the reference draws it, and
+        // the body ink in light mode, where the gold measures 1.95 : 1 against
+        // the page and could not carry a glyph.
         iconTheme: WidgetStateProperty.resolveWith<IconThemeData>((states) {
           if (states.contains(WidgetState.selected)) {
-            return const IconThemeData(color: AppColors.onGold);
+            return IconThemeData(color: AppColors.accentInk(isDark));
           }
           return IconThemeData(color: secondary);
         }),

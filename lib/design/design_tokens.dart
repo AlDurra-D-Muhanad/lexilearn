@@ -74,6 +74,53 @@ class AppColors {
   /// **9.90 : 1** against the gold.
   static const Color onGold = Color(0xFF020E24);
 
+  /// **The active destination's field: the brand gold, translucent — `#F3AC43`
+  /// at 28 %.**
+  ///
+  /// **The alpha is fitted, not assumed.** The reference's active tab is a
+  /// translucent gold field over the bar's navy, and the fit is a composite:
+  /// `gold * a + bar * (1 - a)` in sRGB, which is what the engine does.
+  ///
+  /// | the reference's field | the alpha the red channel asks for | the alpha the green channel asks for |
+  /// |---|---|---|
+  /// | `#493F30` | 0.283 | 0.283 |
+  /// | `#443B2F` | 0.262 | 0.257 |
+  /// | `#3A352D` | 0.219 | 0.217 |
+  ///
+  /// **The red and the green agree at every sample** — that is the signature of
+  /// a single gold at a single alpha — and the composite of the brand gold at
+  /// **0.28** over the bar's `#06142D` is `#483F33`, within one unit of the
+  /// reference on both channels.
+  ///
+  /// **The blue channel, and what was done about it.** The reference's field
+  /// reads **3 units lower in blue** than the straight composite predicts
+  /// (51 against 48). Two things were checked before that was accepted: the
+  /// reference's own golds carry a blue channel that ranges over **55 … 69**
+  /// across the whole image (`#FFC63F`, `#FBAD37`, `#F7B145`, `#AA8040`,
+  /// `#C58E43`), and the field's own blue reads **43 … 51** within one badge —
+  /// so the deficit is inside the reference's own measurement noise, and it is
+  /// in the same direction as that noise. **No second gold was invented for
+  /// it**: the identity fixes the accent at `#F3AC43`, and a 6 % deviation on
+  /// one channel of a translucent field is not visible. The residual is
+  /// recorded here rather than papered over with a colour that is not the
+  /// brand's.
+  static const Color goldField = Color(0x47F3AC43);
+
+  /// **The active destination's edge: the brand gold, stronger — `#F3AC43` at
+  /// 70 %.**
+  ///
+  /// **Fitted the same way.** The reference's badge edge reads `#AA8040` where
+  /// it crosses the bar's navy, and the composite of the brand gold at
+  /// `a` over `#06142D` asks for **0.692** on the red channel and **0.711** on
+  /// the green one — the same pair the fill's fit produced, within one
+  /// hundredth. So the edge is the gold at **0.70**, which is what makes it
+  /// read as an *edge* against the field rather than as more of it.
+  ///
+  /// **The blue channel again**: the edge's `#AA8040` carries a blue of 64
+  /// against the 60 the composite predicts — the same 4-unit deficit, in the
+  /// same direction, and inside the same noise.
+  static const Color goldEdge = Color(0xB3F3AC43);
+
   /// **The ink for a run of text — or an icon — that carries the accent.**
   ///
   /// **The rule that keeps the gold a fill, in one place.** In dark mode the
@@ -177,13 +224,74 @@ class AppColors {
   /// **The bottom bar, dark: `#06142C`.**
   ///
   /// Sampled off the reference's bottom bar: `#06142C` / `#06142D` throughout.
+  ///
+  /// **The bar's own ramp, and the two ends of it.** The reference's bar is a
+  /// rounded-top surface and its fill is a **gradient**, not a flat colour: a
+  /// vertical slice down the bar reads `#07152D` at the top and `#06142B` at the
+  /// foot, and the two are what [AppGradients.bottomBar] is built from. The
+  /// difference is small — the reference's bar is nearly flat, and the number
+  /// is recorded here so that it is a measurement and not an invention.
   static const Color bottomBarDark = Color(0xFF06142C);
+
+  /// **The top of the bottom bar's ramp, dark: `#07152D`.**
+  ///
+  /// Sampled off the reference's bottom bar, at the row just inside its top
+  /// edge: `#07152D` / `#07152E` / `#07142D`.
+  static const Color bottomBarDarkTop = Color(0xFF07152D);
+
+  /// **The foot of the bottom bar's ramp, dark: `#06142B`.**
+  ///
+  /// Sampled off the reference's bottom bar, at its lowest rows: `#06142B` /
+  /// `#06132B`.
+  static const Color bottomBarDarkBottom = Color(0xFF06142B);
+
+  /// **The darker line along the bottom bar's top edge, dark: `#000A1E`.**
+  ///
+  /// Sampled off the reference's bottom bar: the row where the bar meets the
+  /// page reads `#000A1E`, darker than both the page `#010D24` and the bar's
+  /// own fill `#06142C`. **It is the edge the user asked for** — «الريط
+  /// السفلي ليس له حافة منحنية ذات لون اغمق بدرجة لتباين الحافة» — a rounded
+  /// edge with a tone a step darker than the surface it bounds, so the edge is
+  /// visible rather than implied.
+  ///
+  /// **Not `#000000`**, for the reason every other ink in this file is not:
+  /// `tool/golden_census.ps1` fails a golden that contains a pure-black pixel.
+  static const Color bottomBarEdgeDark = Color(0xFF000A1E);
 
   /// **The circle behind a tile's icon, dark: `#0C1E38`.**
   ///
   /// Sampled off the reference's tile badges: `#10213D` / `#0D1D37` around the
   /// glyph.
+  ///
+  /// **The flat value, and the badge is no longer flat.** The reference's badge
+  /// is a **disc with a gradient in it**, and the two ends of that ramp are
+  /// [iconBadgeDarkTop] and [iconBadgeDarkBottom]. This token is the middle of
+  /// the ramp and is kept for the surfaces that want the badge's own colour
+  /// rather than its ramp — the header's book mark disc.
   static const Color iconBadgeDark = Color(0xFF0C1E38);
+
+  /// **The top of the icon badge's ramp, dark: `#172B4F`.**
+  ///
+  /// **Measured, not chosen.** A vertical slice through the reference's badge —
+  /// the disc behind the top-left tile's icon, whose centre is at `x 144` and
+  /// whose radius is 64 reference px — reads:
+  ///
+  /// | where | the badge |
+  /// |---|---|
+  /// | the disc's top row, `y 973` | **`#172B4F`** |
+  /// | a third of the way down, `y 999` | `#13284B` |
+  /// | two thirds down, `y 1035` | `#0D1E39` |
+  /// | the disc's foot, `y 1099` | **`#091C3B`** |
+  ///
+  /// The tile's own fill around it measures `#0D2245`, so the badge is lighter
+  /// than the tile at its top and darker at its foot.
+  static const Color iconBadgeDarkTop = Color(0xFF172B4F);
+
+  /// **The foot of the icon badge's ramp, dark: `#091C3B`.**
+  ///
+  /// Measured with [iconBadgeDarkTop] — the last row inside the reference's
+  /// badge disc.
+  static const Color iconBadgeDarkBottom = Color(0xFF091C3B);
 
   // ---------------------------------------------------------------------------
   // The verdicts — unchanged, and deliberately so.
@@ -217,6 +325,93 @@ class AppColors {
   /// shape — the photograph full-bleed, the ramp, the shadow — so the text is
   /// still on the photograph and still needs this ink.
   static const Color onPhoto = Color(0xFFFFFFFF);
+}
+
+/// The brand's gradients.
+///
+/// **Every ramp in the app is here, and every one of them is a ramp.** The
+/// identity is navy and gold, and the reference draws three surfaces with a
+/// gradient in them: the disc behind a tile's icon, the bottom bar, and the
+/// short gold rule beside "Word of the Day". The user named the first two
+/// explicitly — «لون هذه المربعات ليس متدرجا» and «لونه ليس متدرجا» — and the
+/// third is the line the reference draws beside the label.
+///
+/// **A gradient is built from tokens, never from literals**, for the reason
+/// every other colour in this app is a token: `grep Color(0x` over `lib/ui/`
+/// must return nothing, and a ramp written at the call site would put a colour
+/// back into a screen.
+class AppGradients {
+  const AppGradients._();
+
+  /// **The disc behind a quick-launch tile's icon.**
+  ///
+  /// The reference's badge is a **disc slightly lighter than the tile, with a
+  /// ramp in it** — `#172B4F` at its top down to `#091C3B` at its foot, both
+  /// measured off the reference (see [AppColors.iconBadgeDarkTop]).
+  ///
+  /// **In light mode the same system inverted**: the tile is white, so the
+  /// disc's top is the surface itself and its foot is a step down to the page
+  /// background — the same "lit from above" direction the dark ramp has.
+  static LinearGradient iconBadge(bool isDark) => LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: isDark
+            ? const <Color>[
+                AppColors.iconBadgeDarkTop,
+                AppColors.iconBadgeDarkBottom,
+              ]
+            : const <Color>[
+                AppColors.surfaceLight,
+                AppColors.backgroundLight,
+              ],
+      );
+
+  /// **The bottom bar's own fill.**
+  ///
+  /// The reference's bar is a **gradient, not a flat colour**: `#07152D` at its
+  /// top down to `#06142B` at its foot, both measured (see
+  /// [AppColors.bottomBarDarkTop]). The difference is small, and it is a
+  /// gradient because the reference's is one — the user named the flat fill as
+  /// the same defect as the flat tiles.
+  ///
+  /// **In light mode the bar is the surface**, and the surface is flat in the
+  /// reference's light palette; the ramp is therefore the dark one alone, and
+  /// light mode keeps the bar on [AppColors.surfaceLight].
+  static LinearGradient bottomBar(bool isDark) => LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: isDark
+            ? const <Color>[
+                AppColors.bottomBarDarkTop,
+                AppColors.bottomBarDarkBottom,
+              ]
+            : const <Color>[
+                AppColors.surfaceLight,
+                AppColors.surfaceLight,
+              ],
+      );
+
+  /// **The short gold rule beside "Word of the Day".**
+  ///
+  /// The reference draws a line to the trailing side of the label, and **the
+  /// line is a gradient, not a flat gold**: it starts at the full brand gold
+  /// and fades away until it is gone. Measured off the reference, the rule's
+  /// first row is `#FFC831` at its gold end and `#483E2E` where it dies out.
+  ///
+  /// **Directional, so it fades away from the text in either mode.** The rule
+  /// sits on the trailing side of the label, which is the left in this Arabic
+  /// app, so the gold end is against the text and the transparent end is away
+  /// from it. `AlignmentDirectional` is resolved by the painter against the
+  /// ambient text direction — the same one the label's own row is laid out in —
+  /// so the gradient follows the reading direction without being told twice.
+  static LinearGradient get goldRule => LinearGradient(
+        begin: AlignmentDirectional.centerStart,
+        end: AlignmentDirectional.centerEnd,
+        colors: <Color>[
+          AppColors.gold,
+          AppColors.gold.withValues(alpha: 0),
+        ],
+      );
 }
 
 class AppShadows {

@@ -71,7 +71,7 @@ void main() {
         await pumpShell(tester, harness.repository);
         expect(find.byType(HomeScreen), findsOneWidget, reason: 'opens on Home');
 
-        await tester.tap(find.byIcon(icon));
+        await tester.tap(barDestinationIcon(icon));
         await tester.pumpAndSettle();
         await settleDatabase(tester);
         expect(find.byType(screen), findsOneWidget,
@@ -146,7 +146,7 @@ void main() {
       // guard — without it, deleting every `ShellBackToHome` in the app would
       // leave this test green.
       for (final (icon, screen) in _otherDestinations) {
-        await tester.tap(find.byIcon(icon));
+        await tester.tap(barDestinationIcon(icon));
         await tester.pumpAndSettle();
         await settleDatabase(tester);
         expect(find.byType(screen), findsOneWidget);

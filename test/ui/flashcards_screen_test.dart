@@ -938,12 +938,28 @@ void main() {
       // `HomeShell` publishes `ShellTabScope` at all.
       await pumpShell(tester, harness.repository);
 
-      await tester.tap(
-        find.descendant(
-          of: find.byType(HomeScreen),
-          matching: find.text('بطاقات التعلم'),
-        ),
+      final tile = find.descendant(
+        of: find.byType(HomeScreen),
+        matching: find.text('بطاقات التعلم'),
       );
+      // **Scrolled into view first, and this is not a nicety.**
+      //
+      // On the default 800 × 600 surface the dashboard's grid sits below the
+      // fold — the word-of-the-day card is above it — so the tile's title is
+      // *under* the bottom bar and a tap at its box's centre lands on the bar
+      // instead of on the tile. That is not a hypothetical: the test used to
+      // pass because the accidental hit landed on the bar's own `البطاقات`
+      // destination, which is the same destination the tile selects, and the
+      // assertion below cannot tell the two apart.
+      //
+      // **The tile's title is now against the leading edge of the tile** (the
+      // reference puts it there), so its box's centre is over empty space
+      // rather than over the glyph — and the tap has to be on the glyph.
+      // `ensureVisible` scrolls the dashboard, and the title's own box is the
+      // width of its ink, so the tap lands on the letters.
+      await tester.ensureVisible(tile);
+      await tester.pumpAndSettle();
+      await tester.tap(tile);
       await tester.pumpAndSettle();
       await _settleDeck(tester);
 

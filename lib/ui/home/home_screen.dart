@@ -26,7 +26,6 @@ import 'package:lexilearn/ui/wallpaper/wallpaper_gradient.dart';
 import 'package:provider/provider.dart';
 
 /// The chrome strings, taken from `docs/design/brand-reference.png`.
-const String _greeting = 'مرحباً بك!';
 const String _subheading = 'كل كلمة جديدة تقرّبك من هدفك';
 const String _searchHint = 'ابحث عن كلمة...';
 const String _wordOfTheDayLabel = 'Word of the Day';
@@ -36,6 +35,27 @@ const String _noResults = 'لا توجد نتائج. جرّب جزءاً من ا
 const String _searchFailed = 'تعذّر البحث.';
 const String _searching = 'جارٍ البحث…';
 const String _preparingDictionary = 'جارٍ تجهيز المعجم…';
+
+/// **The greeting, in the four runs the reference draws it in.**
+///
+/// **The four runs concatenate to «مرحباً بك!»** — the greeting as one string
+/// is in the test file, which asserts on the whole phrase.
+///
+/// **The tanween is a character of its own, and it has to be a run of its own.**
+/// In «مرحباً» the fathatan is `U+064B`, written *after* the alef in the
+/// logical string and drawn *above* it on screen. So a colour on the whole word
+/// colours the word, and the reference's own treatment — white «مرحبا» with the
+/// tanween in the brand gold — cannot be expressed without splitting the run.
+///
+/// **Splitting it there does not break the Arabic.** Measured, not assumed: the
+/// split puts the alef at the end of the white run, so the `ب` before it still
+/// joins to it, and the tanween — a combining mark with no advance of its own —
+/// is drawn above the alef in the gold run. The golden image shows the mark in
+/// gold, in the right place, above a white alef.
+const String _greetingWord = 'مرحبا';
+const String _greetingTanween = '\u064B';
+const String _greetingTail = ' بك';
+const String _greetingBang = '!';
 
 /// The brand's first destination: the greeting, the word of the day, the search
 /// field, and the 2×2 quick-launch grid.
@@ -636,6 +656,9 @@ class _Header extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final secondary =
         isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
+    // **The gold where the mode can carry it**, and the body ink where it
+    // cannot. One token, one rule — see `AppColors.accentInk`.
+    final accent = AppColors.accentInk(isDark);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -650,12 +673,37 @@ class _Header extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(
-                  _greeting,
+                // **The greeting, in the reference's four runs.**
+                //
+                // «مرحباً بك!» is white **except the tanween and the exclamation
+                // mark, which are gold** — the reference's own treatment, and the
+                // user's: «التنوين على كلمة مرحبا ليس ذهبيا واجعل علامة التعجب
+                // ايضا ذهبية».
+                //
+                // **The gold is the accent, so it is `accentInk`** — the gold in
+                // dark mode, where the reference draws it, and the body ink in
+                // light mode, where the gold measures 1.95 : 1 against the page
+                // and could not carry a character. The token is the rule, and it
+                // lives in one place.
+                Text.rich(
+                  TextSpan(
+                    style: theme.textTheme.headlineSmall
+                        ?.copyWith(fontWeight: FontWeight.w600),
+                    children: <InlineSpan>[
+                      const TextSpan(text: _greetingWord),
+                      TextSpan(
+                        text: _greetingTanween,
+                        style: TextStyle(color: accent),
+                      ),
+                      const TextSpan(text: _greetingTail),
+                      TextSpan(
+                        text: _greetingBang,
+                        style: TextStyle(color: accent),
+                      ),
+                    ],
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.headlineSmall
-                      ?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: AppSpacing.xs),
                 Text(
@@ -980,17 +1028,7 @@ class _WordOfTheDayCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-          Text(
-            _wordOfTheDayLabel,
-            // **The artwork's shadow.** The label, the term and the phonetic all
-            // sit on the photograph, and the artwork keeps them legible with a
-            // soft dark halo rather than with a band of ink over the picture.
-            style: AppText.latin.copyWith(
-              fontSize: 13,
-              color: onFill,
-              shadows: AppShadows.onPhoto,
-            ),
-          ),
+          _WordOfTheDayLabel(),
           const SizedBox(height: AppSpacing.s),
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -1088,6 +1126,78 @@ class _WordOfTheDayCard extends StatelessWidget {
   }
 }
 
+/// The "Word of the Day" label: a gold star, the phrase in gold, and a short
+/// gold rule on the trailing side.
+///
+/// **The reference's own row, and all three of its parts.** The reference draws
+/// `★ Word of the Day ―――`: a filled gold star, the phrase, and a short line
+/// beside it that **fades away** rather than ending flat. The user named the
+/// two things that were missing: «جملة word of the day ليست ذهبية و لايوجد خط
+/// هبي متدرج بجانبها» — the phrase is not gold, and there is no gold gradient
+/// line beside it.
+///
+/// **The order is the reading order.** This app reads right to left, so the
+/// star is at the leading (right) end, the phrase follows it, and the rule is
+/// on the trailing (left) end — the side the reading finishes on. The rule's
+/// gradient therefore has to be **directional**: `AppGradients.goldRule` takes
+/// the text direction, so the gold end is against the phrase and the
+/// transparent end is away from it in either mode.
+///
+/// **The phrase is the gold, and the gold is the accent.** It is the brand's
+/// `#F3AC43` and not the card's white ink, because the reference draws this
+/// label in gold and the user asked for gold. The shadow stays — the artwork's
+/// own mechanism for legibility, and it is what carries a gold run over a
+/// photograph: measured over the thirteen photographs the app ships, the gold
+/// label's shadowed edge clears 4.5 : 1 everywhere (5.31 : 1 at its worst).
+class _WordOfTheDayLabel extends StatelessWidget {
+  const _WordOfTheDayLabel();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        const Icon(Icons.star_rounded, color: AppColors.gold, size: 13),
+        const SizedBox(width: AppSpacing.xs),
+        Text(
+          _wordOfTheDayLabel,
+          // **The artwork's shadow.** The label sits on the photograph, and the
+          // artwork keeps it legible with a soft dark halo rather than with a
+          // band of ink over the picture.
+          style: AppText.latin.copyWith(
+            fontSize: 13,
+            color: AppColors.gold,
+            shadows: AppShadows.onPhoto,
+          ),
+        ),
+        const SizedBox(width: AppSpacing.xs),
+        // **The rule, and it is a gradient.** The reference's line starts at the
+        // full brand gold and fades out until it is gone; a flat gold bar would
+        // be the same defect the user named.
+        Container(
+          width: _labelRuleWidth,
+          height: _labelRuleHeight,
+          decoration: BoxDecoration(
+            gradient: AppGradients.goldRule,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The width of the rule beside the "Word of the Day" label, in logical px.
+///
+/// **Measured off the reference**: the rule runs `x 733..771` in a 852-px-wide
+/// image of a 360-px phone, so it is **16 logical px** of visible gold with a
+/// faint tail beyond it. It is drawn a little wider here — 28 — so that the
+/// gradient has room to die out rather than ending in a hard edge.
+const double _labelRuleWidth = 28;
+
+/// The height of that rule, in logical px. The reference's is 2 image px, which
+/// is 0.85 logical px; it is drawn 2 so that it survives a screenshot.
+const double _labelRuleHeight = 2;
+
 /// The 2×2 quick-launch grid the artwork draws under the card.
 ///
 /// Children are in *reading* order, top-right first, because the grid lays out
@@ -1139,7 +1249,12 @@ class _QuickLaunchGrid extends StatelessWidget {
       childAspectRatio: 1.15,
       children: <Widget>[
         _QuickLaunchTile(
-          icon: Icons.auto_stories_rounded,
+          // **The reference's own glyph for this tile**: a tilted card, drawn in
+          // outline — the same glyph the reference's bottom bar uses for
+          // `البطاقات`, which is the app's `Icons.style_outlined` too. The old
+          // `auto_stories_rounded` was a filled open book, which is neither the
+          // reference's shape nor its weight.
+          icon: Icons.style_outlined,
           iconColor: AppColors.accentInk(
             Theme.of(context).brightness == Brightness.dark,
           ),
@@ -1149,16 +1264,20 @@ class _QuickLaunchGrid extends StatelessWidget {
 
         ),
         _QuickLaunchTile(
-          icon: Icons.check_box_rounded,
-          // Ink, not the gold: this is the colour the artwork draws this tile's
-          // mark in, and the gold is reserved for the three it also draws gold.
-          iconColor: Theme.of(context).colorScheme.onSurface,
+          // **The reference draws a clipboard with a tick in it**, in gold and in
+          // outline. The old `check_box_rounded` was a filled white tick box —
+          // the wrong shape, the wrong weight, and the wrong colour.
+          icon: Icons.assignment_turned_in_outlined,
+          iconColor: AppColors.accentInk(
+            Theme.of(context).brightness == Brightness.dark,
+          ),
           title: 'الاختبارات',
           subtitle: 'اختبر نفسك',
           onTap: () => _goToTab(context, 2),
         ),
         _QuickLaunchTile(
-          icon: Icons.favorite_rounded,
+          // **The reference draws an outlined heart**, not a filled one.
+          icon: Icons.favorite_outlined,
           iconColor: AppColors.accentInk(
             Theme.of(context).brightness == Brightness.dark,
           ),
@@ -1178,9 +1297,8 @@ class _QuickLaunchGrid extends StatelessWidget {
           )),
         ),
         _QuickLaunchTile(
-          icon: Icons.insights_rounded,
-          // The artwork draws this tile's mark in the gold too — three of the
-          // four are gold and only the check is ink.
+          // **The reference draws three solid bars**, not a line with sparkles.
+          icon: Icons.bar_chart_rounded,
           iconColor: AppColors.accentInk(
             Theme.of(context).brightness == Brightness.dark,
           ),
@@ -1207,10 +1325,17 @@ class _QuickLaunchGrid extends StatelessWidget {
 
 /// One of the four quick-launch tiles.
 ///
-/// **The reference's tile, and the two things it gained.** The artwork draws
-/// the icon inside a **circular badge** and puts a **chevron on the trailing
-/// side** of the tile; the brief keeps both, and they are what this widget
-/// adds to the tile the app already had.
+/// **The reference's tile, and the three things it has.** The reference draws
+/// the icon inside a **circular badge** with a **gradient in it**, puts the
+/// badge and the two lines of text **against the leading edge**, and puts a
+/// **chevron on the trailing side** level with the title. All three are here.
+///
+/// **The reference is a left-to-right mock of an Arabic screen**, and the tile
+/// is mirrored for the same reason the grid's rows are: the badge and the text
+/// are against the **right** edge here, and the chevron is on the **left**,
+/// pointing the way the reading goes. The mock draws its badge on the left and
+/// its `›` on the right, which is the same arrangement seen from the other
+/// side.
 class _QuickLaunchTile extends StatelessWidget {
   const _QuickLaunchTile({
     required this.icon,
@@ -1245,57 +1370,58 @@ class _QuickLaunchTile extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: radius,
-          // **A `Stack`, and not a `Row`, because the reference's chevron is not
-          // in the tile's content column.** It sits on the tile's own trailing
-          // edge, level with the title, while the badge is above and to the
-          // leading side. The column stretches across the tile so that the
-          // chevron's anchor is the tile's edge and not the width of the
-          // longest word in it.
-          child: Stack(
+          // **A `Column`, and not a `Stack`.** The reference's chevron is on the
+          // title's own line, at the far end of it — so the title and the
+          // chevron are one row, and the badge and the subtitle are rows of
+          // their own. The old layout centred every line and floated the
+          // chevron in a `Stack` against the tile's edge, which is neither the
+          // reference's arrangement nor this one's.
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              _TileBadge(icon: icon, colour: iconColor),
+              const SizedBox(height: AppSpacing.s),
+              Row(
                 children: <Widget>[
-                  _TileBadge(icon: icon, colour: iconColor),
-                  const SizedBox(height: AppSpacing.s),
-                  Text(
-                    title,
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleSmall,
+                  // **Flexible, and not Expanded.** The title's box has to be
+                  // the width of its own ink, so that the box a test taps is
+                  // the text and not an empty gap beside it — and so that the
+                  // row's free space falls between the title and the chevron,
+                  // which is where the reference puts it.
+                  Flexible(
+                    child: Text(
+                      title,
+                      textAlign: TextAlign.start,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall,
+                    ),
                   ),
-                  const SizedBox(height: AppSpacing.xs),
-                  Text(
-                    subtitle,
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(color: secondary),
-                  ),
-                ],
-              ),
-              // **The chevron, on the trailing side.**
-              //
-              // The reference draws it pointing along the reading direction, on
-              // the side the reading finishes. This app reads right to left, so
-              // the trailing side is the **left** and the glyph points left —
-              // the mirror of the mock's own `›`, which is a left-to-right mock
-              // and therefore has it on its right.
-              PositionedDirectional(
-                end: 0,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: Icon(
+                  const SizedBox(width: AppSpacing.xs),
+                  // **The chevron, on the trailing side.**
+                  //
+                  // The reference draws it pointing along the reading
+                  // direction, on the side the reading finishes. This app reads
+                  // right to left, so the trailing side is the **left** and the
+                  // glyph points left — the mirror of the mock's own `›`, which
+                  // is a left-to-right mock and therefore has it on its right.
+                  Icon(
                     Icons.chevron_left_rounded,
                     size: 20,
                     // The gold, as ink, where the mode can carry it: the
                     // reference draws the tile's chevron in the brand's accent.
                     color: AppColors.accentInk(isDark),
                   ),
-                ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                subtitle,
+                textAlign: TextAlign.start,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(color: secondary),
               ),
             ],
           ),
@@ -1307,8 +1433,20 @@ class _QuickLaunchTile extends StatelessWidget {
 
 /// The circle behind a quick-launch tile's icon.
 ///
-/// **The reference's badge, measured off the artwork**: a disc one step below
-/// the tile's own surface, with the icon in the brand's accent inside it.
+/// **The reference's badge, measured off the artwork** — and **it is a disc with
+/// a gradient in it, not a flat colour.** The user named this as one of the
+/// four defects: «لون هذه المربعات ليس متدرجا كما في new theme.png بل هو لون
+/// ثابت ليس متدرجا».
+///
+/// The two ends of the ramp are measured, not chosen: a vertical slice down
+/// the reference's badge reads **`#172B4F` at the disc's top and `#091C3B` at
+/// its foot** (`AppColors.iconBadgeDarkTop` and `AppColors.iconBadgeDarkBottom`),
+/// with the tile's own fill around it at `#0D2245`. So the badge is *lighter*
+/// than the tile at its top and *darker* at its foot.
+///
+/// **The badge is against the leading edge**, not centred: the reference puts
+/// the disc on the same edge as the title and the subtitle, and the mirror of
+/// that in this right-to-left app is the right edge.
 class _TileBadge extends StatelessWidget {
   const _TileBadge({required this.icon, required this.colour});
 
@@ -1318,14 +1456,16 @@ class _TileBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Center(
+    return Align(
+      alignment: AlignmentDirectional.centerStart,
       child: Container(
         width: 48,
         height: 48,
         decoration: BoxDecoration(
-          // The icon badge's own colour in dark mode; in light mode the same
-          // role is one step below the surface, which is the page background.
-          color: isDark ? AppColors.iconBadgeDark : AppColors.backgroundLight,
+          // **The gradient, and it is the reference's own ramp.** A flat fill
+          // here was the defect; the ramp lives in the tokens so that no
+          // screen carries a colour of its own.
+          gradient: AppGradients.iconBadge(isDark),
           shape: BoxShape.circle,
         ),
         child: Icon(icon, color: colour, size: 24),

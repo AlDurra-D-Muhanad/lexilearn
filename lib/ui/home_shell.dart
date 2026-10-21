@@ -335,10 +335,87 @@ class _HomeShellState extends State<HomeShell> {
           ),
         ),
       ),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: _BottomBar(
         selectedIndex: _index,
         onDestinationSelected: _selectTab,
         destinations: _destinations,
+      ),
+    );
+  }
+}
+
+/// The bottom bar, and the three things the reference gives it.
+///
+/// **A rounded top, a darker line along that top, and a gradient fill.** The
+/// user named all three: «الريط السفلي ليس له حافة منحنية ذات لون اغمق بدرجة
+/// لتباين الحافة كما في new theme.png وايضا لونه ليس متدرجا اي نفس الخطأ
+/// الموجود في المربعات الاربع».
+///
+/// **The measurements, off the reference** — an 852 × 1846 image of a 360-px
+/// phone, so 1 image px is 0.424 logical px:
+///
+/// | what | measured |
+/// |---|---|
+/// | the page above the bar | `#010D24` |
+/// | the darker line on the bar's top edge | **`#000A1E`** |
+/// | the bar's fill at its top | **`#07152D`** |
+/// | the bar's fill at its foot | **`#06142B`** |
+/// | the top corner's radius | **33 image px = 14 logical px** |
+///
+/// **The bar's fill is therefore a ramp and not a flat colour**, and the
+/// `NavigationBar` inside it is transparent so that the ramp is what is seen.
+/// The theme still names the bar's base colour — `AppColors.bottomBarDark` —
+/// so the ramp's foot and a bar built on its own are the same colour.
+///
+/// **The rounded corner is `AppRadii.md`, 16 logical px, against a measured
+/// 14.** The two nearest radii in the scale are 8 and 16, and 16 is the closer
+/// of the two; the difference is under two pixels on a 360-px phone.
+class _BottomBar extends StatelessWidget {
+  const _BottomBar({
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+    required this.destinations,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+  final List<NavigationDestination> destinations;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: BoxDecoration(
+        // **The gradient.** The reference's bar is a ramp from `#07152D` at its
+        // top to `#06142B` at its foot, and the user named the flat fill as the
+        // same defect as the flat tiles.
+        gradient: AppGradients.bottomBar(isDark),
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(AppRadii.md),
+          topRight: Radius.circular(AppRadii.md),
+        ),
+        // **The darker line along the top edge**, so the edge is visible rather
+        // than implied. In light mode the same system inverted: the hairline
+        // the light palette uses everywhere else.
+        border: Border(
+          top: BorderSide(
+            color: isDark ? AppColors.bottomBarEdgeDark : AppColors.borderLight,
+            width: 1,
+          ),
+        ),
+      ),
+      // **Clipped to the rounded shape**, so the bar's own corners are the
+      // rounded ones and the page shows through outside them.
+      clipBehavior: Clip.antiAlias,
+      child: NavigationBar(
+        selectedIndex: selectedIndex,
+        onDestinationSelected: onDestinationSelected,
+        destinations: destinations,
+        // **Transparent, so the ramp behind it is what is seen.** The theme
+        // still carries the bar's base colour for anything that builds a
+        // `NavigationBar` of its own.
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
       ),
     );
   }

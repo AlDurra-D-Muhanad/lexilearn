@@ -423,18 +423,31 @@ void main() {
       // card contains several (the button's own among them) and `.first` picked
       // one of those, which is how the first version of this assertion died on
       // a null `gradient`.
-      final gradients = <Gradient>[];
+      //
+      // **Counted by the INK ramp, and not by every gradient on the card.**
+      // The card carries a second gradient now — the short gold rule beside
+      // the "Word of the Day" label, which the reference draws and the user
+      // asked for — and the assertion has always been about the *ink* ramp
+      // (its own name says so). Filtering by the ramp's own first colour
+      // keeps the count exact rather than loose.
+      final ramps = <Gradient>[];
       for (final element in find
           .descendant(of: surface, matching: find.byType(DecoratedBox))
           .evaluate()) {
         final decoration = (element.widget as DecoratedBox).decoration;
-        if (decoration is BoxDecoration && decoration.gradient != null) {
-          gradients.add(decoration.gradient!);
+        if (decoration is! BoxDecoration) continue;
+        final gradient = decoration.gradient;
+        if (gradient is! LinearGradient) continue;
+        if (gradient.colors.isEmpty) continue;
+        if (gradient.colors.first !=
+            WallpaperGradient.colour.withValues(alpha: 0)) {
+          continue;
         }
+        ramps.add(gradient);
       }
-      expect(gradients, hasLength(1),
+      expect(ramps, hasLength(1),
           reason: 'the card carries exactly one ink ramp');
-      final gradient = gradients.single as LinearGradient;
+      final gradient = ramps.single as LinearGradient;
       // **The scrim's shape is gone.** It held 0.60 across the top 58% and
       // released to nothing at the bottom; this one starts at nothing on the
       // top edge and holds 0.60 to the bottom.
@@ -452,8 +465,16 @@ void main() {
       // **The artwork draws "serenity" in white** on its light card, and the
       // card's text sits on a photograph — so the ink is the app's white, not
       // the light mode's body ink.
-      final label = tester.widget<Text>(inHome(_wordOfTheDayLabel));
-      expect(label.style?.color, AppColors.onPhoto);
+      //
+      // **The term, not the label.** The label is the one run of the card's
+      // text that is *not* white: it is the brand's gold, because the
+      // reference draws it in gold and the user asked for it — «جملة word of
+      // the day ليست ذهبية». The word and the phonetic are still the card's
+      // own white ink, and this is the test that says so.
+      final term = tester.widget<Text>(
+        inHome(WordOfTheDay.pick(_fixtureEntries, DateTime.now()).term),
+      );
+      expect(term.style?.color, AppColors.onPhoto);
       expect(AppColors.onPhoto, const Color(0xFFFFFFFF));
     });
 
@@ -467,8 +488,10 @@ void main() {
       addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
       await _pumpApp(tester, harness.repository);
 
-      final label = tester.widget<Text>(inHome(_wordOfTheDayLabel));
-      expect(label.style?.color, AppColors.onPhoto);
+      final term = tester.widget<Text>(
+        inHome(WordOfTheDay.pick(_fixtureEntries, DateTime.now()).term),
+      );
+      expect(term.style?.color, AppColors.onPhoto);
       // **The card keeps its own ink token, and the reason is the photograph.**
       // The app's dark body ink is now `#FFFFFF` too — the new identity's text
       // is white in both modes — so the two colours coincide and the old

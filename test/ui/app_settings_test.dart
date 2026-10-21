@@ -85,7 +85,7 @@ void main() {
         Icons.check_box_outlined,
         Icons.apps,
       ]) {
-        await tester.tap(find.byIcon(icon));
+        await tester.tap(barDestinationIcon(icon));
         await tester.pumpAndSettle();
         await settleDatabase(tester);
         expect(find.byType(AppOverflowMenu), findsOneWidget,

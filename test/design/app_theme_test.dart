@@ -70,18 +70,37 @@ void main() {
     expect(dark.scaffoldBackgroundColor, AppColors.backgroundDark);
   });
 
-  test('the bottom bar is the gold pill, the gold\'s ink and the gold label', () {
+  test('the bottom bar is the gold badge, the gold icon and the gold label', () {
     // **The active destination, as the identity document rule 6 has it**: the
-    // primary is a **fill** — the indicator pill — the icon on that pill is the
-    // gold's own ink so that it can be read, and the *label* is the gold on the
-    // bar's navy, which is what the reference draws.
+    // primary is a **fill** — the active destination sits in a *translucent*
+    // gold field with a stronger gold ring around it — the icon on it is the
+    // gold, and the *label* is the gold on the bar's navy, which is what the
+    // reference draws.
     for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
       final bar = theme.navigationBarTheme;
-      expect(bar.indicatorColor, AppColors.gold);
+      final isDark = theme.brightness == Brightness.dark;
+
+      // **The field is the brand gold, translucent.** The alpha is the fitted
+      // one; `AppColors.goldField` carries the derivation.
+      expect(bar.indicatorColor, AppColors.goldField);
+      expect(bar.indicatorColor!.a, closeTo(0.28, 0.01));
+
+      // **The edge is the same gold, stronger**, and it is the shape's own
+      // side — so the ring is stroked around the field, not painted over it.
+      final shape = bar.indicatorShape! as RoundedRectangleBorder;
+      final side = shape.side;
+      expect(side.color, AppColors.goldEdge);
+      expect(side.color.a, closeTo(0.70, 0.01));
+      expect(side.width, 1.0);
 
       const selected = <WidgetState>{WidgetState.selected};
       const unselected = <WidgetState>{};
-      expect(bar.iconTheme?.resolve(selected)?.color, AppColors.onGold);
+      // **The icon is the accent ink.** The reference draws the active tab's
+      // icon in the *full* gold inside the translucent field; the icon is ink
+      // rather than a fill, so light mode takes the body ink, where the gold
+      // is 1.95 : 1 against the page.
+      expect(bar.iconTheme?.resolve(selected)?.color,
+          AppColors.accentInk(isDark));
       expect(bar.labelTextStyle?.resolve(selected)?.color, AppColors.gold);
       expect(bar.labelTextStyle?.resolve(unselected)?.color,
           isNot(AppColors.gold));

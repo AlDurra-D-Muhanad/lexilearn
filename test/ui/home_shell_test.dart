@@ -107,7 +107,7 @@ void main() {
         reason: 'a pack key is an identifier and must not reach the user');
 
     for (final destination in _destinations.skip(1)) {
-      await _openDestination(tester, find.byIcon(destination.icon));
+      await _openDestination(tester, barDestinationIcon(destination.icon));
 
       expect(
         find.byType(destination.screen),

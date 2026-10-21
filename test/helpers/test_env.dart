@@ -793,6 +793,24 @@ Future<bool> _recordNothingLaunched(Uri url) async {
 /// list surviving between tests is a test that passes for the wrong reason.
 void clearLaunchedLinks() => launchedLinks.clear();
 
+/// A bottom-bar destination's icon, **scoped to the bar**.
+///
+/// **Scoped, because the bar's glyphs are no longer unique in the tree.** The
+/// Home screen's quick-launch grid draws the reference's own «بطاقات التعلم»
+/// tile with `Icons.style_outlined` — the same tilted card the reference's own
+/// bottom bar uses for `البطاقات`, and the same one the app's bar already
+/// used. A bare `find.byIcon(Icons.style_outlined)` therefore matches **two**
+/// widgets, and `tap` throws "ambiguously found multiple matching widgets"
+/// instead of switching tabs.
+///
+/// Shared rather than copied, for the reason every other helper here is: three
+/// test files reach a destination by its bar icon, and a copy of this finder in
+/// each of them is three places for the scope to go missing.
+Finder barDestinationIcon(IconData icon) => find.descendant(
+      of: find.byType(NavigationBar),
+      matching: find.byIcon(icon),
+    );
+
 /// The WCAG 2.1 relative-luminance contrast ratio between two opaque colours,
 /// as the number the guidelines quote: `(L_lighter + 0.05) / (L_darker + 0.05)`.
 ///
