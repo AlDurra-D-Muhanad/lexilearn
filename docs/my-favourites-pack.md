@@ -45,6 +45,38 @@ in the `favorites` and `progress` tables, where the key is `(packKey, entryId)` 
 `packKey` would be the derived pack's own key — which is a third value nobody
 expected.
 
+## The progress of a word, and where it lives
+
+**The ruling: a word in this pack is a view of a word in a real pack, and its
+progress lives in the real pack.**
+
+The favourites already work this way — a star toggled through this pack is
+written to the row the word really belongs to. An **answer** given about one
+of its words is the same thing: it is filed under the pack the word came
+from, under that pack's own entry id.
+
+So there is **one word, one record** of what the user did with it:
+
+- the statistics count it **once**, not twice — the accuracy ring, the mastery
+  count and the "words practised" figure all read the one record;
+- the progress **is in the backup**, because the backup walks the packs and
+  the record is filed under one of them. The document's format does not
+  change, and no new pack key appears in it;
+- this pack's own statistics are the source packs' rows, read for the words
+  this pack holds, and **only** those rows. The rows an earlier version of
+  the app filed under this pack's own key are duplicates of records that
+  already live in the source packs, and reading them would count the word
+  twice.
+
+**A reset on this pack clears the progress of its words**, in the packs they
+came from — the same rows the statistics read — and its own session history.
+
+**A session — the summary of one quiz — is the exception, and it stays filed
+under this pack's key.** A session row carries a pack key and no entry id, so
+there is nothing to resolve it to, and a quiz over the favourites may draw
+words from either integrated pack. The backup carries the whole session
+history, so it travels with everything else.
+
 ## The shape of the implementation
 
 1. **A constant** for the derived pack's key, and its title in Arabic — something

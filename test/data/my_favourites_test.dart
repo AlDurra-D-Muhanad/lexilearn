@@ -7,6 +7,7 @@ import 'package:lexilearn/domain/my_favourites_pack.dart';
 import 'package:lexilearn/domain/pack_codec.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
+import 'package:lexilearn/domain/word_progress.dart';
 
 import '../helpers/test_env.dart';
 import 'dictionary/dictionary_test_env.dart';
@@ -466,16 +467,225 @@ void main() {
       // stored packs never reaches it — and a restore that left its rows
       // behind would carry the previous device's progress and sessions into a
       // pack whose contents are about to be somebody else's.
+      //
+      // **And the derived pack holds no progress rows of its own**, so what a
+      // restore has to clear is the progress of the pack its words came from —
+      // a file that carries no progress must leave none behind, whichever
+      // pack the answers were given through.
+      await repository.setFavorite(
+        packKey: starterPackKey,
+        entryId: 'ghost-clusters-4da03e',
+        isFavorite: true,
+      );
+      final derived = (await repository.myFavourites()).single;
       await repository.recordAnswer(
         packKey: myFavouritesPackKey,
-        entryId: 'myfav:english_ar_v1:ghost-clusters-4da03e',
+        entryId: derived.id,
         wasCorrect: true,
       );
       expect((await repository.stats(myFavouritesPackKey)).totalAttempts, 1);
 
-      await repository.importBackupJson(await repository.exportBackupJson());
+      // **A file that carries the packs and the favourites, and no progress.**
+      final document = BackupCodec.decode(await repository.exportBackupJson());
+      final withoutProgress = BackupCodec.encode(BackupDocument(
+        exportedAt: document.exportedAt,
+        packs: document.packs,
+        progress: const <WordProgress>[],
+        favorites: document.favorites,
+        sessions: document.sessions,
+      ));
+
+      await repository.importBackupJson(withoutProgress);
 
       expect((await repository.stats(myFavouritesPackKey)).totalAttempts, 0);
+      expect((await repository.stats(starterPackKey)).totalAttempts, 0);
+      // **And no row is left under the derived pack's own key**, which is the
+      // one thing a restore must never leave behind: a duplicate of a record
+      // that already lives in the pack the word came from.
+      final rows = await harness.database.query('word_progress');
+      expect(
+        rows.where((row) => row['pack_key'] == myFavouritesPackKey),
+        isEmpty,
+      );
+    });
+  });
+
+  group('the progress of a word', () {
+    /// The starter set's word, saved.
+    Future<void> saveGhost() => repository.setFavorite(
+          packKey: starterPackKey,
+          entryId: 'ghost-clusters-4da03e',
+          isFavorite: true,
+        );
+
+    test('a word studied through the derived pack is recorded in the pack it '
+        'came from, and under no other key', () async {
+      await saveGhost();
+      final derived = (await repository.myFavourites()).single;
+
+      await repository.recordAnswer(
+        packKey: myFavouritesPackKey,
+        entryId: derived.id,
+        wasCorrect: true,
+      );
+
+      // **The row itself, read out of the table.** The statistics are a
+      // summary of this table; the table is the record, and a record filed
+      // under the derived pack's key would be a second one of the same work.
+      final rows = await harness.database.query('word_progress');
+      expect(rows, hasLength(1));
+      expect(rows.single['pack_key'], starterPackKey);
+      // **The source's own entry id**, not the derived one: the row belongs to
+      // the word, and the word belongs to the pack it came from.
+      expect(rows.single['entry_id'], 'ghost-clusters-4da03e');
+    });
+
+    test('the statistics count such a word once, not twice', () async {
+      await saveGhost();
+      final derived = (await repository.myFavourites()).single;
+
+      // **Five answers, so the word crosses the mastery floor** and the
+      // mastery count has something to be wrong about.
+      for (var i = 0; i < 5; i++) {
+        await repository.recordAnswer(
+          packKey: myFavouritesPackKey,
+          entryId: derived.id,
+          wasCorrect: true,
+        );
+      }
+
+      final derivedStats = await repository.stats(myFavouritesPackKey);
+      expect(derivedStats.totalAttempts, 5);
+      expect(derivedStats.totalCorrect, 5);
+      expect(derivedStats.wordsPracticed, 1);
+      expect(derivedStats.wordsMastered, 1);
+      expect(derivedStats.accuracy, 1.0);
+
+      // **The source pack's figures are the same record seen from the pack it
+      // belongs to** — the same numbers, and not more of them.
+      final sourceStats = await repository.stats(starterPackKey);
+      expect(sourceStats.totalAttempts, 5);
+      expect(sourceStats.totalCorrect, 5);
+      expect(sourceStats.wordsPracticed, 1);
+      expect(sourceStats.wordsMastered, 1);
+      expect(sourceStats.accuracy, 1.0);
+
+      // **And there is one row behind both sets of figures.** Two rows would
+      // mean two records of the same five answers, and the figures would be
+      // counting the word twice.
+      final rows = await harness.database.query('word_progress');
+      expect(rows, hasLength(1));
+
+      // **And a row filed under the derived pack's own key is not counted.**
+      // A row like that is what an earlier version of the app wrote: the same
+      // work, recorded a second time. Reading it here would count the word
+      // twice — once from each side — and the figures would be telling the
+      // user they had done twice what they had done.
+      await harness.database.insert('word_progress', <String, Object?>{
+        'entry_id': derived.id,
+        'pack_key': myFavouritesPackKey,
+        'attempts': 3,
+        'correct_count': 1,
+        'last_seen_at': DateTime.utc(2026, 10, 14, 12).toIso8601String(),
+      });
+
+      expect((await repository.stats(myFavouritesPackKey)).totalAttempts, 5);
+      expect((await repository.stats(starterPackKey)).totalAttempts, 5);
+    });
+
+    test('the progress of a word studied through the derived pack survives an '
+        'export and a restore', () async {
+      await saveGhost();
+      final derived = (await repository.myFavourites()).single;
+      await repository.recordAnswer(
+        packKey: myFavouritesPackKey,
+        entryId: derived.id,
+        wasCorrect: true,
+      );
+      await repository.finishSession(
+        packKey: myFavouritesPackKey,
+        startedAt: DateTime.utc(2026, 10, 14, 9),
+        totalQuestions: 10,
+        correctCount: 7,
+      );
+
+      final json = await repository.exportBackupJson();
+
+      // **The wipe.** Without it the restore would prove nothing: the file
+      // carries the progress, so restoring it onto a device that still had it
+      // would look the same whether the progress had travelled or not.
+      await repository.resetProgress(starterPackKey);
+      await repository.resetProgress(myFavouritesPackKey);
+      expect((await repository.stats(starterPackKey)).totalAttempts, 0);
+      expect((await repository.stats(myFavouritesPackKey)).totalAttempts, 0);
+      expect((await repository.stats(myFavouritesPackKey)).recentSessions, isEmpty);
+
+      await repository.importBackupJson(json);
+
+      // **It is back**, in the pack the word came from — the file carries no
+      // pack key of its own for the derived pack, and needs none.
+      final stats = await repository.stats(starterPackKey);
+      expect(stats.totalAttempts, 1);
+      expect(stats.totalCorrect, 1);
+      expect(stats.wordsPracticed, 1);
+      // **And the derived pack sees the same record**, because it is the same
+      // record and not a copy of it.
+      expect((await repository.stats(myFavouritesPackKey)).totalAttempts, 1);
+      // **And the quiz that was played in it is back too.**
+      expect((await repository.stats(myFavouritesPackKey)).recentSessions,
+          hasLength(1));
+    });
+
+    test('resetting the derived pack clears the progress of its words, and '
+        'no other word\'s', () async {
+      await saveGhost();
+      final derived = (await repository.myFavourites()).single;
+
+      // **A saved word and an unsaved one**, both answered: the reset may
+      // clear the first, because it is in the pack, and must not clear the
+      // second, because it is not.
+      await repository.recordAnswer(
+        packKey: myFavouritesPackKey,
+        entryId: derived.id,
+        wasCorrect: true,
+      );
+      await repository.recordAnswer(
+        packKey: starterPackKey,
+        entryId: 'child-9f21c4',
+        wasCorrect: true,
+      );
+
+      expect(await repository.resetProgress(myFavouritesPackKey), 1);
+
+      expect((await repository.stats(starterPackKey)).wordsPracticed, 1);
+      expect((await repository.stats(myFavouritesPackKey)).wordsPracticed, 0);
+    });
+
+    test('an answer about a word that is no longer saved is not recorded',
+        () async {
+      await saveGhost();
+      final derived = (await repository.myFavourites()).single;
+
+      // **The word leaves the pack** — unsaved through the derived pack, so
+      // the row it really belongs to is the one that goes.
+      await repository.setFavorite(
+        packKey: myFavouritesPackKey,
+        entryId: derived.id,
+        isFavorite: false,
+      );
+
+      // **And the answer that was already on screen is given anyway.**
+      await repository.recordAnswer(
+        packKey: myFavouritesPackKey,
+        entryId: derived.id,
+        wasCorrect: true,
+      );
+
+      // **Nothing is recorded**, because there is no pack to record it in: a
+      // row under the derived pack's own key would be the duplicate this
+      // resolution exists to prevent.
+      final rows = await harness.database.query('word_progress');
+      expect(rows, isEmpty);
     });
   });
 }

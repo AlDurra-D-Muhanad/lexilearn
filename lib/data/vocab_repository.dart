@@ -416,7 +416,16 @@ class VocabRepository {
     return entries;
   }
 
-  /// The saved word behind a derived pack's entry id, or null.
+  /// Every saved word, with the pack it was saved from.
+  ///
+  /// **One read of the whole favourites table.** These rows are the only place
+  /// the answer to "where does this word really live?" can be got right, and
+  /// three questions ask it — the favourites, the progress and the statistics —
+  /// so it is read once per question and not once per word.
+  Future<List<({String packKey, String entryId})>> _favouriteSources() async =>
+      _favorites.allFavorites();
+
+  /// The source of every derived entry, keyed by the derived entry's id.
   ///
   /// **Found by recomputing the id, never by parsing it.** The derived id is
   /// `myfav:<sourcePackKey>:<sourceEntryId>`, and the source entry id carries a
@@ -425,19 +434,30 @@ class VocabRepository {
   /// its two halves. Recomputing it from the favourites table is exact: those
   /// rows are the only place the answer can be got right.
   ///
+  /// **One map, every entry.** A caller that needs the source of many derived
+  /// entries — the statistics read every one of them — pays for one query
+  /// rather than one query per entry.
+  Future<Map<String, ({String packKey, String entryId})>> _derivedSources() async {
+    final rows = await _favouriteSources();
+    return <String, ({String packKey, String entryId})>{
+      for (final row in rows) myFavouritesEntryId(row.packKey, row.entryId): row,
+    };
+  }
+
+  /// The saved word behind a derived pack's entry id, or null.
+  ///
+  /// **Found by recomputing the id, never by parsing it** — see
+  /// [_derivedSources], which is where the recomputation happens.
+  ///
   /// This is what makes the derived pack **a second view of the same truth**
   /// rather than a copy of it: saving or unsaving through the derived pack
-  /// writes the row it really belongs to, in the pack it really belongs to.
+  /// writes the row it really belongs to, in the pack it really belongs to —
+  /// and so does an answer given about it.
   Future<({String packKey, String entryId})?> _sourceOfDerivedEntry(
     String derivedEntryId,
   ) async {
-    final rows = await _favorites.allFavorites();
-    for (final row in rows) {
-      if (myFavouritesEntryId(row.packKey, row.entryId) == derivedEntryId) {
-        return row;
-      }
-    }
-    return null;
+    final sources = await _derivedSources();
+    return sources[derivedEntryId];
   }
 
   /// Looks the pack up, then hands the comparison to `SearchMatcher`.
@@ -650,14 +670,62 @@ class VocabRepository {
 
   Future<void> close() => _db.close();
 
+  /// Records one answer.
+  ///
+  /// **A word studied through the derived pack is recorded in the pack it came
+  /// from.** The derived pack is a view of the words the user has saved, not a
+  /// set of words of its own, so an answer given about one of them is an
+  /// answer about the word in the pack that owns it — the same rule the
+  /// favourites already follow, where a star toggled through the derived pack
+  /// is written to the row the word really belongs to.
+  ///
+  /// **One word, one record.** A row filed under the derived pack's own key
+  /// would be a *second* record of the same work: the statistics would count
+  /// the word twice — once in the source pack's figures and once in the
+  /// derived pack's — and the row would never reach a backup, because
+  /// [exportBackupJson] walks the `packs` table and the derived pack has no
+  /// row in it. Filed under the source pack, the answer is counted once and it
+  /// travels with the pack that owns it.
+  ///
+  /// **An answer about a word that is no longer saved is not recorded at all.**
+  /// The word has left the derived pack, so there is no pack to file it under
+  /// and no record of it to add to. A row under the derived pack's key would
+  /// be exactly the row this method exists to avoid.
   Future<void> recordAnswer({
     required String packKey,
     required String entryId,
     required bool wasCorrect,
-  }) =>
-      _progress.record(
-          packKey: packKey, entryId: entryId, wasCorrect: wasCorrect, at: _clock());
+  }) async {
+    if (packKey != myFavouritesPackKey) {
+      await _progress.record(
+          packKey: packKey,
+          entryId: entryId,
+          wasCorrect: wasCorrect,
+          at: _clock());
+      return;
+    }
+    final source = await _sourceOfDerivedEntry(entryId);
+    if (source == null) return;
+    await _progress.record(
+        packKey: source.packKey,
+        entryId: source.entryId,
+        wasCorrect: wasCorrect,
+        at: _clock());
+  }
 
+  /// Writes the summary of one quiz session.
+  ///
+  /// **A session played in the derived pack is filed under the derived pack's
+  /// key, and that is deliberate.** A session row carries a pack key and no
+  /// entry id, so there is nothing to resolve: a quiz over the favourites may
+  /// draw words from either integrated pack, and filing it under one of them
+  /// would be a claim about words it never saw.
+  ///
+  /// **Nothing is lost by that choice.** The backup carries the whole session
+  /// history — [exportBackupJson] reads the sessions with no pack filter, not
+  /// one pack at a time — so a session played in the derived pack is exported,
+  /// restored, and shown again on the derived pack's own statistics screen,
+  /// where it is counted once.
   Future<int> finishSession({
     required String packKey,
     required DateTime startedAt,
@@ -671,8 +739,25 @@ class VocabRepository {
         correctCount: correctCount,
       ));
 
+  /// The statistics for one pack.
+  ///
+  /// **The derived pack's figures are the source packs' rows, resolved.**
+  ///
+  /// The derived pack holds no progress rows of its own — every answer given
+  /// about one of its words is filed in the pack the word came from, so that
+  /// there is one record of what the user did with it — and so its figures are
+  /// read from the packs its words live in. **Resolved, not added:** the rows
+  /// filed under the derived pack's own key are never read, so a word cannot
+  /// be counted twice, once from each side.
+  ///
+  /// **Which is what makes the two views agree.** The favourites list and the
+  /// derived pack show the same words, one with the pack's own ids and one
+  /// namespaced; the two statistics screens show the same words' progress for
+  /// the same reason. Two views of one truth must agree.
   Future<StatsSummary> stats(String packKey) async {
-    final progressRows = await _progress.allForPack(packKey);
+    final progressRows = packKey == myFavouritesPackKey
+        ? await _derivedProgressRows()
+        : await _progress.allForPack(packKey);
     return StatsSummary(
       totalAttempts:
           progressRows.fold<int>(0, (sum, row) => sum + row.attempts),
@@ -686,15 +771,79 @@ class VocabRepository {
     );
   }
 
+  /// The derived pack's progress: the rows of the packs its words came from.
+  ///
+  /// **One query per source pack, not one per word.** The favourites rows say
+  /// which pack owns which word; the progress rows are then read a pack at a
+  /// time, exactly the way [exportBackupJson] reads them.
+  ///
+  /// **The rows filed under the derived pack's own key are not read.** They are
+  /// the duplicates this resolution exists to prevent — an answer recorded
+  /// twice, once in each place — and reading them here would count every such
+  /// word twice in the accuracy ring, the mastery count and the "words
+  /// practised" figure.
+  ///
+  /// **A saved word whose entry cannot be resolved is still counted.** The
+  /// pack drops such a word — a dictionary word whose engine has not landed
+  /// yet is not in the pack yet — but its progress row is a fact about the
+  /// device, and the pack will show the word as soon as the engine arrives.
+  /// The alternative is to derive the whole pack on every statistics read,
+  /// which is a read of every source pack's entries for a number that is
+  /// about rows.
+  Future<List<WordProgress>> _derivedProgressRows() async {
+    final sources = await _favouriteSources();
+    if (sources.isEmpty) return const <WordProgress>[];
+    final wanted = <String, Set<String>>{};
+    for (final source in sources) {
+      (wanted[source.packKey] ??= <String>{}).add(source.entryId);
+    }
+    final rows = <WordProgress>[];
+    for (final entry in wanted.entries) {
+      for (final progress in await _progress.allForPack(entry.key)) {
+        if (entry.value.contains(progress.entryId)) rows.add(progress);
+      }
+    }
+    return rows;
+  }
+
   /// Clears a pack's progress AND its session history.
   ///
   /// Both halves are in one transaction so a failure mid-reset cannot leave a
   /// pack with zeroed word counts and a full "Recent sessions" list — which
   /// reads, to the user, exactly like Reset did nothing.
+  ///
+  /// **The derived pack clears the progress of its words, in the packs they
+  /// came from.** Its figures are the source packs' rows (see [stats]), so a
+  /// reset that only cleared the rows filed under the derived pack's own key
+  /// would leave every number on the screen exactly as it was — a reset that
+  /// reads, to the user, like Reset did nothing. The words it clears are the
+  /// saved words, and no other: a word the user has not saved is not in the
+  /// pack and keeps its progress in the pack it belongs to.
+  ///
+  /// **The favourites rows are read before the transaction opens**, because
+  /// [FavoriteDao.allFavorites] takes no executor and a DAO call made without
+  /// the transaction's handle does not fail — it *waits*, for the whole of the
+  /// transaction's body. `docs/engineering-standards.md` §3.
   Future<int> resetProgress(String packKey) async {
+    if (packKey != myFavouritesPackKey) {
+      return _db.transaction<int>((txn) async {
+        final cleared = await _progress.reset(packKey, executor: txn);
+        await _sessions.deleteForPack(packKey, executor: txn);
+        return cleared;
+      });
+    }
+    final sources = await _favouriteSources();
+    final wanted = <String, Set<String>>{};
+    for (final source in sources) {
+      (wanted[source.packKey] ??= <String>{}).add(source.entryId);
+    }
     return _db.transaction<int>((txn) async {
-      final cleared = await _progress.reset(packKey, executor: txn);
-      await _sessions.deleteForPack(packKey, executor: txn);
+      var cleared = 0;
+      for (final entry in wanted.entries) {
+        cleared +=
+            await _progress.resetEntries(entry.key, entry.value, executor: txn);
+      }
+      await _sessions.deleteForPack(myFavouritesPackKey, executor: txn);
       return cleared;
     });
   }
@@ -725,6 +874,13 @@ class VocabRepository {
   /// **exactly what it was before this pack existed**: same schema, same
   /// version, and no new pack key anywhere in it. The derived pack is rebuilt
   /// from the restored favourites, which is the whole point of deriving it.
+  ///
+  /// **And its progress is in the file, without the file knowing it was
+  /// there.** An answer given about a word of the derived pack is filed in the
+  /// pack that word came from — one word, one record — so it is one of the
+  /// rows this walk already reads. That is what makes the progress of a
+  /// favourites pack survive a restore: the walk visits the *source* pack, and
+  /// the word's history is filed there.
   Future<String> exportBackupJson() async {
     final summaries = await _packs.listPacks();
     final packs = <VocabPack>[];
@@ -874,6 +1030,17 @@ class VocabRepository {
       // and a restore that left them behind would carry the previous device's
       // progress and sessions into a pack whose contents are about to be
       // somebody else's.
+      //
+      // **The sessions are the half that still matters.** A quiz played in the
+      // derived pack is filed under the derived pack's own key — a session row
+      // carries a pack key and no entry id, so there is nothing to resolve it
+      // to — and those rows are in the backup, so they are put back below.
+      //
+      // **The progress rows are the half that is now empty**, and the reset is
+      // kept anyway: an answer given through the derived pack is filed in the
+      // pack the word came from, so a row under this key can only be a
+      // duplicate left by an earlier version of the app, and a restore that
+      // left one behind would count that word twice.
       await _progress.reset(myFavouritesPackKey, executor: txn);
       await _sessions.deleteForPack(myFavouritesPackKey, executor: txn);
       for (final pack in backup.packs) {
