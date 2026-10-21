@@ -81,7 +81,7 @@ void main() {
   testWidgets('the focused outline is the brand purple at 2px', (tester) async {
     final decoration = await decorationFor(tester, Brightness.light);
 
-    expect(outlineColour(tester, decoration.focusedBorder), AppColors.primaryLight);
+    expect(outlineColour(tester, decoration.focusedBorder), AppColors.gold);
     expect((decoration.focusedBorder! as OutlineInputBorder).borderSide.width, 2);
   });
 
@@ -109,9 +109,9 @@ void main() {
   testWidgets('dark mode takes the dark hairline', (tester) async {
     final decoration = await decorationFor(tester, Brightness.dark);
 
-    expect(outlineColour(tester, decoration.enabledBorder), AppColors.borderDark);
-    expect(outlineColour(tester, decoration.focusedBorder), AppColors.primaryDark);
-    expect(outlineColour(tester, decoration.disabledBorder), AppColors.borderDark);
+    expect(outlineColour(tester, decoration.enabledBorder), AppColors.outlineDark);
+    expect(outlineColour(tester, decoration.focusedBorder), AppColors.gold);
+    expect(outlineColour(tester, decoration.disabledBorder), AppColors.outlineDark);
   });
 
   testWidgets('onSurfaceVariant stays the muted text role', (tester) async {

@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:lexilearn/design/design_tokens.dart';
 import 'package:lexilearn/ui/dictionary/attribution_screen.dart';
 import 'package:lexilearn/ui/dictionary/dictionary_controller.dart';
-import 'package:lexilearn/ui/link/external_link.dart';
 import 'package:lexilearn/ui/settings/app_info_screen.dart';
 import 'package:lexilearn/ui/settings/app_settings_controller.dart';
+import 'package:lexilearn/ui/theme/app_surface.dart';
 import 'package:lexilearn/ui/theme/app_verdict_colors.dart';
 import 'package:provider/provider.dart';
 
@@ -14,12 +14,25 @@ const String _attributionLabel = 'النسب';
 const String _themeSystem = 'حسب النظام';
 const String _themeLight = 'فاتح';
 const String _themeDark = 'داكن';
-const String _telegramLabel = 'تواصل معي على تيلغرام';
 
 /// Spelled out rather than left null, so a screen reader announces what the
 /// control is instead of only its glyph — the same reason `_PackKeyBadge` and
 /// `more_screen.dart`'s delete `IconButton` both carry one.
 const String _menuTooltip = 'المزيد من الخيارات';
+
+/// How wide the panel is.
+///
+/// **A fixed width, and the reason it is fixed.** The panel is a column of
+/// rows whose widest content is an Arabic label, and a panel that sized itself
+/// to its content would be a different width on every row — or narrower than
+/// the label it carries. 248 logical px fits the longest of the app's own
+/// labels («تواصل معي على تيلغرام» used to be the longest; the Telegram row
+/// has moved to the app-info screen) with the icon column and the padding
+/// around it.
+const double _panelWidth = 248;
+
+/// The gap between the button and the panel it opens.
+const double _panelGap = 6;
 
 /// What one row of the menu means.
 ///
@@ -36,7 +49,6 @@ class _MenuValue {
         themeMode = null;
   const _MenuValue.theme(ThemeMode this.themeMode)
       : action = _MenuAction.theme;
-  const _MenuValue.telegram() : action = _MenuAction.telegram, themeMode = null;
 
   final _MenuAction action;
 
@@ -44,7 +56,7 @@ class _MenuValue {
   final ThemeMode? themeMode;
 }
 
-enum _MenuAction { appInfo, attribution, theme, telegram }
+enum _MenuAction { appInfo, attribution, theme }
 
 /// The three-dot menu, identical on all four bottom-bar destinations.
 ///
@@ -70,102 +82,295 @@ enum _MenuAction { appInfo, attribution, theme, telegram }
 /// layout already has for a trailing control, so no screen's measured body moves.
 ///
 /// **It reads the theme choice from the controller rather than owning it.** A
-/// `PopupMenuButton` builds its route each time it opens, so the check beside
-/// `داكن` is correct the moment the menu is next opened even if the choice was
-/// made minutes ago on another screen. See `AppSettingsController` for why the
+/// menu builds its panel each time it opens, so the check beside `داكن` is
+/// correct the moment the menu is next opened even if the choice was made
+/// minutes ago on another screen. See `AppSettingsController` for why the
 /// choice is stored rather than flipped.
-class AppOverflowMenu extends StatelessWidget {
+///
+/// ## The panel, and why it is not `PopupMenuButton`
+///
+/// **The user's own words: «نافذة الثلاث نقاط بدائية وغير ملائمة للثيم و تعطي
+/// طابع غير احترافي»** — the three-dot window is primitive, does not suit the
+/// theme, and gives an unprofessional impression. The screenshot shows what
+/// they mean: Material's default panel is a grey rectangle with square-ish
+/// corners, stock Material glyphs, and it hangs off the top-left corner over
+/// the content.
+///
+/// **So the panel is this app's own surface.** It is an `AppSurface` — the
+/// brand's radius, the brand's hairline, the brand's shadow — and its rows
+/// carry the brand's accent. `PopupMenuButton` was replaced rather than
+/// restyled, because Material's popup route brings its own background, its own
+/// shape and its own anchoring, and every one of those three is what the user
+/// objected to.
+///
+/// **The panel is drawn in the app's `Overlay`, not in the button's own
+/// subtree**, so it is not clipped by the `AppBar` it hangs out of and it
+/// paints over the bottom bar rather than under it.
+///
+/// **The exact look is a judgement, and it is marked as one.** The reference
+/// image does not show an open menu, so there is no artwork to copy: the
+/// radius, the surface and the border are the app's own tokens and the
+/// accent-coloured icons are the brand's, and everything else is the obvious
+/// thing to do with those.
+class AppOverflowMenu extends StatefulWidget {
   const AppOverflowMenu({super.key});
+
+  @override
+  State<AppOverflowMenu> createState() => _AppOverflowMenuState();
+}
+
+class _AppOverflowMenuState extends State<AppOverflowMenu> {
+  /// The link between the button and the panel, so the panel knows where the
+  /// button is without the button's position being written down anywhere.
+  final LayerLink _link = LayerLink();
+
+  final OverlayPortalController _portal = OverlayPortalController();
+
+  void _toggle() {
+    if (_portal.isShowing) {
+      _portal.hide();
+      return;
+    }
+    _portal.show();
+  }
 
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<AppSettingsController>();
-    final openUrl = context.read<OpenExternalUrl>();
 
-    return PopupMenuButton<_MenuValue>(
-      // Material's own three dots. `Icons.more_vert` is the same glyph the
-      // artwork's `المزيد` bar item sits beside, so the control and the
-      // destination it complements are drawn identically.
-      icon: const Icon(Icons.more_vert),
-      tooltip: _menuTooltip,
-      // **No local colour.** `IconButton` resolves to `onSurfaceVariant`, which
-      // `app_theme.dart` pins to the secondary-text role; forcing one here would
-      // be the per-widget opt-out `docs/engineering-standards.md` §7 exists to
-      // end.
-      onSelected: (value) => _run(context, value, settings, openUrl),
-      itemBuilder: (context) => <PopupMenuEntry<_MenuValue>>[
-        const PopupMenuItem<_MenuValue>(
-          value: _MenuValue.appInfo(),
-          child: _Row(icon: Icons.info_outline, label: _appInfoLabel),
+    return CompositedTransformTarget(
+      link: _link,
+      child: OverlayPortal(
+        controller: _portal,
+        overlayChildBuilder: (context) => _MenuPanel(
+          link: _link,
+          settings: settings,
+          onDismiss: _portal.hide,
         ),
-        // **The dictionary's licence, and it is an obligation rather than a
-        // courtesy.** The dictionary is CC-BY-SA-4.0, and that licence obliges
-        // an application shipping it to name the licence and its sources. The
-        // screen reads them out of the dictionary's own `meta` table and
-        // invents nothing.
-        const PopupMenuItem<_MenuValue>(
-          value: _MenuValue.attribution(),
-          child: _Row(icon: Icons.balance_outlined, label: _attributionLabel),
+        child: _MenuButton(onTap: _toggle),
+      ),
+    );
+  }
+}
+
+/// The three dots themselves.
+///
+/// **The button the reference draws, and the position the user asked for.**
+///
+/// The reference puts the ellipsis at the header's outer edge: measured off
+/// `new theme.png`, the glyph's centre sits at **28.9 logical px** from the
+/// screen's left edge, while the content's own margin is 16 — so the glyph is
+/// **12.9 px inside the margin**, not in the middle of a 48 px button.
+///
+/// The app's own button was Material's `IconButton` inside the
+/// `PopupMenuButton`, whose glyph is centred in a 48 px tap target and so
+/// landed at **39.8 logical px** — more than eleven pixels further in, and
+/// visibly not "in the corner". This button keeps a **48 px touch target**
+/// and moves the **glyph** to the reference's position instead, which is the
+/// only way to have both: a finger-sized target and the artwork's mark.
+class _MenuButton extends StatelessWidget {
+  const _MenuButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final secondary =
+        isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
+
+    return Semantics(
+      button: true,
+      label: _menuTooltip,
+      child: Tooltip(
+        message: _menuTooltip,
+        excludeFromSemantics: true,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          // **The 48 px target, and the glyph at the reference's place.**
+          //
+          // The reference puts the ellipsis at the header's outer edge:
+          // measured off `new theme.png`, the glyph's centre sits at **28.9
+          // logical px** from the screen's left edge, while the content's own
+          // margin is 16 — so the glyph is essentially flush with the margin.
+          //
+          // The app's own button was Material's `IconButton` inside the
+          // `PopupMenuButton`, whose glyph is centred in a 48 px tap target
+          // and so landed at **39.8 logical px** — more than eleven pixels
+          // further in, and visibly not "in the corner". This button keeps a
+          // **48 px touch target** and moves the **glyph** to the reference's
+          // position instead, which is the only way to have both: a
+          // finger-sized target and the artwork's mark.
+          //
+          // `AlignmentDirectional.centerEnd` puts the glyph at the *end* of
+          // the tap target. The app is right-to-left throughout, so the end
+          // is the physical left — which is the header's outer edge and the
+          // side the reference draws the ellipsis on.
+          //
+          // The target is 48 wide and the glyph's own box is 24, so the
+          // glyph's centre lands at 16 + 12 = **28 logical px** from the
+          // screen's left edge, against the reference's measured **28.9**.
+          child: SizedBox(
+            width: 48,
+            height: 48,
+            // **The 48 px target, and the glyph at the reference's place.**
+            //
+            // `AlignmentDirectional.centerEnd` puts the glyph at the *end* of
+            // the tap target. The app is right-to-left throughout, so the end
+            // is the physical left — which is the header's outer edge and the
+            // side the reference draws the ellipsis on.
+            //
+            // The target is 48 wide and the glyph's own box is 24, so the
+            // glyph's centre lands at 16 + 12 = **28 logical px** from the
+            // screen's left edge, against the reference's measured **28.9**.
+            child: Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: Icon(Icons.more_vert, color: secondary),
+            ),
+          ),
         ),
-        const PopupMenuDivider(),
-        // Three items, one of which is always the current mode — not a single
-        // "flip" entry. A toggle cannot express "go back to following the
-        // system", and the user is entitled to that: `ThemeMode.system` is a
-        // real option, not the absence of one.
-        _themeRow(settings, ThemeMode.system, Icons.brightness_auto, _themeSystem),
-        _themeRow(settings, ThemeMode.light, Icons.light_mode, _themeLight),
-        _themeRow(settings, ThemeMode.dark, Icons.dark_mode, _themeDark),
-        const PopupMenuDivider(),
-        const PopupMenuItem<_MenuValue>(
-          value: _MenuValue.telegram(),
-          // The user's own words: a Telegram entry, with a Telegram icon.
-          child: _Row(icon: Icons.telegram, label: _telegramLabel),
+      ),
+    );
+  }
+}
+
+/// The panel the button opens.
+class _MenuPanel extends StatelessWidget {
+  const _MenuPanel({
+    required this.link,
+    required this.settings,
+    required this.onDismiss,
+  });
+
+  final LayerLink link;
+  final AppSettingsController settings;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final accent = AppColors.accentInk(isDark);
+
+    return Stack(
+      children: <Widget>[
+        // The barrier, so a tap anywhere else closes the panel. It is
+        // transparent and it takes the tap, which is what a menu wants.
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onDismiss,
+          ),
+        ),
+        CompositedTransformFollower(
+          link: link,
+          showWhenUnlinked: false,
+          // **Below the button, and aligned with its outer edge.**
+          //
+          // The button is at the header's outer — the left — edge, and the
+          // panel is 248 wide, so aligning the panel's *left* edge with the
+          // button's keeps it on the screen. Aligning the other way would push
+          // most of it off the left edge, which is what the stock popup did.
+          targetAnchor: Alignment.bottomLeft,
+          followerAnchor: Alignment.topLeft,
+          offset: const Offset(0, _panelGap),
+          child: Material(
+            // The panel is transparent: the `AppSurface` below is the whole
+            // of its look, and a `Material` here would add a second one.
+            type: MaterialType.transparency,
+            child: AppSurface(
+              borderRadius: BorderRadius.circular(AppRadii.md),
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+              child: SizedBox(
+                width: _panelWidth,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    _MenuRow(
+                      icon: Icons.info_outline,
+                      label: _appInfoLabel,
+                      colour: accent,
+                      onTap: () => _run(context, _MenuValue.appInfo()),
+                    ),
+                    // **The dictionary's licence, and it is an obligation rather
+                    // than a courtesy.** The dictionary is CC-BY-SA-4.0, and
+                    // that licence obliges an application shipping it to name
+                    // the licence and its sources. The screen reads them out of
+                    // the dictionary's own `meta` table and invents nothing.
+                    _MenuRow(
+                      icon: Icons.balance_outlined,
+                      label: _attributionLabel,
+                      colour: accent,
+                      onTap: () => _run(context, _MenuValue.attribution()),
+                    ),
+                    const Divider(height: AppSpacing.l),
+                    // Three items, one of which is always the current mode — not
+                    // a single "flip" entry. A toggle cannot express "go back
+                    // to following the system", and the user is entitled to
+                    // that: `ThemeMode.system` is a real option, not the
+                    // absence of one.
+                    _MenuRow(
+                      icon: Icons.brightness_auto,
+                      label: _themeSystem,
+                      colour: accent,
+                      checked: settings.mode == ThemeMode.system,
+                      onTap: () =>
+                          _run(context, _MenuValue.theme(ThemeMode.system)),
+                    ),
+                    _MenuRow(
+                      icon: Icons.light_mode,
+                      label: _themeLight,
+                      colour: accent,
+                      checked: settings.mode == ThemeMode.light,
+                      onTap: () =>
+                          _run(context, _MenuValue.theme(ThemeMode.light)),
+                    ),
+                    _MenuRow(
+                      icon: Icons.dark_mode,
+                      label: _themeDark,
+                      colour: accent,
+                      checked: settings.mode == ThemeMode.dark,
+                      onTap: () =>
+                          _run(context, _MenuValue.theme(ThemeMode.dark)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ),
       ],
     );
   }
 
-  /// The row for one theme mode, checked when it is the current one.
-  ///
-  /// The check sits at the row's own trailing edge, which in this app's RTL
-  /// reading order is the left — the same place `ListTile` puts `trailing`, and
-  /// the same place a user looks for "what is selected".
-  PopupMenuItem<_MenuValue> _themeRow(
-    AppSettingsController settings,
-    ThemeMode mode,
-    IconData icon,
-    String label,
-  ) =>
-      PopupMenuItem<_MenuValue>(
-        value: _MenuValue.theme(mode),
-        child: _Row(
-          icon: icon,
-          label: label,
-          checked: settings.mode == mode,
-        ),
-      );
+  void _run(BuildContext context, _MenuValue value) {
+    // **The navigator and the controller are read before the panel closes.**
+    //
+    // The panel's own context is unmounted the moment it is hidden, and the
+    // attribution's read is a *real* one that takes a turn — so a liveness
+    // check on that context after the await would give up and never open the
+    // screen. The navigator is a `NavigatorState`, which is mounted for as
+    // long as the app is, so the check moves to something that is still true.
+    final navigator = Navigator.of(context);
+    final controller = context.read<DictionaryController>();
 
-  void _run(
-    BuildContext context,
-    _MenuValue value,
-    AppSettingsController settings,
-    OpenExternalUrl openUrl,
-  ) {
+    onDismiss();
     switch (value.action) {
       case _MenuAction.appInfo:
         // `Navigator.of(context)` resolves the nearest navigator — the one that
-        // owns the shell's route — so the pushed screen lands inside the app and
-        // the bottom bar's own overlay is not disturbed. Left un-discarded
+        // owns the shell's route — so the pushed screen lands inside the app
+        // and the bottom bar's own overlay is not disturbed. Left un-discarded
         // because that is how every other push in `lib/ui/` writes it.
-        Navigator.of(context).push(
+        navigator.push(
           MaterialPageRoute<void>(builder: (_) => const AppInfoScreen()),
         );
       case _MenuAction.attribution:
-        _openAttribution(context);
+        _openAttribution(navigator, controller);
       case _MenuAction.theme:
         settings.setMode(value.themeMode!).ignore();
-      case _MenuAction.telegram:
-        openUrl(telegramContactUri).ignore();
     }
   }
 
@@ -175,11 +380,13 @@ class AppOverflowMenu extends StatelessWidget {
   /// attribution comes out of the dictionary's `meta` table, so the screen
   /// cannot be built until the dictionary is there; the read is awaited and
   /// the route is pushed when it answers.
-  Future<void> _openAttribution(BuildContext context) async {
-    final controller = context.read<DictionaryController>();
+  Future<void> _openAttribution(
+    NavigatorState navigator,
+    DictionaryController controller,
+  ) async {
     final attribution = await controller.attribution();
-    if (!context.mounted) return;
-    Navigator.of(context).push(
+    if (!navigator.mounted) return;
+    navigator.push(
       MaterialPageRoute<void>(
         builder: (_) => AttributionScreen(attribution: attribution),
       ),
@@ -190,44 +397,65 @@ class AppOverflowMenu extends StatelessWidget {
 /// A menu row: leading icon, label, and an optional check.
 ///
 /// One private widget for all three kinds, so the icon column and the gap are
-/// decided once. Three near-identical `Row`s inside one `itemBuilder` is how the
-/// Telegram row ends up with its icon 4px off the other two.
-class _Row extends StatelessWidget {
-  const _Row({
+/// decided once. Three near-identical `Row`s inside one `itemBuilder` is how
+/// the Telegram row used to end up with its icon 4px off the other two.
+class _MenuRow extends StatelessWidget {
+  const _MenuRow({
     required this.icon,
     required this.label,
+    required this.colour,
+    required this.onTap,
     this.checked = false,
   });
 
   final IconData icon;
   final String label;
 
+  /// The icon's colour: the brand's accent, as ink.
+  final Color colour;
+
   /// Draw the tick beside this row. Used by the theme rows only.
   final bool checked;
+
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Row(
-      children: <Widget>[
-        Icon(icon, size: 20, color: theme.colorScheme.onSurface),
-        const SizedBox(width: AppSpacing.m),
-        Expanded(
-          child: Text(label, style: theme.textTheme.bodyLarge),
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.m,
+          vertical: AppSpacing.s,
         ),
-        if (checked)
-          Icon(
-            Icons.check_circle,
-            size: 18,
-            // The brand's success token for this brightness, the same value the
-            // quiz draws its right-answer tick in. Read through the verdict
-            // extension rather than written as an `isDark ? … : …`, because
-            // `AppVerdictColors.correctBorder` already is that value and a second
-            // spelling of it is a second thing to keep right.
-            color: AppVerdictColors.of(context).correctBorder,
-          ),
-      ],
+        child: Row(
+          children: <Widget>[
+            Icon(icon, size: 20, color: colour),
+            const SizedBox(width: AppSpacing.m),
+            Expanded(
+              child: Text(
+                label,
+                style: theme.textTheme.bodyLarge,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (checked)
+              Icon(
+                Icons.check_circle,
+                size: 18,
+                // The brand's success token for this brightness, the same value the
+                // quiz draws its right-answer tick in. Read through the verdict
+                // extension rather than written as an `isDark ? … : …`, because
+                // `AppVerdictColors.correctBorder` already is that value and a
+                // second spelling of it is a second thing to keep right.
+                color: AppVerdictColors.of(context).correctBorder,
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

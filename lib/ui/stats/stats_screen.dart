@@ -399,7 +399,7 @@ class _AccuracyCard extends StatelessWidget {
     // Brand ink, never `AppColors.accent`: `design_tokens.dart` permits the
     // amber for icons and fills only, because its contrast against a near-white
     // background is too low for a number a user is meant to read.
-    final ink = isDark ? AppColors.primaryDark : AppColors.primaryLight;
+    final ink = AppColors.accentInk(isDark);
     final track = isDark ? AppColors.borderDark : AppColors.borderLight;
 
     return AppSurface(
@@ -464,7 +464,7 @@ class _StatTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final ink = isDark ? AppColors.primaryDark : AppColors.primaryLight;
+    final ink = AppColors.accentInk(isDark);
     final secondary =
         isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
 

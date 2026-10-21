@@ -585,25 +585,25 @@ void main() {
     expect(find.byType(AppSurface), findsWidgets);
   });
 
-  testWidgets('the progress fill is brand purple in light and amber in dark',
+  testWidgets('the progress fill is the brand gold in both modes',
       (tester) async {
     await pumpQuiz(tester);
 
-    // The artwork's own distinction: the light phone draws the progression under
-    // the heading in the primary purple, the dark one in the brand amber. The
-    // amber is a fill here, which is the one job `design_tokens.dart:44-46` gives
-    // it — never body text.
+    // **The identity changed: the primary is gold, not purple.** The purple
+    // `#885CF6` was the brand primary under Amendment 4; the navy-and-gold
+    // identity replaced it, and the gold is a FILL — which is the one job
+    // `design_tokens.dart` gives it, never body text. The progress fill is a
+    // fill, so it is the gold in both modes.
     //
-    // Both halves are asserted, and the light half is asserted as *two* facts,
-    // because `color: null` on its own would pass if the theme's primary were
-    // anything at all. `null` means "the theme paints it", so the theme's
-    // primary has to be checked separately — and it is `#885CF6` because of
-    // Amendment 4, not because Material seeded it.
+    // The light half is asserted as *two* facts, because a single one would
+    // pass if the theme's primary were anything at all: the fill must be the
+    // gold, and the theme's own primary must be the same gold — so a change
+    // to one without the other goes red.
     final fill = tester.widget<LinearProgressIndicator>(
       find.byType(LinearProgressIndicator),
     );
-    expect(fill.color, isNull);
-    expect(AppTheme.light().colorScheme.primary, const Color(0xFF885CF6));
+    expect(fill.color, AppColors.gold);
+    expect(AppTheme.light().colorScheme.primary, AppColors.gold);
 
     await tester.pumpWidget(
       _QuizApp(controller: controller, brightness: Brightness.dark),
@@ -614,9 +614,9 @@ void main() {
       tester.widget<LinearProgressIndicator>(
         find.byType(LinearProgressIndicator),
       ).color,
-      AppColors.accent,
+      AppColors.gold,
     );
-    expect(AppColors.accent, const Color(0xFFF59E0B));
+    expect(AppColors.gold, const Color(0xFFF3AC43));
   });
 
   testWidgets('the quiz screen survives a dark theme', (tester) async {

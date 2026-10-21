@@ -307,7 +307,6 @@ class _HomeShellState extends State<HomeShell> {
       ),
       MoreScreen(
         packKey: _activePackKey,
-        packTitle: _activePackTitle,
         onPackSelected: _selectPack,
       ),
     ];

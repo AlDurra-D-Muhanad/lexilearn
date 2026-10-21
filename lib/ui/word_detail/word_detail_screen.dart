@@ -51,7 +51,7 @@ class FavoriteButton extends StatelessWidget {
     // inherited theme. Putting it on the `Icon` states it where it is drawn, and
     // wins over the button's theme for the same reason.
     final colour = isFavorite
-        ? AppColors.accent
+        ? AppColors.accentInk(isDark)
         : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight);
     return IconButton(
       onPressed: onPressed,
@@ -227,7 +227,12 @@ class _HeadCard extends StatelessWidget {
               // `home_screen.dart`'s word-of-the-day card draws the same one.
               if (entry.phonetic.isNotEmpty) ...<Widget>[
                 const SizedBox(width: AppSpacing.s),
-                const Icon(Icons.volume_up_rounded, color: AppColors.accent),
+                Icon(
+                  Icons.volume_up_rounded,
+                  color: AppColors.accentInk(
+                    Theme.of(context).brightness == Brightness.dark,
+                  ),
+                ),
               ],
             ],
           ),

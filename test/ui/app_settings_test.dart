@@ -163,11 +163,17 @@ void main() {
   group('the Telegram entry', () {
     testWidgets('carries a Telegram icon and opens the chat',
         (tester) async {
-      // Item 5.
+      // Item 5, as the user ruled it: «اضف في قائمة الثلاث نقاط معلومات تواصل معي على
+      // تيلغرام» and then, in the later round, «ايضا ازل تواصل معي على تلغرام يكفي
+      // وجودها بالداخل مع معلومات التطبيق». So the Telegram row **moved out of the
+      // overflow menu and into the app-info screen**, and this test follows it there.
       await openOverflowMenu(tester);
+      await tester.tap(find.text(_appInfoLabel));
+      await settleDatabase(tester);
+      expect(find.byType(AppInfoScreen), findsOneWidget);
 
-      // The icon is beside the label, which is what "the menu has a Telegram
-      // entry with a Telegram icon" means in pixels.
+      // The icon is beside the label, which is what "a Telegram entry with a Telegram
+      // icon" means in pixels.
       final row = find.ancestor(
         of: find.text(_telegramLabel),
         matching: find.byType(Row),

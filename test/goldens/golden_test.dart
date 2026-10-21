@@ -158,6 +158,7 @@ void main() {
 
     await expectLater(
       find.byType(MaterialApp),
+      skip: 'platform-dependent; run locally with --update-goldens and inspect the PNG',
       matchesGoldenFile('goldens/home_shell_user_shot.png'),
       // Golden pixels depend on the platform's font rasteriser. Windows uses
       // Segoe UI, Linux CI uses Roboto, so a byte-identical match across the two
@@ -182,7 +183,6 @@ void main() {
       // **The image was regenerated on 2026-10-20**: the pack chip on this
       // screen shows the pack's *name* rather than its key, so the committed
       // PNG was stale until it was taken again.
-      skip: 'platform-dependent; run locally with --update-goldens and inspect the PNG',
     );
   });
 

@@ -443,7 +443,7 @@ void main() {
       final button =
           tester.widget<FilledButton>(find.widgetWithText(FilledButton, _knowIt));
       final style = button.style!;
-      expect(style.backgroundColor?.resolve(<WidgetState>{}), AppColors.primaryLight,
+      expect(style.backgroundColor?.resolve(<WidgetState>{}), AppColors.gold,
           reason: '§4ج: «أعرف (بنفسجي بالوضع الفاتح)»');
       expect(style.shape?.resolve(<WidgetState>{}), isA<StadiumBorder>(),
           reason: 'every action in the artwork is a full pill');
@@ -471,8 +471,8 @@ void main() {
 
       final style =
           tester.widget<FilledButton>(find.widgetWithText(FilledButton, _knowIt)).style!;
-      expect(style.backgroundColor?.resolve(<WidgetState>{}), AppColors.accent);
-      expect(style.backgroundColor?.resolve(<WidgetState>{}), isNot(AppColors.primaryDark));
+      expect(style.backgroundColor?.resolve(<WidgetState>{}), AppColors.gold);
+      expect(style.backgroundColor?.resolve(<WidgetState>{}), isNot(AppColors.textDark));
       // …and the label has to stay readable on it. `#F59E0B` at full strength
       // under the dark background's own light ink would be unreadable, so the
       // amber pill carries the *background* ink, not the text one.
@@ -487,7 +487,7 @@ void main() {
       final button =
           tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, _dontKnowIt));
       final style = button.style!;
-      expect(style.side?.resolve(<WidgetState>{})?.color, AppColors.primaryLight,
+      expect(style.side?.resolve(<WidgetState>{})?.color, AppColors.accentInk(false),
           reason: '§4ج: «زر لا أعرف (مفرغ بحواف خفيفة)» — outlined, in the ink');
       expect(style.backgroundColor, isNull,
           reason: 'an outlined button that declares a fill is not outlined');
@@ -504,8 +504,8 @@ void main() {
       final style = tester
           .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, _dontKnowIt))
           .style!;
-      expect(style.side?.resolve(<WidgetState>{})?.color, AppColors.accent);
-      expect(style.foregroundColor?.resolve(<WidgetState>{}), AppColors.accent);
+      expect(style.side?.resolve(<WidgetState>{})?.color, AppColors.accentInk(true));
+      expect(style.foregroundColor?.resolve(<WidgetState>{}), AppColors.accentInk(true));
     });
 
     testWidgets('both buttons are on screen at once, as the artwork draws them',
@@ -534,7 +534,7 @@ void main() {
       // §2's light palette assigns the primary to «الروابط», links.
       final style =
           tester.widget<TextButton>(find.widgetWithText(TextButton, _reveal)).style!;
-      expect(style.foregroundColor?.resolve(<WidgetState>{}), AppColors.primaryLight);
+      expect(style.foregroundColor?.resolve(<WidgetState>{}), AppColors.accentInk(false));
       expect(find.widgetWithText(FilledButton, _reveal), findsNothing);
       expect(find.widgetWithText(OutlinedButton, _reveal), findsNothing);
     });

@@ -21,79 +21,182 @@ class AppRadii {
   static const double pill = 999;
 }
 
+/// The brand palette: **navy and gold**.
+///
+/// **The authority is `docs/new-identity.md`, and the authority behind it is
+/// `C:\Users\user\Desktop\lexilearn notes\new theme.png`, sampled pixel by
+/// pixel.** Every hex below was read off that reference rather than chosen, and
+/// the two places where the reference and the prose disagree are recorded where
+/// the token is declared.
+///
+/// ## The one rule that shapes all of it
+///
+/// **The gold is a FILL, and the ink on it is dark.** The reference's
+/// "معرفة المعنى" button is a solid gold pill with near-black lettering, so
+/// the gold is never a text colour on a light surface — on `#F8F7F5` it
+/// measures **1.95 : 1**, a third of AA. Where the brand accent has to be
+/// *ink* rather than a fill, [accentInk] carries the rule: the gold in dark
+/// mode, the body ink in light mode.
 class AppColors {
   const AppColors._();
 
-  // Light mode
-  static const Color primaryLight = Color(0xFF885CF6);
+  // ---------------------------------------------------------------------------
+  // The gold — the brand primary, and one value in both modes.
+  // ---------------------------------------------------------------------------
+
+  /// **The brand primary: `#F3AC43`.**
+  ///
+  /// Sampled off the reference's "معرفة المعنى" button: the median over the
+  /// whole button is `#F3AD42` and the brightest pixel is `#FFD35F`; the
+  /// button's flat interior measures `#F2AD46` / `#F3AD47`.
+  ///
+  /// **One value in both modes.** The user's brief is "the light palette is
+  /// the same system inverted": the background and the surface invert, the
+  /// **primary does not**. The light mode's gold is the same gold.
+  ///
+  /// **Measured:** relative luminance **0.4897**, so it is **9.90 : 1** on the
+  /// navy background `#020E24` and **8.04 : 1** on the navy surface `#0E2344`.
+  /// On the light background `#F8F7F5` it is **1.95 : 1** — which is exactly
+  /// why [onGold] exists and why the gold is never a text colour in light
+  /// mode.
+  static const Color gold = Color(0xFFF3AC43);
+
+  /// **The ink drawn on [gold]: `#020E24`, the app's own darkest navy.**
+  ///
+  /// The reference's button lettering is black — the darkest pixels in the
+  /// button's text measure `#000012` … `#00001A`, i.e. black with the JPEG's
+  /// own ringing around it. **Pure black is not available here**, and the
+  /// reason is mechanical rather than aesthetic: `tool/golden_census.ps1`
+  /// fails any reference image that contains a `#000000` pixel, because that is
+  /// the exact colour a phantom Material keyline leaves behind. The app's
+  /// darkest navy is two channels away from black on the red channel and
+  /// **indistinguishable from it on a gold pill**, and it measures
+  /// **9.90 : 1** against the gold.
+  static const Color onGold = Color(0xFF020E24);
+
+  /// **The ink for a run of text — or an icon — that carries the accent.**
+  ///
+  /// **The rule that keeps the gold a fill, in one place.** In dark mode the
+  /// gold is legible as ink on the navy (**9.90 : 1** on the background,
+  /// **8.04 : 1** on the surface) and the reference draws exactly that — the
+  /// active tab's label is gold on navy. In light mode the same gold is
+  /// **1.95 : 1** on `#F8F7F5` and **1.95 : 1** on `#FFFFFF`, so the accent
+  /// ink there is the body ink instead.
+  ///
+  /// Every screen reads this rather than writing `isDark ? gold : textLight`
+  /// for itself, because that expression is the rule and the rule belongs in
+  /// one file.
+  static Color accentInk(bool isDark) => isDark ? gold : textLight;
+
+  // ---------------------------------------------------------------------------
+  // Light mode — the same system, inverted.
+  // ---------------------------------------------------------------------------
+
+  /// The page background, light: `#F8F7F5`. Unchanged by the new identity.
   static const Color backgroundLight = Color(0xFFF8F7F5);
+
+  /// The card and field surface, light: `#FFFFFF`. Unchanged.
   static const Color surfaceLight = Color(0xFFFFFFFF);
+
+  /// The body ink, light: `#1F2937`. Unchanged.
   static const Color textLight = Color(0xFF1F2937);
+
+  /// The muted ink, light: `#6B7280`. Unchanged.
   static const Color textSecondaryLight = Color(0xFF6B7280);
+
+  /// The hairline on a card, light: `#E5E7EB`. Unchanged.
   static const Color borderLight = Color(0xFFE5E7EB);
 
-  // Dark mode
-  static const Color primaryDark = Color(0xFFA78BFA);
-  static const Color backgroundDark = Color(0xFF0F172A);
-  static const Color surfaceDark = Color(0xFF1E293B);
-  static const Color textDark = Color(0xFFF9FAFB);
+  /// The outline on an input or a chip, light: `#E5E7EB`.
+  ///
+  /// **The same value as [borderLight], and that is the inversion.** In dark
+  /// mode the structure is a *blue* line on navy; inverted, it is a pale line
+  /// on white.
+  static const Color outlineLight = Color(0xFFE5E7EB);
+
+  // ---------------------------------------------------------------------------
+  // Dark mode — the measured navy system.
+  // ---------------------------------------------------------------------------
+
+  /// The page background, dark: **`#020E24`**.
+  ///
+  /// Sampled off the reference: the page reads `#041129` / `#031027` on the
+  /// left margin and `#010D24` at the very bottom.
+  static const Color backgroundDark = Color(0xFF020E24);
+
+  /// The card and field surface, dark: **`#0E2344`**.
+  ///
+  /// Sampled off the reference's search field, whose interior measures
+  /// `#0E2343` / `#0E2444` / `#0F2445`.
+  static const Color surfaceDark = Color(0xFF0E2344);
+
+  /// **The second surface, dark: `#071937`.**
+  ///
+  /// Sampled off the reference's word-of-the-day card, whose interior reads
+  /// `#041837` at the top and `#061B3C` at the bottom — the flat value of that
+  /// ramp is `#071937`. It is also the value the reference's tiles carry at
+  /// their lower edge.
+  static const Color surfaceDarkAlt = Color(0xFF071937);
+
+  /// The body ink, dark: **`#FFFFFF`**.
+  ///
+  /// The reference's text is white — the word "peony" measures `#F4F4F6` — and
+  /// the identity document names `#FFFFFF` and, for the title, `#FDFDFD`.
+  static const Color textDark = Color(0xFFFFFFFF);
+
+  /// The muted ink, dark: `#94A3B8`. Unchanged.
   static const Color textSecondaryDark = Color(0xFF94A3B8);
-  static const Color borderDark = Color(0xFF334155);
 
-  // Shared across both modes
-  /// The book mark and achievement accent. Icons and fills only — its contrast
-  /// against a near-white background is too low for body text.
+  /// **The hairline on a card, dark: `#17376A`.**
   ///
-  /// **This is also the artwork's pronunciation icon.** Measured off
-  /// `Memorize app theme and style.png`: the speaker beside the phonetic is
-  /// gold, and the brand's own palette in the same file names the accent
-  /// `#F59E0B`. The glyph renders lighter than the token because it is small
-  /// and antialiased over a dark photograph — the artwork's most saturated
-  /// pixel in it is `#FCCF3D` — but the colour it is drawn with is this one.
-  static const Color accent = Color(0xFFF59E0B);
+  /// Sampled off the reference: the word-of-the-day card's own outline reads
+  /// `#18386C` / `#163468` at its right edge, and a quick-launch tile's reads
+  /// `#1C396D` / `#18356A` at its left edge.
+  ///
+  /// **Where this differs from `docs/new-identity.md`, and why.** The document
+  /// records the border as `#061836`, "sampled where the blue border meets the
+  /// background". Measured off the same PNG, the border's own pixels are
+  /// `#17376A` and `#061836` is the *anti-aliased junction* where that border
+  /// meets the fill — a value **1.09 : 1** against `#020E24`, i.e. invisible.
+  /// The reference draws a visible blue outline, and the PNG outranks the
+  /// prose, so the token is the border's own colour. The number is recorded
+  /// here rather than left to be rediscovered.
+  static const Color borderDark = Color(0xFF17376A);
 
-  /// The translucent dark fill the artwork's "معرفة المعنى" button wears.
+  /// **The outline on an input or a chip, dark: `#31599B`.**
   ///
-  /// **45% of the app's darkest neutral**, `#0F172A`. The artwork draws that
-  /// button as a *translucent* pill with a thin light outline rather than an
-  /// opaque one, and the fill has to be dark for the white label to clear
-  /// 4.5:1 over the user's brightest photographs — measured: behind the button
-  /// the ink ramp already carries 0.60, and the label over a pure-white
-  /// photograph measures **4.74:1** with no fill of its own and **8.90:1**
-  /// with this one.
+  /// Sampled off the reference's search field, whose single-pixel outline
+  /// measures `#315690` at its top edge and `#31599B` / `#345CA7` at its left,
+  /// and off the pack chip, whose outline reads `#375DA7` / `#2F5492`.
   ///
-  /// **A note on the artwork's own button, because it is not a dark fill.**
-  /// Measured off `Memorize app theme and style.png`: the pill's interior
-  /// renders *lighter* than the photograph around it — in the light card the
-  /// photo outside the pill is at luminance 0.010..0.057 and the pill's
-  /// interior at 0.066..0.079, and in the dark card the photo outside is at
-  /// 0.010 and the interior at 0.022. The mock's button is a frosted pill. The
-  /// user's ruling is a **translucent dark** fill, and that is what ships; the
-  /// measurement is here so the difference is on the record rather than
-  /// discovered later.
-  static const Color photoButtonFill = Color(0x730F172A);
+  /// **A second blue, and the reference has one.** The card's hairline is
+  /// `#17376A` and the *field's* outline is this brighter `#31599B`; both are
+  /// structure rather than accent, and neither competes with the gold.
+  static const Color outlineDark = Color(0xFF31599B);
 
-  /// The thin light outline the artwork's "معرفة المعنى" button wears.
+  /// **The bottom bar, dark: `#06142C`.**
   ///
-  /// **70% white.** The outline in the artwork is a single light pixel on the
-  /// mock's 175 px card, which is 1.87 logical px on the 328 px card this app
-  /// draws; it is drawn here at [photoButtonOutlineWidth]. Measured off the
-  /// light card, the outline's brightest pixel is `#91AAB9` over a `#154F5A`
-  /// photograph, which is 53% of white.
-  static const Color photoButtonOutline = Color(0xB3FFFFFF);
+  /// Sampled off the reference's bottom bar: `#06142C` / `#06142D` throughout.
+  static const Color bottomBarDark = Color(0xFF06142C);
 
-  /// How thick the artwork's button outline is: **1.5 logical px**.
+  /// **The circle behind a tile's icon, dark: `#0C1E38`.**
   ///
-  /// The mock's card is 175 px wide and this app's card is 328 logical px
-  /// wide, so the mock is drawn at 0.5336 scale and its single-pixel
-  /// outline is 1.87 logical px here. Drawn a shade under that, because a
-  /// hairline at 1.87 px disappears into an antialiased stadium edge.
-  static const double photoButtonOutlineWidth = 1.5;
+  /// Sampled off the reference's tile badges: `#10213D` / `#0D1D37` around the
+  /// glyph.
+  static const Color iconBadgeDark = Color(0xFF0C1E38);
+
+  // ---------------------------------------------------------------------------
+  // The verdicts — unchanged, and deliberately so.
+  // ---------------------------------------------------------------------------
 
   static const Color successLight = Color(0xFF16A34A);
   static const Color successDark = Color(0xFF4ADE80);
   static const Color errorLight = Color(0xFFDC2626);
   static const Color errorDark = Color(0xFFF87171);
+
+  // ---------------------------------------------------------------------------
+  // The ink on a photograph.
+  // ---------------------------------------------------------------------------
 
   /// The ink the word-of-the-day card draws its text in — **white in both
   /// modes**.
@@ -109,6 +212,10 @@ class AppColors {
   /// **4.497:1** — 0.003 below AA — while the same word in white measures
   /// **4.70:1**. `#F9FAFB` is a token for text on the app's dark *surfaces*;
   /// this is text on a photograph, and it gets its own token.
+  ///
+  /// **It stays, and the new identity does not touch it.** The card keeps its
+  /// shape — the photograph full-bleed, the ramp, the shadow — so the text is
+  /// still on the photograph and still needs this ink.
   static const Color onPhoto = Color(0xFFFFFFFF);
 }
 
@@ -144,25 +251,25 @@ class AppShadows {
   /// reads about one mock pixel wide at the mock's 0.5336 scale, which is 1.87
   /// logical px here.
   ///
-  /// **The ink is `#0F172A` and not `#000000`**, and the reason is the same one
-  /// `WallpaperGradient.colour` gives: `#000000` is the exact colour
-  /// `tool/golden_census.ps1` fails a golden for, and a 70%-black shadow over a
-  /// photograph that happens to contain a pure-black pixel would composite to
-  /// pure black and put a forbidden colour into the reference images by the back
-  /// door. The two are visually indistinguishable over a photograph — 70% of
-  /// `#0F172A` is 70% of black to within two units of 255 — and the neutral
-  /// cannot produce a forbidden pixel.
+  /// **The ink is the app's darkest navy and not `#000000`**, and the reason is
+  /// the same one `WallpaperGradient.colour` gives: `#000000` is the exact
+  /// colour `tool/golden_census.ps1` fails a golden for, and a 70%-black
+  /// shadow over a photograph that happens to contain a pure-black pixel would
+  /// composite to pure black and put a forbidden colour into the reference
+  /// images by the back door. The two are visually indistinguishable over a
+  /// photograph — 70% of `#020E24` is 70% of black to within a few units of 255
+  /// — and the neutral cannot produce a forbidden pixel.
   ///
   /// **What a shadow cannot do, said plainly: it does not raise the WCAG
   /// ratio of the glyph's interior.** It softens the edge. The label on this
   /// card is white on a bright sky in the artwork too — the sky behind it runs
-  /// from 4.36:1 at its left end to 1.49:1 at the card's sunlit cloud — and
-  /// the artwork accepts a sub-AA ratio for that one small run of text — so
+  /// from 4.36:1 at its left end to 1.49:1 at the card's sunlit cloud — and the
+  /// artwork accepts a sub-AA ratio for that one small run of text — so
   /// this implementation does the same, and the number is in
   /// `test/ui/wallpaper_legibility_test.dart`.
   static const List<Shadow> onPhoto = <Shadow>[
     Shadow(
-      color: Color(0xB30F172A),
+      color: Color(0xB3020E24),
       blurRadius: 3,
       offset: Offset.zero,
     ),
@@ -204,8 +311,8 @@ class AppText {
 
   /// The display size on the Home screen's word-of-the-day card.
   ///
-  /// A word being *asked about* is the largest text on its screen, so this is the
-  /// one place in the app that needs a size above the Material body scale. Named
+  /// A word being *asked about* is the largest text on its screen, so this is
+  /// the one place in the app that needs a size above the Material body scale. Named
   /// here rather than written as a literal at the call site, so the card is not
   /// the sixth place in the app where a raw number appears.
   static const double wordOfTheDay = 28;

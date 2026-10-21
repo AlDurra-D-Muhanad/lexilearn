@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lexilearn/design/app_version.dart';
 import 'package:lexilearn/design/design_tokens.dart';
 import 'package:lexilearn/ui/link/external_link.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
@@ -12,7 +13,8 @@ const String _developerLabel = 'المطور';
 const String _offlineLabel = 'يعمل دون إنترنت';
 const String _offlineBody = 'لا يطلب التطبيق أي أذونات، ولا يتصل بأي خادم. '
     'كل بياناتك محفوظة على جهازك فقط.';
-const String _contactLabel = 'تواصل عبر تيلغرام';
+const String _versionLabel = 'الإصدار';
+const String _contactLabel = 'تواصل معي على تيلغرام';
 const String _contactBody = 'MUHANAD_D';
 
 /// The developer's name, as the user gave it.
@@ -50,7 +52,6 @@ class AppInfoScreen extends StatelessWidget {
     final secondary = isDark
         ? AppColors.textSecondaryDark
         : AppColors.textSecondaryLight;
-    final scheme = theme.colorScheme;
 
     // Read once, not per row: the launcher is a provider, and a `watch` would
     // rebuild this whole page if the seam were ever swapped.
@@ -77,11 +78,16 @@ class AppInfoScreen extends StatelessWidget {
                   // The name, in the app's Latin face: it is a brand mark, not a
                   // sentence, so `AppText.latinDisplay` rather than the ambient
                   // Arabic family — the same rule every pack key follows.
+                  //
+                  // **The accent ink, not the primary.** The primary is the
+                  // gold, and the gold is a *fill*: it measures 1.95 : 1 on the
+                  // light surface this name sits on, so light mode carries the
+                  // body ink here and dark mode carries the gold.
                   Text(
                     _appName,
                     textDirection: TextDirection.ltr,
                     style: AppText.latinDisplay
-                        .copyWith(color: scheme.primary, fontSize: 28),
+                        .copyWith(color: AppColors.accentInk(isDark), fontSize: 28),
                   ),
                   const SizedBox(height: AppSpacing.s),
                   Text(_whatItIs, style: theme.textTheme.bodyMedium),
@@ -100,6 +106,19 @@ class AppInfoScreen extends StatelessWidget {
                 _InfoRow(
                   label: _offlineLabel,
                   value: _offlineBody,
+                ),
+                // **The version, and it is not a string anybody wrote here.**
+                //
+                // `AppVersion.version` is a compile-time constant read out of
+                // the environment, and `tool/build.dart` fills that environment
+                // in from `pubspec.yaml`. So there is exactly one copy of the
+                // version — the manifest — and the screen cannot drift from it.
+                // `test/design/app_version_test.dart` reads the manifest off disk
+                // and fails if the two disagree.
+                _InfoRow(
+                  label: _versionLabel,
+                  value: AppVersion.version,
+                  latin: true,
                 ),
               ],
             ),
@@ -193,6 +212,7 @@ class _ContactCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Semantics(
       container: true,
@@ -208,7 +228,16 @@ class _ContactCard extends StatelessWidget {
               // The Telegram mark itself, because the user asked for a Telegram
               // icon and not a generic share glyph. `Icons.telegram` is the
               // brand's own paper-plane glyph in the Material set.
-              const Icon(Icons.telegram, color: AppColors.primaryLight, size: 28),
+              //
+              // **The accent ink, and the reason it is not the gold in light
+              // mode**: the gold measures 1.95 : 1 on this surface, and the
+              // icon is the one thing on the card the user has to be able to
+              // see.
+              Icon(
+                Icons.telegram,
+                color: AppColors.accentInk(isDark),
+                size: 28,
+              ),
               const SizedBox(width: AppSpacing.m),
               Expanded(
                 child: Column(

@@ -10,17 +10,26 @@ import '../helpers/test_env.dart';
 void main() {
   test('the colour scheme is the brand palette, not Material\'s tonal guess', () {
     // `ColorScheme.fromSeed` does not produce the brand's colours: seeding with
-    // `#885CF6` gives a primary of `#65558F`. Asserting `isNot(light, dark)`
-    // passed happily against that pair, which is why these are pinned by hex.
+    // the gold `#F3AC43` gives a `primaryContainer` of a pale sand. Asserting
+    // `isNot(light, dark)` passed happily against a dusty pair, which is why
+    // these are pinned by hex.
     final light = AppTheme.light().colorScheme;
     final dark = AppTheme.dark().colorScheme;
 
-    expect(light.primary, AppColors.primaryLight);
-    expect(dark.primary, AppColors.primaryDark);
-    expect(light.primary, isNot(dark.primary));
+    expect(light.primary, AppColors.gold);
+    expect(dark.primary, AppColors.gold);
+    // **The same gold in both brightnesses, and that is the new identity's own
+    // rule**: the light palette is the same system inverted and the primary
+    // does not invert. The old pair — a violet and a lilac — asserted the
+    // opposite, and the old test asserted they differed.
+    expect(light.primary, dark.primary);
 
-    expect(light.secondary, AppColors.primaryLight);
-    expect(dark.secondary, AppColors.primaryDark);
+    expect(light.secondary, AppColors.gold);
+    expect(dark.secondary, AppColors.gold);
+
+    // **The ink on the gold, which is what the primary is a fill of.**
+    expect(light.onPrimary, AppColors.onGold);
+    expect(dark.onPrimary, AppColors.onGold);
 
     expect(light.surface, AppColors.surfaceLight);
     expect(dark.surface, AppColors.surfaceDark);
@@ -39,7 +48,7 @@ void main() {
     expect(AppTheme.dark().useMaterial3, isTrue);
   });
 
-  test('light and dark themes use the two brand primaries', () {
+  test('both themes use the one brand primary, and the ink on it is dark', () {
     // The failure this replaces asserted only `isNot(light.primary,
     // dark.primary)`, which the pair `#65558F` / `#A78BFA` satisfied happily
     // while the whole app rendered the wrong purple. Both the primary and the
@@ -47,9 +56,10 @@ void main() {
     final light = AppTheme.light();
     final dark = AppTheme.dark();
 
-    expect(light.colorScheme.primary, AppColors.primaryLight);
-    expect(dark.colorScheme.primary, AppColors.primaryDark);
-    expect(light.colorScheme.primary, isNot(dark.colorScheme.primary));
+    expect(light.colorScheme.primary, AppColors.gold);
+    expect(dark.colorScheme.primary, AppColors.gold);
+    expect(light.colorScheme.onPrimary, AppColors.onGold);
+    expect(dark.colorScheme.onPrimary, AppColors.onGold);
 
     expect(light.textTheme.bodyMedium?.color, AppColors.textLight);
     expect(dark.textTheme.bodyMedium?.color, AppColors.textDark);
@@ -58,6 +68,27 @@ void main() {
 
     expect(light.scaffoldBackgroundColor, AppColors.backgroundLight);
     expect(dark.scaffoldBackgroundColor, AppColors.backgroundDark);
+  });
+
+  test('the bottom bar is the gold pill, the gold\'s ink and the gold label', () {
+    // **The active destination, as the identity document rule 6 has it**: the
+    // primary is a **fill** — the indicator pill — the icon on that pill is the
+    // gold's own ink so that it can be read, and the *label* is the gold on the
+    // bar's navy, which is what the reference draws.
+    for (final theme in <ThemeData>[AppTheme.light(), AppTheme.dark()]) {
+      final bar = theme.navigationBarTheme;
+      expect(bar.indicatorColor, AppColors.gold);
+
+      const selected = <WidgetState>{WidgetState.selected};
+      const unselected = <WidgetState>{};
+      expect(bar.iconTheme?.resolve(selected)?.color, AppColors.onGold);
+      expect(bar.labelTextStyle?.resolve(selected)?.color, AppColors.gold);
+      expect(bar.labelTextStyle?.resolve(unselected)?.color,
+          isNot(AppColors.gold));
+    }
+    // The bar's own colour, measured off the reference: `#06142C`.
+    expect(AppTheme.dark().navigationBarTheme.backgroundColor,
+        AppColors.bottomBarDark);
   });
 
   test('text roles are inked with the brand text colour, not a derived one', () {
@@ -221,7 +252,7 @@ void main() {
   });
 
   test('fromColorScheme is a pure function of the scheme', () {
-    final scheme = ColorScheme.fromSeed(seedColor: AppColors.primaryLight);
+    final scheme = ColorScheme.fromSeed(seedColor: AppColors.gold);
     expect(AppTheme.fromColorScheme(scheme).colorScheme.primary, scheme.primary);
   });
 
@@ -237,7 +268,7 @@ void main() {
       expect(theme.extension<AppVerdictColors>(), isNotNull);
     }
     expect(
-      AppTheme.fromColorScheme(ColorScheme.fromSeed(seedColor: AppColors.primaryLight))
+      AppTheme.fromColorScheme(ColorScheme.fromSeed(seedColor: AppColors.gold))
           .extension<AppVerdictColors>(),
       isNotNull,
       reason: 'the fromColorScheme caller installs it too',

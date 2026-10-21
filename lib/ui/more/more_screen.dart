@@ -90,7 +90,6 @@ class MoreScreen extends StatefulWidget {
   const MoreScreen({
     super.key,
     required this.packKey,
-    this.packTitle = '',
     required this.onPackSelected,
   });
 
@@ -98,13 +97,6 @@ class MoreScreen extends StatefulWidget {
   /// as active. Empty until `HomeShell` resolves it at start-up, and empty for
   /// good when nothing is installed.
   final String packKey;
-
-  /// The pack's **name**, for the pill above the pack list.
-  ///
-  /// **The name, never the key.** The key is `dictionary_en_ar` — an
-  /// identifier, and this pill is in front of the user. The shell resolves it
-  /// with the pack list it reads at start-up and hands it down.
-  final String packTitle;
 
   /// Switches the app's active pack.
   ///
@@ -327,7 +319,6 @@ class _MoreScreenState extends State<MoreScreen> {
               _PacksSection(
                 packs: _packs.packs,
                 activePackKey: widget.packKey,
-                activePackTitle: widget.packTitle,
                 busy: busy,
                 onSelected: _selectPack,
                 onDeleteRequested: (pack) => setState(
@@ -398,7 +389,7 @@ class _StatsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final ink = isDark ? AppColors.primaryDark : AppColors.primaryLight;
+    final ink = AppColors.accentInk(isDark);
     final secondary =
         isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
     final summary = controller.summary;
@@ -517,7 +508,7 @@ class _StatTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final ink = isDark ? AppColors.primaryDark : AppColors.primaryLight;
+    final ink = AppColors.accentInk(isDark);
     final secondary =
         isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
 
@@ -552,7 +543,6 @@ class _PacksSection extends StatelessWidget {
   const _PacksSection({
     required this.packs,
     required this.activePackKey,
-    required this.activePackTitle,
     required this.busy,
     required this.onSelected,
     required this.onDeleteRequested,
@@ -560,9 +550,6 @@ class _PacksSection extends StatelessWidget {
 
   final List<PackSummary> packs;
   final String activePackKey;
-
-  /// The active pack's display name, for the pill above the rows.
-  final String activePackTitle;
   final bool busy;
   final ValueChanged<String> onSelected;
   final ValueChanged<PackSummary> onDeleteRequested;
@@ -577,28 +564,24 @@ class _PacksSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: Text(_packsHeading, style: theme.textTheme.titleMedium),
-            ),
-            const SizedBox(width: AppSpacing.s),
-            // The active pack, named, and named **once**.
-            //
-            // `HomeShell` hands every destination the same key, and
-            // `test/ui/home_shell_test.dart` asserts each screen shows the
-            // pack - so this pill is the one place on this page the pack is
-            // named, and the rows below deliberately do not repeat it. It is
-            // also the reason the screen still identifies the pack while its
-            // list read is in flight: this string comes from a read of its
-            // own, the rows come from SQLite.
-            //
-            // **The pill may shrink**, for the same reason the home screen's
-            // does: a pack the user imported can have a name of any length,
-            // and the heading must not be pushed off the page by it.
-            Flexible(child: _ActivePackPill(title: activePackTitle)),
-          ],
-        ),
+        // **The heading, and nothing else beside it.**
+        //
+        // **The active pack used to be named here as well as in its own row,
+        // and the user reported it: «حزمة القاموس الشامل معروضة مرتين» — the
+        // Comprehensive Dictionary pack is shown twice.** The row is the one
+        // that was kept, and the reason is that the row is the *content*: the
+        // list of packs is what this section is, every pack in it is named
+        // there, and the active one is marked with a tick and the words
+        // «الحزمة الحالية». A section whose list named nothing would be a
+        // list of anonymous rows.
+        //
+        // The pill was the decoration, and it repeated the list's own first
+        // entry. It also carried the pack's name from a *second* read — the
+        // screen's own, beside the list's — which is a second source of the
+        // same fact, and the screen no longer takes that name at all: the
+        // `packTitle` parameter is gone, so there is nothing for it to drift
+        // from.
+        Text(_packsHeading, style: theme.textTheme.titleMedium),
         const SizedBox(height: AppSpacing.s),
         if (packs.isEmpty)
           // Not a spinner and not a zero. "No packs yet" and "reading the packs"
@@ -616,60 +599,6 @@ class _PacksSection extends StatelessWidget {
             const SizedBox(height: AppSpacing.s),
           ],
       ],
-    );
-  }
-}
-
-/// The pack the app is working on, in a pill, named.
-///
-/// The same widget `home_screen.dart` draws in its header, for the same reason:
-/// `HomeShell` resolves the active pack once and hands the same key to every
-/// destination, and naming it is what proves a screen is reading that state
-/// rather than standing still.
-///
-/// **The name, never the key.** A pack's key is an identifier
-/// (`dictionary_en_ar`, `english_ar_v1`) and this pill is in front of the user.
-class _ActivePackPill extends StatelessWidget {
-  const _ActivePackPill({required this.title});
-
-  /// The pack's display name, or the empty string while it is resolving.
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final secondary =
-        isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
-    // The name may be Arabic and it may be Latin, and the direction is the
-    // paragraph's - the same rule `_PackRow` applies to a pack's own title.
-    final isArabic = _writesArabic(title);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.s,
-        vertical: AppSpacing.xs,
-      ),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
-        borderRadius: BorderRadius.circular(AppRadii.pill),
-        border: Border.all(
-          color: isDark ? AppColors.borderDark : AppColors.borderLight,
-        ),
-      ),
-      child: Text(
-        // An empty title is the shell's start-up window rather than a missing
-        // pack, and the placeholder `MoreScreen` drew an em dash for it. Kept,
-        // so the two states stay distinguishable on screen.
-        title.isEmpty ? '—' : title,
-        textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
-        // One line, shortened rather than wrapped: the heading is beside it.
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: isArabic
-            ? theme.textTheme.bodySmall?.copyWith(color: secondary)
-            : AppText.latin.copyWith(fontSize: AppText.caption, color: secondary),
-      ),
     );
   }
 }
@@ -695,7 +624,7 @@ class _PackRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final ink = isDark ? AppColors.primaryDark : AppColors.primaryLight;
+    final ink = AppColors.accentInk(isDark);
     final secondary =
         isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
     final radius = BorderRadius.circular(AppRadii.md);

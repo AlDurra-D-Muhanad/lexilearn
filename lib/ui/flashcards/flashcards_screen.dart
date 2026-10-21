@@ -493,7 +493,7 @@ class _ProgressRow extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final secondary =
         isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
-    final fill = isDark ? AppColors.primaryDark : AppColors.primaryLight;
+    final fill = AppColors.accentInk(isDark);
     final track = isDark ? AppColors.borderDark : AppColors.borderLight;
 
     return Row(
@@ -676,7 +676,7 @@ class _Card extends StatelessWidget {
   /// amber in the dark one — the same purple→amber substitution §4ج states for
   /// «أعرف».
   static Color _speakerColour(bool isDark) =>
-      isDark ? AppColors.accent : AppColors.primaryLight;
+      AppColors.accentInk(isDark);
 }
 
 /// The card's header: **the user's own photograph**, at the artwork's
@@ -802,17 +802,17 @@ class _KnowItButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return SizedBox(
       height: _actionHeight,
       child: FilledButton(
         onPressed: onPressed,
         style: FilledButton.styleFrom(
-          backgroundColor: isDark ? AppColors.accent : AppColors.primaryLight,
-          // On the amber pill the readable ink is the *background* one, not the
-          // text one — `#F59E0B` under `#F9FAFB` would be unreadable.
-          foregroundColor:
-              isDark ? AppColors.backgroundDark : AppColors.surfaceLight,
+          // **The gold, as a fill, and the gold's own ink on it.** The primary
+          // is a fill in the new identity and the ink on it is the app's
+          // darkest navy — **9.90 : 1** in both modes, and the same gold in
+          // both, because the light palette is the same system inverted.
+          backgroundColor: AppColors.gold,
+          foregroundColor: AppColors.onGold,
           shape: const StadiumBorder(),
         ),
         child: const Text(_knowIt),
@@ -835,7 +835,7 @@ class _DontKnowItButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     // The same swap the affirmative button makes, so the pair reads as one set.
-    final ink = isDark ? AppColors.accent : AppColors.primaryLight;
+    final ink = AppColors.accentInk(isDark);
     return SizedBox(
       height: _actionHeight,
       child: OutlinedButton(
@@ -867,7 +867,7 @@ class _RevealLink extends StatelessWidget {
     // §2 assigns the primary to «الروابط», links, in the light palette. In the
     // dark phone the artwork draws this link in the plain light ink rather than
     // the amber the two buttons take, so it follows the ink and not the accent.
-    final colour = isDark ? AppColors.textDark : AppColors.primaryLight;
+    final colour = AppColors.accentInk(isDark);
     return TextButton(
       onPressed: onPressed,
       style: TextButton.styleFrom(foregroundColor: colour),
@@ -940,7 +940,7 @@ class _FinishedDeck extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final ink = isDark ? AppColors.primaryDark : AppColors.primaryLight;
+    final ink = AppColors.accentInk(isDark);
 
     return Center(
       child: Padding(

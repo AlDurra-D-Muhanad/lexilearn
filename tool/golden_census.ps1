@@ -273,83 +273,37 @@ $root = Split-Path -Parent $PSScriptRoot
 # Measured independently rather than read out of this script: a plain
 # `HashSet[string]` sweep over each committed PNG returns exactly these numbers.
 $ExpectedColourCount = [ordered]@{
-  'test/goldens/goldens/home_shell_user_shot.png'              = 2346
-  'test/goldens/goldens/stats_screen_user_shot_light.png'     = 1203
-  'test/goldens/goldens/stats_screen_user_shot_dark.png'      = 1243
-  'test/goldens/goldens/favorites_screen_user_shot_light.png' = 177
-  'test/goldens/goldens/favorites_screen_user_shot_dark.png'  = 190
-  'test/goldens/goldens/word_detail_user_shot_light.png'      = 361
-  'test/goldens/goldens/word_detail_user_shot_dark.png'       = 373
-  'test/goldens/goldens/flashcards_screen_user_shot_light.png' = 70058
-  'test/goldens/goldens/flashcards_screen_user_shot_dark.png'  = 71545
-  # The six quiz images, added with the images themselves. Numbers below are what
-  # the run that generated them printed; they are as rasteriser-dependent as the
-  # other nine and are maintained the same way - by reading the
-  # `distinct colours` line of a deliberate regeneration.
-  'test/goldens/goldens/quiz_screen_unanswered_user_shot_light.png' = 233
-  'test/goldens/goldens/quiz_screen_unanswered_user_shot_dark.png'  = 266
-  'test/goldens/goldens/quiz_screen_correct_user_shot_light.png'    = 781
-  'test/goldens/goldens/quiz_screen_correct_user_shot_dark.png'     = 785
-  'test/goldens/goldens/quiz_screen_wrong_user_shot_light.png'      = 1145
-  'test/goldens/goldens/quiz_screen_wrong_user_shot_dark.png'       = 1090
-  # **These four counts are orders of magnitude larger than every other baseline,
-  # and that is the photograph talking.** They are the four images that show one
-  # of the user's own photographs: ssets/wallpapers/ went into this app in
-  # Task 19c, and a 1080x540 photograph carries tens of thousands of distinct
-  # values where a flat brand surface carries two. Measured by a standalone
-  # HashSet[string] sweep over each committed PNG, deliberately NOT read out of
-  # this script's own run, so the baseline and the check stay two independent
-  # measurements.
-  #
-  # **They are still useful, and more so than the small ones.** The check catches
-  # a swapped or stale image whose histogram differs, and a flat-surface count of
-  # 569 can collide with another flat-surface count; 50,336 cannot. What they do
-  # NOT do is survive a legitimate regeneration on another rasteriser, which the
-  # note above $ExpectedColourCount already says: update these from the
-  # distinct colours line when you regenerate on purpose.
-  # The ten images added by the coverage audit, with their counts measured by a
-  # standalone HashSet sweep over each committed PNG - deliberately NOT read out
-  # of this script's own run, so the baseline and the check are two independent
-  # measurements rather than one number agreeing with itself.
-  #
-  # **The two Home counts moved on 2026-10-20, and the reason is the card.**
-  # The light one fell from 50,228 to 16,971 and the dark one rose from 20,637
-  # to 38,947. The scrim they replace held `#0F172A` at 0.60 across the top
-  # 58% and released to nothing at the bottom edge; the ramp that replaced it
-  # is zero on the top edge, reaches 0.60 at the word's band and HOLDS it to the
-  # bottom. So the card now carries ink over 74% of its height instead of 58%,
-  # and a 0.60 wash over a photograph quantises it to a fraction of its colours
-  # - the light image's count falls because more of it is washed than before, and
-  # the dark one's rises because the picture it shows has more colour in it to
-  # begin with. **The word's band carries exactly the same 0.60 it did**; the
-  # label's carries less, because the sky above it is now raw.
-  'test/goldens/goldens/home_screen_user_shot_light.png'            = 16971
-  'test/goldens/goldens/home_screen_user_shot_dark.png'             = 38947
-  'test/goldens/goldens/more_screen_user_shot_light.png'            = 627
-  'test/goldens/goldens/more_screen_user_shot_dark.png'             = 684
-  'test/goldens/goldens/quiz_setup_screen_user_shot_light.png'      = 461
-  'test/goldens/goldens/quiz_setup_screen_user_shot_dark.png'       = 529
-  'test/goldens/goldens/quiz_result_screen_user_shot_light.png'     = 337
-  'test/goldens/goldens/quiz_result_screen_user_shot_dark.png'      = 371
-  'test/goldens/goldens/app_info_screen_user_shot_light.png'        = 184
-  'test/goldens/goldens/app_info_screen_user_shot_dark.png'         = 210
-  # The dictionary's six images, measured by a standalone HashSet[string]
-  # sweep over each committed PNG - deliberately NOT read out of this
-  # script's own run, so the baseline and the check stay two independent
-  # measurements rather than one number agreeing with itself.
-  #
-  # **Two of them are the smallest counts in the table**, and that is the
-  # dictionary's word and attribution screens: a word screen is a headword,
-  # a phonetic transcription and a handful of senses, and the attribution
-  # screen is text and rules. The search screens carry the user's photograph
-  # and so carry tens of thousands of colours - the same reason the Home
-  # screens' counts are orders of magnitude larger than every other baseline.
-  'test/goldens/goldens/dictionary_search_user_shot_light.png'      = 661
-  'test/goldens/goldens/dictionary_search_user_shot_dark.png'       = 836
-  'test/goldens/goldens/dictionary_word_user_shot_light.png'        = 191
-  'test/goldens/goldens/dictionary_word_user_shot_dark.png'         = 202
-  'test/goldens/goldens/attribution_screen_user_shot_light.png'     = 191
-  'test/goldens/goldens/attribution_screen_user_shot_dark.png'      = 199
+  'test/goldens/goldens/app_info_screen_user_shot_dark.png'                 = 210
+  'test/goldens/goldens/app_info_screen_user_shot_light.png'                = 170
+  'test/goldens/goldens/attribution_screen_user_shot_dark.png'              = 214
+  'test/goldens/goldens/attribution_screen_user_shot_light.png'             = 192
+  'test/goldens/goldens/dictionary_search_user_shot_dark.png'               = 1276
+  'test/goldens/goldens/dictionary_search_user_shot_light.png'              = 764
+  'test/goldens/goldens/dictionary_word_user_shot_dark.png'                 = 216
+  'test/goldens/goldens/dictionary_word_user_shot_light.png'                = 175
+  'test/goldens/goldens/favorites_screen_user_shot_dark.png'                = 204
+  'test/goldens/goldens/favorites_screen_user_shot_light.png'               = 161
+  'test/goldens/goldens/flashcards_screen_user_shot_dark.png'               = 71584
+  'test/goldens/goldens/flashcards_screen_user_shot_light.png'              = 70248
+  'test/goldens/goldens/home_screen_user_shot_dark.png'                     = 39105
+  'test/goldens/goldens/home_screen_user_shot_light.png'                    = 15318
+  'test/goldens/goldens/home_shell_user_shot.png'                           = 1864
+  'test/goldens/goldens/more_screen_user_shot_dark.png'                     = 784
+  'test/goldens/goldens/more_screen_user_shot_light.png'                    = 683
+  'test/goldens/goldens/quiz_result_screen_user_shot_dark.png'              = 385
+  'test/goldens/goldens/quiz_result_screen_user_shot_light.png'             = 349
+  'test/goldens/goldens/quiz_screen_correct_user_shot_dark.png'             = 767
+  'test/goldens/goldens/quiz_screen_correct_user_shot_light.png'            = 820
+  'test/goldens/goldens/quiz_screen_unanswered_user_shot_dark.png'          = 291
+  'test/goldens/goldens/quiz_screen_unanswered_user_shot_light.png'         = 233
+  'test/goldens/goldens/quiz_screen_wrong_user_shot_dark.png'               = 1108
+  'test/goldens/goldens/quiz_screen_wrong_user_shot_light.png'              = 1157
+  'test/goldens/goldens/quiz_setup_screen_user_shot_dark.png'               = 872
+  'test/goldens/goldens/quiz_setup_screen_user_shot_light.png'              = 536
+  'test/goldens/goldens/stats_screen_user_shot_dark.png'                    = 1290
+  'test/goldens/goldens/stats_screen_user_shot_light.png'                   = 1228
+  'test/goldens/goldens/word_detail_user_shot_dark.png'                     = 529
+  'test/goldens/goldens/word_detail_user_shot_light.png'                    = 349
 }
 
 # --- the dominant-colour baseline ------------------------------------------------
@@ -383,37 +337,37 @@ $ExpectedColourCount = [ordered]@{
 # to the pixel checks - the git staleness proxy below is the only thing that
 # sees an uncommitted rewrite.
 $ExpectedDominantCount = [ordered]@{
-  'test/goldens/goldens/home_shell_user_shot.png'                = 1080140
-  'test/goldens/goldens/stats_screen_user_shot_light.png'         = 1270125
-  'test/goldens/goldens/stats_screen_user_shot_dark.png'          = 1270125
-  'test/goldens/goldens/favorites_screen_user_shot_light.png'     = 1889635
-  'test/goldens/goldens/favorites_screen_user_shot_dark.png'      = 1913231
-  'test/goldens/goldens/word_detail_user_shot_light.png'          = 1227391
-  'test/goldens/goldens/word_detail_user_shot_dark.png'           = 1265044
-  'test/goldens/goldens/flashcards_screen_user_shot_light.png'     = 921575
-  'test/goldens/goldens/flashcards_screen_user_shot_dark.png'      = 945853
-  'test/goldens/goldens/quiz_screen_unanswered_user_shot_light.png' = 1278082
-  'test/goldens/goldens/quiz_screen_unanswered_user_shot_dark.png'  = 1337070
-  'test/goldens/goldens/quiz_screen_correct_user_shot_light.png'    = 1167703
-  'test/goldens/goldens/quiz_screen_correct_user_shot_dark.png'     = 1227236
-  'test/goldens/goldens/quiz_screen_wrong_user_shot_light.png'      = 1161793
-  'test/goldens/goldens/quiz_screen_wrong_user_shot_dark.png'       = 1221325
-  'test/goldens/goldens/home_screen_user_shot_light.png'            = 1080140
-  'test/goldens/goldens/home_screen_user_shot_dark.png'             = 1079706
-  'test/goldens/goldens/more_screen_user_shot_light.png'            = 1782275
-  'test/goldens/goldens/more_screen_user_shot_dark.png'             = 1795590
-  'test/goldens/goldens/quiz_setup_screen_user_shot_light.png'      = 1767661
-  'test/goldens/goldens/quiz_setup_screen_user_shot_dark.png'       = 1768904
-  'test/goldens/goldens/quiz_result_screen_user_shot_light.png'     = 2092810
-  'test/goldens/goldens/quiz_result_screen_user_shot_dark.png'      = 2100071
-  'test/goldens/goldens/app_info_screen_user_shot_light.png'        = 1466611
-  'test/goldens/goldens/app_info_screen_user_shot_dark.png'         = 1502005
-  'test/goldens/goldens/dictionary_search_user_shot_light.png'      = 2051106
-  'test/goldens/goldens/dictionary_search_user_shot_dark.png'       = 2051092
-  'test/goldens/goldens/dictionary_word_user_shot_light.png'        = 1766343
-  'test/goldens/goldens/dictionary_word_user_shot_dark.png'         = 1766343
-  'test/goldens/goldens/attribution_screen_user_shot_light.png'     = 1611901
-  'test/goldens/goldens/attribution_screen_user_shot_dark.png'      = 1611901
+  'test/goldens/goldens/app_info_screen_user_shot_dark.png'                 = 1395730
+  'test/goldens/goldens/app_info_screen_user_shot_light.png'                = 1360339
+  'test/goldens/goldens/attribution_screen_user_shot_dark.png'              = 1611891
+  'test/goldens/goldens/attribution_screen_user_shot_light.png'             = 1611901
+  'test/goldens/goldens/dictionary_search_user_shot_dark.png'               = 2052616
+  'test/goldens/goldens/dictionary_search_user_shot_light.png'              = 2058429
+  'test/goldens/goldens/dictionary_word_user_shot_dark.png'                 = 1766339
+  'test/goldens/goldens/dictionary_word_user_shot_light.png'                = 1766343
+  'test/goldens/goldens/favorites_screen_user_shot_dark.png'                = 1913229
+  'test/goldens/goldens/favorites_screen_user_shot_light.png'               = 1889635
+  'test/goldens/goldens/flashcards_screen_user_shot_dark.png'               = 947652
+  'test/goldens/goldens/flashcards_screen_user_shot_light.png'              = 921575
+  'test/goldens/goldens/home_screen_user_shot_dark.png'                     = 803196
+  'test/goldens/goldens/home_screen_user_shot_light.png'                    = 1020191
+  'test/goldens/goldens/home_shell_user_shot.png'                           = 1020191
+  'test/goldens/goldens/more_screen_user_shot_dark.png'                     = 1802169
+  'test/goldens/goldens/more_screen_user_shot_light.png'                    = 1787548
+  'test/goldens/goldens/quiz_result_screen_user_shot_dark.png'              = 2100067
+  'test/goldens/goldens/quiz_result_screen_user_shot_light.png'             = 2092810
+  'test/goldens/goldens/quiz_screen_correct_user_shot_dark.png'             = 1227232
+  'test/goldens/goldens/quiz_screen_correct_user_shot_light.png'            = 1167698
+  'test/goldens/goldens/quiz_screen_unanswered_user_shot_dark.png'          = 1337065
+  'test/goldens/goldens/quiz_screen_unanswered_user_shot_light.png'         = 1278082
+  'test/goldens/goldens/quiz_screen_wrong_user_shot_dark.png'               = 1221322
+  'test/goldens/goldens/quiz_screen_wrong_user_shot_light.png'              = 1161793
+  'test/goldens/goldens/quiz_setup_screen_user_shot_dark.png'               = 1771355
+  'test/goldens/goldens/quiz_setup_screen_user_shot_light.png'              = 1767661
+  'test/goldens/goldens/stats_screen_user_shot_dark.png'                    = 1270090
+  'test/goldens/goldens/stats_screen_user_shot_light.png'                   = 1270125
+  'test/goldens/goldens/word_detail_user_shot_dark.png'                     = 1265041
+  'test/goldens/goldens/word_detail_user_shot_light.png'                    = 1227391
 }
 
 # The one directory the default list is allowed to cover.
@@ -582,17 +536,22 @@ foreach ($relative in $ImagePath) {
 
     # --- mode, then the ink that mode is supposed to be rendering ---------------
     $lightBg = Count-Of 'F8F7F5'
-    $darkBg = Count-Of '0F172A'
+    $darkBg = Count-Of '020E24'
     $mode = 'unidentified'
-    if ($lightBg -gt 0 -and $darkBg -eq 0) {
+    # **The mode is whichever background DOMINATES, not whichever is absent.**
+    # The navy #020E24 is the dark background *and* the ink on the gold button,
+    # so it appears in a light render too -- 1,558 px of it -- and the old
+    # "exactly one of them must be 0" test could not tell the two apart. The
+    # dominant one is the background: the other is a minority of the pixels.
+    if ($lightBg -gt 0 -and $lightBg -gt ($darkBg * 10)) {
       $mode = 'light'
-    } elseif ($darkBg -gt 0 -and $lightBg -eq 0) {
+    } elseif ($darkBg -gt 0 -and $darkBg -gt ($lightBg * 10)) {
       $mode = 'dark'
     } else {
-      $failures += "mode is not identifiable: #F8F7F5 is $lightBg px and #0F172A is $darkBg px (expected exactly one to be 0)"
+      $failures += "mode is not identifiable: #F8F7F5 is $lightBg px and #020E24 is $darkBg px (one must dominate the other by 10x)"
     }
 
-    $expectedInk = if ($mode -eq 'dark') { 'F9FAFB' } else { '1F2937' }
+    $expectedInk = if ($mode -eq 'dark') { 'FFFFFF' } else { '1F2937' }
     $ink = Count-Of $expectedInk
     if ($mode -ne 'unidentified' -and $ink -le 0) {
       $failures += "#$expectedInk is absent, the $mode text ink is not rendering"

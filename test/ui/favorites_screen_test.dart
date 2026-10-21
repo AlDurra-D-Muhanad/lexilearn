@@ -529,14 +529,14 @@ void main() {
       expect(
         tester.widget<Icon>(find.descendant(
             of: rowHeart(_alpha), matching: find.byType(Icon))).color,
-        AppColors.accent,
+        AppColors.accentInk(false),
       );
       expect(find.byIcon(Icons.favorite_border), findsNothing);
 
       // …and nothing the user *reads* is in it.
       final amberTexts = find.byWidgetPredicate(
-        (widget) => widget is Text && widget.style?.color == AppColors.accent,
-        description: 'a Text painted in the accent',
+        (widget) => widget is Text && widget.style?.color == AppColors.gold,
+        description: 'a Text painted in the gold',
       );
       expect(amberTexts, findsNothing);
     });

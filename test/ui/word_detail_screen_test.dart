@@ -325,7 +325,7 @@ void main() {
       // scope by user decision, so it is an `Icon` and not a button: no tap
       // target, nothing that could start playback.
       final glyph = tester.widget<Icon>(find.byIcon(Icons.volume_up_rounded));
-      expect(glyph.color, AppColors.accent);
+      expect(glyph.color, AppColors.accentInk(false));
       expect(glyph.semanticLabel, isNull);
       expect(
         find.ancestor(
@@ -362,7 +362,7 @@ void main() {
       expect(
         tester.widget<Icon>(find.descendant(
             of: find.byType(FavoriteButton), matching: find.byType(Icon))).color,
-        AppColors.accent,
+        AppColors.accentInk(false),
       );
     });
 
@@ -404,8 +404,8 @@ void main() {
       // Checked over every `Text` on screen rather than over a handful, so
       // recolouring one role cannot slip past it.
       final amberTexts = find.byWidgetPredicate(
-        (widget) => widget is Text && widget.style?.color == AppColors.accent,
-        description: 'a Text painted in the accent',
+        (widget) => widget is Text && widget.style?.color == AppColors.gold,
+        description: 'a Text painted in the gold',
       );
       expect(amberTexts, findsNothing);
     });

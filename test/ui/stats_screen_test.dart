@@ -463,8 +463,8 @@ void main() {
       await _pumpStats(tester, harness.repository);
 
       final style = tester.widget<Text>(inStats('100%')).style;
-      expect(style?.color, AppColors.primaryLight);
-      expect(style?.color, isNot(AppColors.accent));
+      expect(style?.color, AppColors.accentInk(false));
+      expect(style?.color, isNot(AppColors.gold));
       expect(style?.fontFamily, 'Inter',
           reason: 'a numeral run names the brand Latin explicitly');
     });

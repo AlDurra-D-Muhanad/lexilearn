@@ -178,6 +178,16 @@ class _HomeScreenState extends State<HomeScreen> {
   /// thing typed.
   List<VocabEntry> _entries = const <VocabEntry>[];
 
+  /// The repository, held so the dictionary's arrival can be noticed.
+  ///
+  /// **Read once, in `initState`, for the reason `context.read` is safe there.**
+  late final VocabRepository _repository;
+
+  /// Whether the pack has been read since the dictionary became readable.
+  ///
+  /// **The flag that makes the re-read happen exactly once.**
+  bool _readTheReadyPack = false;
+
   @override
   void initState() {
     super.initState();
@@ -185,6 +195,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ..addListener(_onSearchChanged);
     // `context.read` is safe in `initState` — it does not subscribe — which is
     // the same reason the repository is read there.
+    _repository = context.read<VocabRepository>();
     _dictionary = context.read<DictionaryController>();
     _dictionary.addListener(_onDictionaryChanged);
     _syncDictionarySearch();
@@ -233,7 +244,50 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onDictionaryChanged() {
     if (!mounted) return;
     _syncDictionarySearch();
+    _reloadIfThePackBecameReadable();
     setState(() {});
+  }
+
+  /// Re-reads the pack when the dictionary's engine has arrived.
+  ///
+  /// **The defect this closes, and the shape of it.**
+  ///
+  /// The dictionary is copied onto the device **off the UI path**: 26 MB, on
+  /// first launch, while the app is already on screen. Until that copy lands,
+  /// the dictionary pack has **no readable words at all** — `VocabRepository
+  /// .entries` answers the dictionary's key with an empty list while the
+  /// repository holds no engine — so the word of the day has nothing to pick
+  /// and the card is simply not drawn.
+  ///
+  /// **The read that filled `_entries` happened in `initState`, before the copy
+  /// finished, and nothing read the pack again.** The user reported exactly
+  /// that: «بطاقة كلمة اليوم لا تظهر الا بعد الانتقال الى واجهة اخرى ثم
+  /// العودة الى الرئيسية» — the card appeared only after leaving the screen and
+  /// coming back, because *coming back* is what built a new `State` and ran a
+  /// new `initState`, and by then the copy was done.
+  ///
+  /// **Why the shell's own listener could not carry it.** `HomeShell` listens
+  /// to the same controller and switches the active pack to the dictionary when
+  /// it becomes ready — but only when the active key is *not already* the
+  /// dictionary's. On a device where the dictionary's row is already in the
+  /// pack table (which is what `ensureDictionaryPack` puts there), the shell
+  /// changes nothing, `HomeScreen.didUpdateWidget` never fires, and no read
+  /// is issued. The signal has to be the dictionary's own arrival, and the
+  /// screen has to hear it.
+  ///
+  /// **The gate is the repository, not the controller.** The screen asks
+  /// "can the pack be read now?", and the answer is the repository's: the
+  /// engine is attached to it *before* the controller notifies
+  /// (`DictionaryController.start` attaches, then notifies), so the two agree in
+  /// the app — and the repository is the thing the read actually depends on.
+  /// **Once, and only once.** The controller notifies on every progress tick
+  /// of the copy, so the flag is what stops a 26 MB download from becoming a
+  /// hundred database reads.
+  void _reloadIfThePackBecameReadable() {
+    if (_readTheReadyPack) return;
+    if (_repository.dictionary == null) return;
+    _readTheReadyPack = true;
+    _loadPack(widget.packKey);
   }
 
   @override
@@ -687,8 +741,13 @@ class _PackPill extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
         borderRadius: BorderRadius.circular(AppRadii.pill),
+        // **The structure blue, and the rule the identity document states:**
+        // the blue is structure rather than accent — the pack chip's outline is
+        // one of the three places it is used, beside the card borders and the
+        // search field's outline. In light mode the same role is the pale
+        // grey, which is the same system inverted.
         border: Border.all(
-          color: isDark ? AppColors.borderDark : AppColors.borderLight,
+          color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
         ),
       ),
       child: Text(
@@ -708,24 +767,33 @@ class _PackPill extends StatelessWidget {
   }
 }
 
-/// The amber book mark, on the circle the artwork draws it in.
+/// The book mark, on the circle the artwork draws it in.
+///
+/// **The reference's mark: a gold ring around a dark disc, with the gold book
+/// inside it.** The ring is measured off the reference's own header, where the
+/// circle's outline is the brand's gold and its interior is the app's darkest
+/// disc.
 class _BookMark extends StatelessWidget {
   const _BookMark();
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // The gold is an *ink* here, and light mode cannot carry it as one: the
+    // mark sits on the page background, and the gold measures 1.95 : 1 on the
+    // light background. `AppColors.accentInk` is the rule.
+    final ink = AppColors.accentInk(isDark);
     return Container(
       width: 40,
       height: 40,
       decoration: BoxDecoration(
-        // The artwork's amber circle at its own tint: the accent is too light to
-        // fill a large disc without shouting, which is why it is a wash here and
-        // the full-strength amber only on the glyph.
-        color: AppColors.accent.withValues(alpha: isDark ? 0.24 : 0.16),
+        // The disc the reference draws the mark on: the icon badge's own
+        // colour, a step below the surface in both modes.
+        color: isDark ? AppColors.iconBadgeDark : AppColors.backgroundLight,
         shape: BoxShape.circle,
+        border: Border.all(color: ink, width: 1.5),
       ),
-      child: const Icon(Icons.menu_book_rounded, color: AppColors.accent, size: 22),
+      child: Icon(Icons.menu_book_rounded, color: ink, size: 22),
     );
   }
 }
@@ -793,11 +861,20 @@ class _SearchField extends StatelessWidget {
 
 /// The word-of-the-day card.
 ///
-/// **The brand fills it with the primary colour and the artwork fills it with a
-/// photograph, and the photograph is now the user's own file.** So the card
-/// keeps `AppSurface`'s `fill` as the colour *underneath* the picture — the
-/// frame before the first decode, and the fill if a photograph ever fails to
-/// load — and the label, the term and the phonetic sit on top of it.
+/// **The brand fills it with a photograph, and the photograph is the user's own
+/// file.** So the card keeps `AppSurface`'s `fill` as the colour *underneath*
+/// the picture — the frame before the first decode, and the fill if a
+/// photograph ever fails to load — and the label, the term and the phonetic
+/// sit on top of it.
+///
+/// **The card keeps its shape, and that is the user's ruling.** The reference
+/// image shows a split card — photograph on one side, text on the other — and
+/// the user refused it: «بطاقة اليوم ليست نصفان ابقها كما هي ابق التدرج و الظل»
+/// — the card is not two halves; leave it as it is, keep the ramp and the
+/// shadow. So the photograph stays **full-bleed**, the ramp stays, and the
+/// text stays **on** the photograph. `docs/new-identity.md` rule 4 says so,
+/// and `lib/ui/wallpaper/wallpaper_gradient.dart` and `AppShadows.onPhoto`
+/// are therefore **not** dead code.
 ///
 /// **Every surface on this screen is still an `AppSurface`, and this one
 /// included.** The photograph is a child, not a replacement: it goes in a
@@ -819,11 +896,6 @@ class _SearchField extends StatelessWidget {
 /// the pixels of all thirteen photographs rather than chosen by eye, and
 /// `test/ui/wallpaper_legibility_test.dart` re-measures it every run.
 ///
-/// **The scrim this replaced is gone.** It held `#0F172A` at 0.60 across the
-/// **top 58%** of the card and released to nothing below it, which is the
-/// opposite of the user's ruling — "a gradient that dims the bottom gradually,
-/// chosen over a hard scrim" — and it flattened the sky to a navy band.
-///
 /// **What the ramp does to the photograph's own contrast, measured rather than
 /// claimed.** Sampled in the card's left half, where the right-aligned text
 /// never reaches, against the same photograph before and after:
@@ -835,14 +907,12 @@ class _SearchField extends StatelessWidget {
 /// | the phonetic | 0.213 | 15% | 15% |
 /// | the button | 0.448 | 53% | **16%** |
 ///
-/// So the word's band is compressed **exactly as much as it was** — the peak
-/// had to be 0.60 for the white ink to clear AA over a pure-white photograph,
-/// and that is not negotiable. What the ramp buys is the **label** and the
-/// **top quarter**, which the scrim had flattened; what it costs is the
-/// **button and the bottom third**, which is what "a gradient that dims the
-/// bottom gradually" asks for. The artwork draws **no overlay at all**: raw
-/// photograph, a soft dark shadow behind the text, a translucent button and an
-/// amber speaker.
+/// **What the new identity changes here is the colour and nothing else.** The
+/// speaker is the gold, and the button is the gold — a solid gold pill with
+/// the app's darkest ink on it, which measures **9.90 : 1** whatever is behind
+/// it, where the old translucent pill had to be solved against the user's
+/// brightest photographs. The ramp and the shadow are untouched, and the ink
+/// on the photograph is still white in both modes.
 class _WordOfTheDayCard extends StatelessWidget {
   const _WordOfTheDayCard({
     required this.entry,
@@ -863,16 +933,19 @@ class _WordOfTheDayCard extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     // **White in both modes**, and the artwork is the reason: its light card
     // draws "serenity" in white and its dark card draws "ambition" in white.
-    // The app's dark *body* ink `#F9FAFB` is 3.3% the weaker over the same
-    // photograph, and that put the word over one of the user's photographs at
-    // 4.497:1 — 0.003 below AA. See `AppColors.onPhoto`.
+    // The text still sits on the photograph, and the photograph does not change
+    // with the phone's theme. See `AppColors.onPhoto`.
     final onFill = AppColors.onPhoto;
-    final fill = isDark ? AppColors.surfaceDark : AppColors.primaryLight;
+    // **The frame under the photograph.** The second navy surface in dark mode
+    // — the reference's own card interior — and the page background in light
+    // mode, which is the same system inverted: a step below the surface.
+    final fill =
+        isDark ? AppColors.surfaceDarkAlt : AppColors.backgroundLight;
 
     return AppSurface(
       fill: fill,
       // The card's own padding moves onto the column, because the photograph
-      // and the scrim have to reach the card's edges for either of them to be
+      // and the ramp have to reach the card's edges for either of them to be
       // worth having.
       padding: EdgeInsets.zero,
       child: ClipRRect(
@@ -937,8 +1010,14 @@ class _WordOfTheDayCard extends StatelessWidget {
               ),
               // Static, never played: text-to-speech is out of scope by user
               // decision, so the artwork's speaker is a glyph and not a control.
+              //
+              // **The gold, and the gold is an accent rather than a text
+              // colour**: it is the same gold the reference draws its speaker
+              // in, and it sits on the ramp, which is the app's own darkest
+              // navy at 0.60 — so it is legible over every one of the thirteen
+              // photographs in both modes.
               const SizedBox(width: AppSpacing.s),
-              const Icon(Icons.volume_up_rounded, color: AppColors.accent),
+              const Icon(Icons.volume_up_rounded, color: AppColors.gold),
             ],
           ),
           if (entry.phonetic.isNotEmpty)
@@ -957,44 +1036,45 @@ class _WordOfTheDayCard extends StatelessWidget {
             child: ElevatedButton(
               onPressed: () => onOpenWord(entry),
               style: ElevatedButton.styleFrom(
-                // **The artwork's button: a translucent dark pill with a thin
-                // light outline**, not an opaque amber one. The fill carries
-                // 45% of the app's darkest neutral and the rim is 70% white,
-                // both measured against the artwork and against the user's own
-                // brightest photographs — see `design_tokens.dart`.
-                backgroundColor: AppColors.photoButtonFill,
-                foregroundColor: AppColors.onPhoto,
-                side: const BorderSide(
-                  color: AppColors.photoButtonOutline,
-                  width: AppColors.photoButtonOutlineWidth,
-                ),
+                // **The gold button, and the reference's own.** The artwork's
+                // "معرفة المعنى" is a solid gold pill with near-black
+                // lettering, and the new identity makes that the app's button:
+                // the primary is a **fill**, and the ink on it is the darkest
+                // ink in the app.
+                //
+                // **The old translucent dark pill is gone, and the reason it
+                // existed is gone with it.** It carried 45% of the app's
+                // darkest neutral so that a *white* label could clear 4.5:1
+                // over the user's brightest photographs; the gold needs
+                // neither, because its fill is opaque and its ink measures
+                // **9.90 : 1** against it whatever is behind the pill.
+                backgroundColor: AppColors.gold,
+                foregroundColor: AppColors.onGold,
                 shape: const StadiumBorder(),
                 // `ElevatedButton` is the one Material 3 family that rests at
                 // elevation **1.0** (`elevated_button.dart:570-585`), and that
                 // is the same `canvas.drawShadow` defect the cards used to have:
-                // the test rasteriser strokes it as an opaque black keyline around
-                // the pill, 2,363 pixels of them the last time it was measured.
-                // The translucent fill carries the button on its own.
+                // the test rasteriser strokes it as an opaque black keyline
+                // around the pill, 2,363 pixels of them the last time it was
+                // measured. The solid fill carries the button on its own.
                 //
                 // **`app_theme.dart` now zeroes `elevatedButtonTheme` too**, so
                 // this local line is redundant for *this* build and the comment
                 // above used to be stale about why. It is kept because it is the
-                // call site that pays for the amber pill specifically, and because
-                // standards §3 of `docs/engineering-standards.md` — "a rule without
-                // an incident gets simplified away" — says a local opt-out with
-                // the incident written next to it is what stops the next person
-                // deleting it as dead code. Pinned by
+                // call site that pays for the gold pill specifically, and
+                // because standards §3 of `docs/engineering-standards.md` — "a
+                // rule without an incident gets simplified away" — says a local
+                // opt-out with the incident written next to it is what stops
+                // the next person deleting it as dead code. Pinned by
                 // `test/design/app_theme_test.dart`.
                 elevation: 0,
               ),
               child: const Text(
                 _meaningButton,
-                // The artwork draws the button's own label with the same halo
-                // as the rest of the card's text.
-                style: TextStyle(
-                  color: AppColors.onPhoto,
-                  shadows: AppShadows.onPhoto,
-                ),
+                // The ink on the gold, and nothing else: the button's own label
+                // no longer sits on the photograph, so it needs neither the
+                // ramp nor the artwork's shadow.
+                style: TextStyle(color: AppColors.onGold),
               ),
             ),
           ),
@@ -1060,7 +1140,9 @@ class _QuickLaunchGrid extends StatelessWidget {
       children: <Widget>[
         _QuickLaunchTile(
           icon: Icons.auto_stories_rounded,
-          iconColor: AppColors.accent,
+          iconColor: AppColors.accentInk(
+            Theme.of(context).brightness == Brightness.dark,
+          ),
           title: 'بطاقات التعلم',
           subtitle: 'ابدأ الآن',
           onTap: () => _goToTab(context, 1),
@@ -1068,8 +1150,8 @@ class _QuickLaunchGrid extends StatelessWidget {
         ),
         _QuickLaunchTile(
           icon: Icons.check_box_rounded,
-          // Ink, not amber: this is the colour the artwork draws this tile's
-          // mark in, and the amber is reserved for the two it also draws amber.
+          // Ink, not the gold: this is the colour the artwork draws this tile's
+          // mark in, and the gold is reserved for the three it also draws gold.
           iconColor: Theme.of(context).colorScheme.onSurface,
           title: 'الاختبارات',
           subtitle: 'اختبر نفسك',
@@ -1077,7 +1159,9 @@ class _QuickLaunchGrid extends StatelessWidget {
         ),
         _QuickLaunchTile(
           icon: Icons.favorite_rounded,
-          iconColor: AppColors.accent,
+          iconColor: AppColors.accentInk(
+            Theme.of(context).brightness == Brightness.dark,
+          ),
           title: 'المفضلة',
           subtitle: 'كلماتك المفضلة',
           onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
@@ -1095,7 +1179,11 @@ class _QuickLaunchGrid extends StatelessWidget {
         ),
         _QuickLaunchTile(
           icon: Icons.insights_rounded,
-          iconColor: Theme.of(context).colorScheme.onSurface,
+          // The artwork draws this tile's mark in the gold too — three of the
+          // four are gold and only the check is ink.
+          iconColor: AppColors.accentInk(
+            Theme.of(context).brightness == Brightness.dark,
+          ),
           title: 'إحصائياتك',
           subtitle: 'تقدمك وإنجازك',
           // Pushed, not a bar selection — and this is a decision, not a gap.
@@ -1117,6 +1205,12 @@ class _QuickLaunchGrid extends StatelessWidget {
   }
 }
 
+/// One of the four quick-launch tiles.
+///
+/// **The reference's tile, and the two things it gained.** The artwork draws
+/// the icon inside a **circular badge** and puts a **chevron on the trailing
+/// side** of the tile; the brief keeps both, and they are what this widget
+/// adds to the tile the app already had.
 class _QuickLaunchTile extends StatelessWidget {
   const _QuickLaunchTile({
     required this.icon,
@@ -1151,29 +1245,90 @@ class _QuickLaunchTile extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: radius,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+          // **A `Stack`, and not a `Row`, because the reference's chevron is not
+          // in the tile's content column.** It sits on the tile's own trailing
+          // edge, level with the title, while the badge is above and to the
+          // leading side. The column stretches across the tile so that the
+          // chevron's anchor is the tile's edge and not the width of the
+          // longest word in it.
+          child: Stack(
             children: <Widget>[
-              Icon(icon, color: iconColor),
-              const SizedBox(height: AppSpacing.s),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleSmall,
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  _TileBadge(icon: icon, colour: iconColor),
+                  const SizedBox(height: AppSpacing.s),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    subtitle,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(color: secondary),
+                  ),
+                ],
               ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                subtitle,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(color: secondary),
+              // **The chevron, on the trailing side.**
+              //
+              // The reference draws it pointing along the reading direction, on
+              // the side the reading finishes. This app reads right to left, so
+              // the trailing side is the **left** and the glyph points left —
+              // the mirror of the mock's own `›`, which is a left-to-right mock
+              // and therefore has it on its right.
+              PositionedDirectional(
+                end: 0,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: Icon(
+                    Icons.chevron_left_rounded,
+                    size: 20,
+                    // The gold, as ink, where the mode can carry it: the
+                    // reference draws the tile's chevron in the brand's accent.
+                    color: AppColors.accentInk(isDark),
+                  ),
+                ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The circle behind a quick-launch tile's icon.
+///
+/// **The reference's badge, measured off the artwork**: a disc one step below
+/// the tile's own surface, with the icon in the brand's accent inside it.
+class _TileBadge extends StatelessWidget {
+  const _TileBadge({required this.icon, required this.colour});
+
+  final IconData icon;
+  final Color colour;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Center(
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          // The icon badge's own colour in dark mode; in light mode the same
+          // role is one step below the surface, which is the page background.
+          color: isDark ? AppColors.iconBadgeDark : AppColors.backgroundLight,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: colour, size: 24),
       ),
     );
   }

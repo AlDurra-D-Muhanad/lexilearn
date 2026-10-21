@@ -78,7 +78,7 @@ class QuizResultScreen extends StatelessWidget {
                       // headline rather than a label. Never `AppColors.accent` —
                       // amber fails contrast as light-mode body text.
                       fontSize: theme.textTheme.headlineMedium?.fontSize,
-                      color: isDark ? AppColors.primaryDark : AppColors.primaryLight,
+                      color: AppColors.accentInk(isDark),
                     ),
                   ),
                   const SizedBox(height: AppSpacing.l),

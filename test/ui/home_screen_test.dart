@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/design/design_tokens.dart';
+import 'package:lexilearn/domain/dictionary_pack.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
 import 'package:lexilearn/domain/word_of_the_day.dart';
+import 'package:lexilearn/ui/dictionary/dictionary_controller.dart';
 import 'package:lexilearn/ui/favorites/favorites_screen.dart';
 import 'package:lexilearn/ui/flashcards/flashcards_screen.dart';
 import 'package:lexilearn/ui/home/home_screen.dart';
@@ -17,7 +19,9 @@ import 'package:lexilearn/ui/wallpaper/nature_photo.dart';
 import 'package:lexilearn/ui/wallpaper/wallpaper_catalog.dart';
 import 'package:lexilearn/ui/wallpaper/wallpaper_gradient.dart';
 import 'package:provider/provider.dart';
+import 'package:provider/single_child_widget.dart';
 
+import '../data/dictionary/dictionary_test_env.dart';
 import '../helpers/test_env.dart';
 
 /// The chrome strings the artwork draws on the Home phone. Pinned here rather
@@ -234,7 +238,7 @@ void main() {
       expect(find.byType(Card), findsNothing);
     });
 
-    testWidgets('the word-of-the-day card asks for the primary fill',
+    testWidgets('the word-of-the-day card asks for the second-surface fill',
         (tester) async {
       await _pumpApp(tester, harness.repository);
 
@@ -244,8 +248,14 @@ void main() {
           matching: find.byType(AppSurface),
         ),
       );
-      expect(surface.fill, AppColors.primaryLight,
-          reason: 'the brand fills this card with the primary colour');
+      // **The frame under the photograph, and it is the second surface** — the
+      // reference's own card interior, `#071937` in the dark palette and the
+      // page background in the inverted one. It is the colour the card shows
+      // before the photograph's first decode, and the one it falls back to if
+      // a photograph never loads.
+      expect(surface.fill, AppColors.backgroundLight);
+      expect(surface.fill, isNot(AppColors.gold),
+          reason: 'the gold is a fill for buttons, not for this card');
     });
 
     testWidgets('the active pack is named on the screen', (tester) async {
@@ -459,9 +469,17 @@ void main() {
 
       final label = tester.widget<Text>(inHome(_wordOfTheDayLabel));
       expect(label.style?.color, AppColors.onPhoto);
-      expect(label.style?.color, isNot(AppColors.textDark),
-          reason: 'the card\'s ink is white on a photograph, not the app\'s '
-              'dark body ink');
+      // **The card keeps its own ink token, and the reason is the photograph.**
+      // The app's dark body ink is now `#FFFFFF` too — the new identity's text
+      // is white in both modes — so the two colours coincide and the old
+      // "not the app's dark body ink" assertion no longer says anything. What
+      // it *does* say is that the card's ink is the **photograph's** ink and
+      // not the theme's: it is drawn on a picture, and a picture does not
+      // change with the phone's theme.
+      expect(AppColors.onPhoto, const Color(0xFFFFFFFF));
+      expect(AppColors.textDark, AppColors.onPhoto,
+          reason: 'in the new identity the dark body ink is white as well, so '
+              'the card\'s ink is the photograph\'s own and not the theme\'s');
     });
 
     testWidgets('the card\'s text bands are the ones the legibility test '
@@ -554,25 +572,27 @@ void main() {
       expect(style?.shadows, AppShadows.onPhoto);
     });
 
-    testWidgets('the pronunciation icon is the artwork\'s amber',
+    testWidgets('the pronunciation icon is the brand\'s gold',
         (tester) async {
       await _pumpApp(tester, harness.repository);
 
-      // **The artwork draws the speaker in gold.** The brand's own palette in
-      // the same file names the accent `#F59E0B`.
-      expect(AppColors.accent, const Color(0xFFF59E0B));
+      // **The artwork draws the speaker in gold, and the gold is one value in
+      // both modes.** It sits on the ramp, which is the app's darkest navy at
+      // 0.60, so it is legible over every one of the thirteen photographs in
+      // both brightnesses.
+      expect(AppColors.gold, const Color(0xFFF3AC43));
 
       // `find.byIcon`, not `find.widgetWithIcon(Icon, …)`: the latter is
       // `find.ancestor(of: find.byIcon(icon), matching: find.byType(Icon))`,
       // and an `Icon` is not its own ancestor, so it finds nothing.
       final speaker = tester.widget<Icon>(find.byIcon(Icons.volume_up_rounded));
-      expect(speaker.color, AppColors.accent);
+      expect(speaker.color, AppColors.gold);
       expect(speaker.color, isNot(AppColors.surfaceLight),
-          reason: 'the artwork draws the speaker in amber, not in white');
+          reason: 'the artwork draws the speaker in gold, not in white');
     });
 
-    testWidgets('the button is a translucent dark pill with a thin light '
-        'outline', (tester) async {
+    testWidgets('the button is the gold pill with the app\'s darkest ink on it',
+        (tester) async {
       await _pumpApp(tester, harness.repository);
 
       final button = tester.widget<ElevatedButton>(
@@ -581,24 +601,19 @@ void main() {
       final style = button.style;
       expect(style, isNotNull);
 
+      // **The primary is a FILL**, and this is the button the identity
+      // document's rule 1 is about: a solid gold pill.
       final fill = style!.backgroundColor!.resolve(<WidgetState>{});
-      expect(fill!.a, lessThan(1.0),
-          reason: 'the artwork\'s button is translucent, not an opaque pill');
-      expect(fill.a, greaterThan(0.0));
-      expect(fill.r, lessThan(fill.b),
-          reason: 'the fill is the app\'s dark ink, not a light one');
+      expect(fill, AppColors.gold);
+      expect(fill!.a, 1.0,
+          reason: 'the gold pill is opaque, not a translucent wash');
 
-      final side = style.side!.resolve(<WidgetState>{})!;
-      expect(side.color.a, greaterThan(0.5),
-          reason: 'the outline is a light one');
-      expect(side.width, greaterThan(0.0));
-      expect(side.width, lessThanOrEqualTo(2.0),
-          reason: 'the artwork draws a thin outline');
-
-      // And the label on it is white, because the fill is dark now.
+      // **And the ink on it is the darkest ink in the app**, which measures
+      // 9.89 : 1 against the gold in both modes.
       final label = tester.widget<Text>(find.text(_meaningButton));
-      expect(label.style?.color ?? AppColors.surfaceLight,
-          AppColors.surfaceLight);
+      expect(label.style?.color ?? AppColors.onGold, AppColors.onGold);
+      expect(contrastRatio(AppColors.onGold, AppColors.gold),
+          greaterThanOrEqualTo(4.5));
     });
   });
 
@@ -711,6 +726,140 @@ void main() {
 
       expect(find.byIcon(Icons.close), findsNothing,
           reason: 'spaces are not something to clear');
+    });
+  });
+
+  group('the tiles, as the reference draws them', () {
+    testWidgets('each tile carries a circular badge and a trailing chevron',
+        (tester) async {
+      await _pumpApp(tester, harness.repository);
+
+      // **The badge.** One per tile, each a circle of the icon badge's own
+      // colour with the tile's icon inside it. Scoped to the tile, because the
+      // header's book mark is a circle too.
+      Finder circleIn(Finder scope) => find.descendant(
+            of: scope,
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is DecoratedBox &&
+                  widget.decoration is BoxDecoration &&
+                  (widget.decoration as BoxDecoration).shape == BoxShape.circle,
+              description: 'a circular badge',
+            ),
+          );
+
+      for (final tile in _tiles) {
+        final tileSurface = find.ancestor(
+          of: inHome(tile[0]),
+          matching: find.byType(AppSurface),
+        );
+        expect(circleIn(tileSurface), findsOneWidget,
+            reason: '"${tile[0]}" has no circular badge around its icon');
+      }
+
+      // **The chevron, on the trailing side.** The app reads right to left, so
+      // the trailing side is the left, and the glyph points the way the
+      // reading goes. The reference is a left-to-right mock, so its own
+      // chevron is on the right and points right — the mirror of this one.
+      final chevrons = find.byIcon(Icons.chevron_left_rounded);
+      expect(chevrons, findsNWidgets(4),
+          reason: 'one chevron on each tile\'s trailing side');
+
+      // **And it really is on the trailing side**, not merely present: the
+      // chevron of a tile sits to the left of that tile's own title.
+      for (final tile in _tiles) {
+        final title = tester.getRect(inHome(tile[0]));
+        final chevron = tester.getRect(
+          find.descendant(
+            of: find.ancestor(
+              of: inHome(tile[0]),
+              matching: find.byType(AppSurface),
+            ),
+            matching: find.byIcon(Icons.chevron_left_rounded),
+          ),
+        );
+        expect(chevron.center.dx, lessThan(title.center.dx),
+            reason: 'the chevron of "${tile[0]}" is on the leading side');
+      }
+    });
+  });
+
+  group('the word of the day, and the dictionary that carries it', () {
+    /// The shipped dictionary, opened once.
+    ///
+    /// **In `setUpAll`, never inside a `testWidgets` body.** A real sqflite
+    /// future never completes inside a fake-async zone, and the failure mode
+    /// is a ten-minute hang with no message naming the cause
+    /// (`docs/engineering-standards.md` §5).
+    late DictionaryFixture fixture;
+
+    setUpAll(() async {
+      fixture = await DictionaryFixture.open();
+    });
+
+    tearDownAll(() async {
+      await fixture.close();
+    });
+
+    testWidgets('the card appears when the dictionary lands, with no '
+        'navigation at all', (tester) async {
+      // **The defect, and the fix.**
+      //
+      // The dictionary is copied onto the device **off the UI path**: 26 MB,
+      // on the first launch, while the app is already on screen. Until that
+      // copy lands, the dictionary's pack has no readable words at all, so
+      // there is nothing for the word of the day to pick and the card is not
+      // drawn.
+      //
+      // The read that filled the card's entries happened in `initState`,
+      // before the copy finished, and nothing read the pack again — so the
+      // user saw no card until they navigated away and back, because *coming
+      // back* is what built a new `State` and ran a new `initState`.
+      //
+      // The signal is the dictionary's arrival, and this test drives it:
+      // the engine lands on the repository and the controller says so, which
+      // is exactly what `DictionaryController.start` does — it attaches the
+      // engine and *then* notifies.
+      final dictionary = DictionaryController.idle();
+      addTearDown(dictionary.dispose);
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: <SingleChildWidget>[
+            Provider<VocabRepository>.value(value: harness.repository),
+            ...appSeamProviders(
+              settings: createAppSettings(harness.repository),
+              dictionary: dictionary,
+            ),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            builder: (context, child) =>
+                Directionality(textDirection: TextDirection.rtl, child: child!),
+            home: HomeScreen(
+              packKey: dictionaryPackKey,
+              onPackSelected: (_) {},
+              onOpenWord: (_) {},
+            ),
+          ),
+        ),
+      );
+      await realTurnThenSettle(tester);
+
+      // **No card, because the dictionary has no engine yet.**
+      expect(inHome(_meaningButton), findsNothing,
+          reason: 'the pack has no words to pick a word from');
+
+      // **The copy finishes.**
+      harness.repository.attachDictionary(fixture.engine);
+      dictionary.notifyListeners();
+      await realTurnThenSettle(tester);
+
+      // **The card is there — and nothing navigated.**
+      expect(inHome(_meaningButton), findsOneWidget,
+          reason: 'the card must appear on the signal, not after a navigation');
+      expect(find.byType(HomeScreen), findsOneWidget,
+          reason: 'the screen is still the one that was mounted');
     });
   });
 

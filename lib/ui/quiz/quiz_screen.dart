@@ -188,7 +188,7 @@ class _ProgressRow extends StatelessWidget {
                 // purple `colorScheme.primary` already carries. This is the
                 // accent doing the job `design_tokens.dart` says it may do —
                 // filling, never body text.
-                color: isDark ? AppColors.accent : null,
+                color: AppColors.gold,
               ),
             ),
           ),

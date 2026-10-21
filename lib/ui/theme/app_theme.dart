@@ -22,11 +22,18 @@ class AppTheme {
   /// Builds the brand palette for a brightness.
   ///
   /// `ColorScheme.fromSeed` derives every role from the seed through Material's
-  /// tonal palette, and those tones are *not* the brand's: seeding with
-  /// `#885CF6` yields a `primary` of `#65558F`, a dusty plum, not the purple the
-  /// artwork specifies. So the seed is kept for the roles it gets right — the
-  /// `*Container` tones, `surfaceContainer*`, `inverse*`, `tertiary` — and every
-  /// role the brand pins by hex is overwritten underneath it.
+  /// tonal palette, and those tones are *not* the brand's: seeding with the
+  /// gold `#F3AC43` yields a `primaryContainer` of a pale sand and an
+  /// `inversePrimary` of a dusty brown. So the seed is kept for the roles it
+  /// gets right — the `*Container` tones, `surfaceContainer*`, `inverse*`,
+  /// `tertiary` — and every role the brand pins by hex is overwritten
+  /// underneath it.
+  ///
+  /// **The primary is the gold in BOTH brightnesses, and that is the new
+  /// identity's own rule**: the light palette is the same system inverted, and
+  /// the primary does not invert. It is a *fill*, and [AppColors.onGold] is
+  /// the ink on it — **9.90 : 1** in light and **9.90 : 1** in dark, because
+  /// the gold is the same gold and the ink on it is the same ink.
   ///
   /// This is deliberately not `fromColorScheme`'s job. A `ColorScheme` is
   /// immutable, so a caller who brings their own scheme cannot have the brand
@@ -37,13 +44,13 @@ class AppTheme {
   static ColorScheme _schemeFor(Brightness brightness) {
     final isDark = brightness == Brightness.dark;
     return ColorScheme.fromSeed(
-      seedColor: isDark ? AppColors.primaryDark : AppColors.primaryLight,
+      seedColor: AppColors.gold,
       brightness: brightness,
     ).copyWith(
-      primary: isDark ? AppColors.primaryDark : AppColors.primaryLight,
-      onPrimary: isDark ? AppColors.backgroundDark : AppColors.surfaceLight,
-      secondary: isDark ? AppColors.primaryDark : AppColors.primaryLight,
-      onSecondary: isDark ? AppColors.backgroundDark : AppColors.surfaceLight,
+      primary: AppColors.gold,
+      onPrimary: AppColors.onGold,
+      secondary: AppColors.gold,
+      onSecondary: AppColors.onGold,
       surface: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
       onSurface: isDark ? AppColors.textDark : AppColors.textLight,
       onSurfaceVariant:
@@ -69,6 +76,8 @@ class AppTheme {
   static ThemeData fromColorScheme(ColorScheme scheme) {
     final isDark = scheme.brightness == Brightness.dark;
     final textTheme = _textThemeFor(scheme.brightness);
+    final secondary =
+        isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
     return ThemeData(
       colorScheme: scheme,
       useMaterial3: true,
@@ -107,15 +116,12 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
-        hintStyle: TextStyle(
-          color:
-              isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
-        ),
+        hintStyle: TextStyle(color: secondary),
         // The artwork's search field is a full pill.
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadii.pill),
           borderSide: BorderSide(
-            color: isDark ? AppColors.borderDark : AppColors.borderLight,
+            color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
           ),
         ),
         // Material 3 does NOT paint a filled field's outline from `border`. It
@@ -135,17 +141,17 @@ class AppTheme {
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadii.pill),
           borderSide: BorderSide(
-            color: isDark ? AppColors.borderDark : AppColors.borderLight,
+            color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
           ),
         ),
         disabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadii.pill),
           borderSide: BorderSide(
-            color: isDark ? AppColors.borderDark : AppColors.borderLight,
+            color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
           ),
         ),
-        // Focus reads as a colour from the palette — the brand purple, at the
-        // 2px Material draws a focused outline — rather than as a heavier grey.
+        // Focus reads as the brand's gold at the 2px Material draws a focused
+        // outline — the one place the primary is a *line* rather than a fill.
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadii.pill),
           borderSide: BorderSide(color: scheme.primary, width: 2),
@@ -162,15 +168,34 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         height: 72,
-        backgroundColor: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
-        indicatorColor: scheme.primaryContainer,
-        labelTextStyle: WidgetStatePropertyAll<TextStyle>(
-          TextStyle(
+        // The bar has its own colour in the reference — `#06142C`, measured off
+        // the artwork — and it is not the card surface.
+        backgroundColor:
+            isDark ? AppColors.bottomBarDark : AppColors.surfaceLight,
+        // **The primary as a FILL.** The active destination sits on a solid
+        // gold pill, and the icon on it is the gold's own ink so it can be
+        // read: `#020E24` on `#F3AC43` is **9.90 : 1**.
+        indicatorColor: AppColors.gold,
+        // **The icon, per state.** Material resolves this with
+        // `WidgetState.selected`, so the selected destination's icon takes the
+        // gold's ink and the three unselected ones take the muted ink.
+        iconTheme: WidgetStateProperty.resolveWith<IconThemeData>((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const IconThemeData(color: AppColors.onGold);
+          }
+          return IconThemeData(color: secondary);
+        }),
+        // **The label, per state.** The selected label is gold on the bar's
+        // navy — the reference draws exactly that — and the gold measures
+        // **8.30 : 1** on `#06142C`, so it is legible as text there.
+        labelTextStyle: WidgetStateProperty.resolveWith<TextStyle>((states) {
+          final selected = states.contains(WidgetState.selected);
+          return TextStyle(
             fontFamily: 'Tajawal',
             fontSize: 12,
-            color: isDark ? AppColors.textDark : AppColors.textLight,
-          ),
-        ),
+            color: selected ? AppColors.gold : secondary,
+          );
+        }),
       ),
       // Three of the five families M3 elevates, zeroed here. This is the second
       // half of Amendment 6. The first half was `cardTheme.elevation` above; the
@@ -224,7 +249,7 @@ class AppTheme {
       chipTheme: ChipThemeData(
         shape: const StadiumBorder(),
         side: BorderSide(
-          color: isDark ? AppColors.borderDark : AppColors.borderLight,
+          color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
         ),
         labelStyle: TextStyle(
           fontFamily: 'Tajawal',

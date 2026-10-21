@@ -147,7 +147,12 @@ class _HeadCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: AppSpacing.s),
-                const Icon(Icons.volume_up_rounded, color: AppColors.accent),
+                Icon(
+                  Icons.volume_up_rounded,
+                  color: AppColors.accentInk(
+                    Theme.of(context).brightness == Brightness.dark,
+                  ),
+                ),
               ],
             ),
           ],
@@ -353,7 +358,7 @@ class DictionarySuggestionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final ink = isDark ? AppColors.primaryDark : AppColors.primaryLight;
+    final ink = AppColors.accentInk(isDark);
     final secondary =
         isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
 
