@@ -162,20 +162,38 @@ flutter:
 
 # Launcher icon.
 #
-# assets/icon/app_icon.png is a generated 1024x1024 opaque PNG: a gold open book on the
-# brand purple (#F59E0B on #885CF6), no rounded corners and no transparency, because
-# Android applies the mask itself. The glyph is drawn inside the adaptive-icon safe zone
-# (the central 66% of the 108dp canvas), so `adaptive_icon_foreground_inset` is 0 -- the
-# package's 16% default would shrink it a further 32% and leave the book looking lost.
+# The artwork is the new logo: a gold open book with a gold speech bubble, on a navy
+# rounded square with a gold border. assets/icon/app_icon.png is a 1024x1024 PNG of it,
+# centre-cropped to the smaller side and scaled -- cropped, not stretched, because
+# stretching a book changes it. Android applies the mask itself, so the file carries no
+# rounding of its own.
+#
+# The navy is #0B1630, sampled from the logo's own background at (24, 24) -- it is not a
+# chosen brand colour. It WAS the old brand purple #885CF6, and the old icon was an
+# opaque purple square, so the old brand colour was baked into the app's icon. The
+# adaptive background is the navy now: leaving the purple would paint the old brand
+# into the corners of the icon on the user's home screen.
+#
+# assets/icon/app_icon_foreground.png is the same artwork at 72/108 = 66.7% of the
+# canvas, centred, on transparency -- already inside the adaptive-icon safe zone, so
+# `adaptive_icon_foreground_inset` is 0; the package's 16% default would shrink it a
+# further 32% and leave the book looking lost.
 #
 # `android` MUST stay "ic_launcher": that is what AndroidManifest.xml already points at
 # with @mipmap/ic_launcher, and this package does not edit the manifest.
+#
+# flutter_launcher_icons 0.14.4 -- the latest published -- reads `adaptive_icon_background`
+# and nothing else: a .png there means a background drawable, anything else is the colour
+# written to res/values/colors.xml. `adaptive_icon_background_image` is not a key that
+# version knows, so it is ignored; it is kept because the swatch it names is the same
+# navy, and the two render identically.
 #
 # After changing the PNG, re-run: dart run flutter_launcher_icons
 flutter_launcher_icons:
   android: "ic_launcher"
   image_path: "assets/icon/app_icon.png"
-  adaptive_icon_background: "#885CF6"
-  adaptive_icon_foreground: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#0B1630"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  adaptive_icon_background_image: "assets/icon/app_icon_background.png"
   adaptive_icon_foreground_inset: 0
   min_sdk_android: 24
