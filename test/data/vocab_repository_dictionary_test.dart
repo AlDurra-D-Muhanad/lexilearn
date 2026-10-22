@@ -6,6 +6,7 @@ import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
 
+import 'dictionary/dictionary_test_env.dart';
 import '../helpers/test_env.dart';
 
 /// The dictionary as a pack, and the starter set beside it.
@@ -105,6 +106,51 @@ void main() {
       // app\'s own table would put them in every backup.
       final exported = await repository.exportPackJson(starterPackKey);
       expect(exported, contains('ghost-clusters-4da03e'));
+    });
+
+    test('the pack list holds the dictionary once, not twice', () async {
+      // **The user's report, verbatim: «حزمة القاموس الشامل معروضة مرتين» — the
+      // Comprehensive Dictionary pack is shown twice.**
+      //
+      // **And the cause is not the row and not the title.** The dictionary is
+      // in the list **twice over**: once as the summary the repository builds
+      // for it, and once more as the dictionary's own row carried through
+      // with every other stored pack. Both carry the same `pack_key`, so both
+      // rows were marked as the active pack and both showed the same size —
+      // which is exactly what the user's screenshot shows.
+      //
+      // **The earlier round's fix removed a *pill*** that named the active
+      // pack above the list. That pill was a real duplicate of the *name* and
+      // removing it was right, but the *row* was never the thing that was
+      // duplicated, and it still was.
+      //
+      // **The engine has to be attached for the duplicate to appear**, which is
+      // why this test opens the shipped dictionary: with the engine absent
+      // there is no summary and the row stands alone, so the list is correct
+      // by accident. That is also why the bug survived the earlier round —
+      // the fixture that round used had no dictionary on it.
+      final fixture = await DictionaryFixture.open();
+      addTearDown(fixture.close);
+      repository.attachDictionary(fixture.engine);
+
+      final packs = await repository.packs();
+      final dictionaryRows =
+          packs.where((p) => p.packKey == dictionaryPackKey).toList();
+
+      expect(
+        dictionaryRows,
+        hasLength(1),
+        reason: 'the dictionary is one pack, and the pack list says so once',
+      );
+      // **Every key in the list is there once.** The duplicate was not
+      // special to the dictionary: the list is a list of packs, and a key that
+      // appears twice is a pack the user cannot tell from another.
+      final keys = packs.map((p) => p.packKey).toList();
+      expect(keys.toSet().length, keys.length,
+          reason: 'no pack appears twice in the pack list');
+      // **And the dictionary is still the first one**, which is what makes it
+      // the default.
+      expect(packs.first.packKey, dictionaryPackKey);
     });
   });
 

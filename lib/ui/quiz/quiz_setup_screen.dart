@@ -21,6 +21,30 @@ const String _notANumber = 'أدخل رقمًا صحيحًا، مثل 10';
 const String _overCap = 'الحد الأقصى 200 سؤال في الجلسة';
 const String _startQuiz = 'ابدأ الاختبار';
 
+/// **The line that says how long a session over the selected pack may be.**
+///
+/// The user's own words: «لا تسمح بعمل اختبار بأكثر من الكلمات الموجودة بحزمة
+/// المفضلة» — do not allow a quiz with more questions than the words in the
+/// favourites pack. With one saved word and a request for a hundred questions,
+/// the same word was asked a hundred times.
+///
+/// **So the cap is the pack's size, and this line is what says so.** A cap that
+/// is applied without being shown is a cap the user cannot see, and a field
+/// that quietly answers 1 when 1 was typed is a field lying about what it was
+/// asked. The line is **always** on the screen, under the length field, and it
+/// names the number the session will actually be.
+String _packCap(int questions) => 'الحد الأقصى $questions سؤال في هذه الحزمة';
+
+/// **The line that says the request was cut down to the pack's size.**
+///
+/// Said when the number is cut, and said in the app's own words rather than by
+/// silently showing a different number in the field.
+String _cappedToPack(int questions) =>
+    'تم تقليص عدد الأسئلة إلى $questions، وهو عدد كلمات الحزمة';
+
+/// **The line that says the pack has nothing in it.**
+const String _emptyPack = 'هذه الحزمة فارغة، فلا يمكن أن يكون فيها اختبار';
+
 /// A longer session than this is almost certainly a typo, and a session is
 /// bounded anyway because the generator cycles a short pack.
 const int _maxQuestions = 200;
@@ -125,10 +149,82 @@ class _QuizSetupFormState extends State<_QuizSetupForm> {
 
   String? _lengthError;
 
+  /// **The length the user has asked for, as a number.**
+  ///
+  /// Held so the line under the field can say what will happen to it: a
+  /// request above the pack's size is not refused, it is **cut down**, and the
+  /// screen says so before the user presses the button rather than after.
+  ///
+  /// Null when the field does not hold a number at all, which is the one case
+  /// the field's own error speaks for.
+  int? _requested;
+
   /// The packs, read once. Held rather than rebuilt on every keystroke: the
   /// picker does not change while the user is typing a length.
   late final Future<List<PackSummary>> _packs =
       context.read<VocabRepository>().packs();
+
+  /// The pack the session would be drawn from, once the list has answered.
+  ///
+  /// **The active pack, and it is the one the picker shows.** The picker's
+  /// `initialValue` is the active key when the list holds it and the list's
+  /// first entry otherwise, so this is the same rule — one pack, named once,
+  /// and the cap below is the cap of the pack the quiz would really use.
+  ///
+  /// **Held rather than read again in [_start].** The list is read once, in
+  /// `initState`, and a second read would be a second answer to the same
+  /// question — and a read inside a button handler is a read inside a
+  /// fake-async zone in a test, which is the trap
+  /// `docs/engineering-standards.md` §5 is about. So the builder keeps it, and
+  /// [_start] uses what the builder already knows.
+  PackSummary? _selected;
+
+  /// The pack the session would be drawn from, out of [packs].
+  ///
+  /// **The active pack, and it is the one the picker shows.** The picker's
+  /// `initialValue` is the active key when the list holds it and the list's
+  /// first entry otherwise, so this is the same rule — one pack, named once,
+  /// and the cap is the cap of the pack the quiz would really use.
+  ///
+  /// Null while the list has not answered, and null when it has answered with
+  /// nothing, because a list with no packs in it has no pack to cap.
+  PackSummary? _selectedOf(List<PackSummary>? packs) {
+    if (packs == null || packs.isEmpty) return null;
+    for (final pack in packs) {
+      if (pack.packKey == widget.packKey) return pack;
+    }
+    return packs.first;
+  }
+
+  /// The longest session this pack can carry.
+  ///
+  /// **The pack's own size, and not the app's cap alone.** A session longer
+  /// than the pack is a session that asks the same word again and again: the
+  /// user reported «سيتم اعادة و تكرار نفس الكلمه بالاختبار» — the same word
+  /// asked over and over — with one saved word and a hundred questions asked
+  /// for.
+  ///
+  /// The app's own cap still applies, and it is the smaller of the two that
+  /// wins: a hundred-question session over the dictionary is a hundred
+  /// questions, and a hundred-question session over a one-word pack is one
+  /// question.
+  int _maxFor(PackSummary pack) =>
+      pack.entryCount < _maxQuestions ? pack.entryCount : _maxQuestions;
+
+  /// **The line under the length field.**
+  ///
+  /// Three sentences, and which one it is depends on what the user has typed:
+  ///
+  /// * the request is over the ceiling — **what will happen to it**, which is
+  ///   the one the user has to read before pressing the button;
+  /// * the pack is smaller than the app's ceiling — the pack's own ceiling;
+  /// * the pack is at least as big as the app's ceiling — the app's ceiling.
+  String _capLine(PackSummary pack) {
+    final cap = _maxFor(pack);
+    final requested = _requested;
+    if (requested != null && requested > cap) return _cappedToPack(cap);
+    return cap < _maxQuestions ? _packCap(cap) : _overCap;
+  }
 
   @override
   void dispose() {
@@ -141,6 +237,12 @@ class _QuizSetupFormState extends State<_QuizSetupForm> {
   /// The controller is created by the pushed route rather than handed to it, so
   /// `provider` has something above [QuizScreen] to find and disposing the route
   /// disposes the controller with it.
+  ///
+  /// **The length is cut down to the pack's size, and the screen says so.**
+  /// The line under the field always names the cap (see [_packCap]), so the
+  /// user is told before they press the button rather than after; and the
+  /// field itself is corrected to the number the session will really be, so
+  /// the field never says one thing and the quiz does another.
   void _start() {
     final text = _length.text.trim();
     final parsed = int.tryParse(text);
@@ -152,7 +254,22 @@ class _QuizSetupFormState extends State<_QuizSetupForm> {
       setState(() => _lengthError = _overCap);
       return;
     }
-    setState(() => _lengthError = null);
+    final pack = _selected;
+    final cap = pack == null ? _maxQuestions : _maxFor(pack);
+    if (cap < 1) {
+      setState(() => _lengthError = _emptyPack);
+      return;
+    }
+    final count = parsed < cap ? parsed : cap;
+    if (count != parsed) {
+      // The field is corrected to the number the session will be, so the two
+      // never disagree.
+      _length.text = '$count';
+    }
+    setState(() {
+      _lengthError = null;
+      _requested = count;
+    });
 
     final repository = context.read<VocabRepository>();
     final packKey = widget.packKey;
@@ -162,7 +279,7 @@ class _QuizSetupFormState extends State<_QuizSetupForm> {
           create: (_) => QuizController(
             repository: repository,
             packKey: packKey,
-            questionCount: parsed,
+            questionCount: count,
           )..start(),
           child: const QuizScreen(),
         ),
@@ -173,11 +290,15 @@ class _QuizSetupFormState extends State<_QuizSetupForm> {
   void _applyPreset(int value) => setState(() {
         _length.text = '$value';
         _lengthError = null;
+        _requested = value;
       });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final secondary =
+        isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
 
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.m),
@@ -189,119 +310,194 @@ class _QuizSetupFormState extends State<_QuizSetupForm> {
         // does not need. See [_PackPill].
         _PackPill(title: widget.packTitle),
         const SizedBox(height: AppSpacing.s),
+        // **Everything that depends on the pack list is built inside this
+        // builder**, and that is the whole reason it is here rather than
+        // wrapped around the picker alone.
+        //
+        // The line under the length field quotes **the selected pack's size**,
+        // and a widget built outside this builder would be built before the
+        // list has answered — so it would be built with no pack and would never
+        // be built again. The picker and the line are one thing, and this
+        // builder is where they are drawn.
         FutureBuilder<List<PackSummary>>(
           future: _packs,
           builder: (context, snapshot) {
             final packs = snapshot.data;
-            if (packs == null) {
-              // A reserved gap rather than a spinner. An indeterminate
-              // `CircularProgressIndicator` schedules frames forever, and
-              // `pumpAndSettle` therefore never settles while one is on screen:
-              // `test/ui/home_shell_test.dart` and `test/ui/home_screen_test.dart`
-              // both switch to this destination and `pumpAndSettle()` without
-              // giving this read a `runAsync` turn, so a spinner here would hang
-              // both of them rather than fail them. The gap is exactly the
-              // dropdown's height, so the form does not jump when it lands.
-              return const SizedBox(height: _pickerHeight);
-            }
-            if (packs.isEmpty) {
-              return Text(
-                _noPacks,
-                style: theme.textTheme.bodyMedium,
-              );
-            }
-            return DropdownButtonFormField<String>(
-              // **Defensive, and currently redundant — do not read a green test
-              // here as proof that it is load-bearing.** An earlier version of
-              // this comment claimed that without the key `initialValue` is read
-              // once and the field would show a stale pack. That is not what
-              // happens: on Flutter 3.44.6,
-              // `_DropdownButtonFormFieldState.didUpdateWidget`
-              // (`dropdown.dart:2002-2007`) calls
-              // `setValue(widget.initialValue)` when `initialValue` changes, so
-              // the field already re-reads it. Deleting this key leaves all
-              // 23 tests in `test/ui/quiz_screen_test.dart` green — measured,
-              // not assumed. (23, not the 21 an earlier version of this comment
-              // claimed: the file has grown since.)
-              //
-              // It is kept because the behaviour it leans on is an
-              // implementation detail of one Flutter version rather than
-              // documented contract, and because the failure it guards against
-              // is a silent one: a field showing the previous pack while the
-              // quiz draws from the next. If a future Flutter drops that
-              // `didUpdateWidget` branch, this is what keeps the screen
-              // correct. `test/ui/quiz_screen_test.dart` →
-              // *the picker reports the pack the user chooses* proves the
-              // *end* behaviour, not this mechanism.
-              key: ValueKey<String>('quiz-pack-${widget.packKey}'),
-              isExpanded: true,
-              initialValue: packs.any((pack) => pack.packKey == widget.packKey)
-                  ? widget.packKey
-                  : packs.first.packKey,
-              decoration: const InputDecoration(labelText: _choosePack),
-              items: <DropdownMenuItem<String>>[
-                for (final pack in packs)
-                  DropdownMenuItem<String>(
-                    value: pack.packKey,
-                    child:
-                        Text('${pack.title} (${pack.entryCount})', overflow: TextOverflow.ellipsis),
+            // **The pack the session would be drawn from.** The same rule the
+            // picker's `initialValue` uses, so the cap the screen quotes is
+            // the cap of the pack the picker is showing. It is kept on the
+            // state as well, because [_start] needs it and the list is read
+            // once.
+            final selected = _selectedOf(packs);
+            _selected = selected;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                if (packs == null)
+                  // A reserved gap rather than a spinner. An indeterminate
+                  // `CircularProgressIndicator` schedules frames forever, and
+                  // `pumpAndSettle` therefore never settles while one is on
+                  // screen: `test/ui/home_shell_test.dart` and
+                  // `test/ui/home_screen_test.dart` both switch to this
+                  // destination and `pumpAndSettle()` without giving this
+                  // read a `runAsync` turn, so a spinner here would hang both
+                  // of them rather than fail them. The gap is exactly the
+                  // dropdown's height, so the form does not jump when it
+                  // lands.
+                  const SizedBox(height: _pickerHeight)
+                else if (packs.isEmpty)
+                  Text(
+                    _noPacks,
+                    style: theme.textTheme.bodyMedium,
+                  )
+                else
+                  _picker(packs),
+                const SizedBox(height: AppSpacing.l),
+                Text(_lengthLabel, style: theme.textTheme.titleMedium),
+                const SizedBox(height: AppSpacing.s),
+                TextField(
+                  controller: _length,
+                  keyboardType: TextInputType.number,
+                  // Digits only, so `int.tryParse` is the only parser this can
+                  // meet and a minus sign cannot be typed to sneak a negative
+                  // length past the check below.
+                  inputFormatters: <TextInputFormatter>[
+                    FilteringTextInputFormatter.digitsOnly,
+                  ],
+                  textDirection: TextDirection.ltr,
+                  decoration: InputDecoration(
+                    errorText: _lengthError,
+                    hintText: _lengthHint,
                   ),
+                  onChanged: (value) {
+                    // **The number in the field is read here**, because the
+                    // line under it says what will happen to that number: a
+                    // request above the pack's size is cut down, and the
+                    // screen says so while the user is still typing.
+                    final requested = int.tryParse(value.trim());
+                    if (requested == _requested && _lengthError == null) return;
+                    setState(() {
+                      _requested = requested;
+                      // Clears the error as soon as the field changes, so the
+                      // message never argues with a value that is being
+                      // corrected.
+                      _lengthError = null;
+                    });
+                  },
+                  onSubmitted: (_) => _start(),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                // **The cap, said out loud.**
+                //
+                // The user's own words: «لا تسمح بعمل اختبار بأكثر من الكلمات
+                // الموجودة بحزمة المفضلة» — do not allow a quiz with more
+                // questions than the words in the favourites pack. A cap that
+                // is applied without being shown is a cap the user cannot
+                // see, and a field that quietly answers one question when a
+                // hundred were asked for is a field lying about what it was
+                // asked.
+                //
+                // **It is a line of its own and not the field's
+                // `helperText`,** because Material hides the helper when the
+                // field carries an error — and the line has to be there when
+                // the field is *wrong*, which is exactly when the user needs
+                // to read it.
+                //
+                // **And it says what will happen to the number in the field**,
+                // not only what the ceiling is: a request above the ceiling is
+                // not refused, it is cut down, and the line says so while the
+                // user is still typing.
+                if (selected != null) ...<Widget>[
+                  Text(
+                    _capLine(selected),
+                    style: theme.textTheme.bodySmall?.copyWith(color: secondary),
+                  ),
+                  const SizedBox(height: AppSpacing.s),
+                ] else
+                  const SizedBox(height: AppSpacing.s),
+                Wrap(
+                  spacing: AppSpacing.s,
+                  children: <Widget>[
+                    for (final preset in _presets)
+                      ActionChip(
+                        label: Text('$preset'),
+                        onPressed: () => _applyPreset(preset),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.l),
+                FilledButton.icon(
+                  onPressed: _start,
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  label: const Text(_startQuiz),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.m),
+                    // A pill, with the quiz screen's advance button and the
+                    // result screen's back button. These three are the app's
+                    // full-width actions, so they are the three the brand's
+                    // stadium shape applies to; the theme default is a 20px
+                    // radius.
+                    shape: const StadiumBorder(),
+                  ),
+                ),
               ],
-              onChanged: (value) {
-                if (value != null && value != widget.packKey) {
-                  widget.onPackSelected(value);
-                }
-              },
             );
           },
         ),
-        const SizedBox(height: AppSpacing.l),
-        Text(_lengthLabel, style: theme.textTheme.titleMedium),
-        const SizedBox(height: AppSpacing.s),
-        TextField(
-          controller: _length,
-          keyboardType: TextInputType.number,
-          // Digits only, so `int.tryParse` is the only parser this can meet and
-          // a minus sign cannot be typed to sneak a negative length past the
-          // check below.
-          inputFormatters: <TextInputFormatter>[
-            FilteringTextInputFormatter.digitsOnly,
-          ],
-          textDirection: TextDirection.ltr,
-          decoration: InputDecoration(
-            errorText: _lengthError,
-            hintText: _lengthHint,
-          ),
-          onChanged: (_) {
-            // Clears the error as soon as the field changes, so the message
-            // never argues with a value that is being corrected.
-            if (_lengthError != null) setState(() => _lengthError = null);
-          },
-          onSubmitted: (_) => _start(),
-        ),
-        const SizedBox(height: AppSpacing.s),
-        Wrap(
-          spacing: AppSpacing.s,
-          children: <Widget>[
-            for (final preset in _presets)
-              ActionChip(label: Text('$preset'), onPressed: () => _applyPreset(preset)),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.l),
-        FilledButton.icon(
-          onPressed: _start,
-          icon: const Icon(Icons.play_arrow_rounded),
-          label: const Text(_startQuiz),
-          style: FilledButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: AppSpacing.m),
-            // A pill, with the quiz screen's advance button and the result
-            // screen's back button. These three are the app's full-width
-            // actions, so they are the three the brand's stadium shape applies
-            // to; the theme default is a 20px radius.
-            shape: const StadiumBorder(),
-          ),
-        ),
       ],
+    );
+  }
+
+  /// The pack chooser.
+  ///
+  /// **Its own method, so the builder above reads as the page it is.**
+  Widget _picker(List<PackSummary> packs) {
+    return DropdownButtonFormField<String>(
+      // **Defensive, and currently redundant — do not read a green test here as
+      // proof that it is load-bearing.** An earlier version of this comment
+      // claimed that without the key `initialValue` is read once and the field
+      // would show a stale pack. That is not what happens: on Flutter 3.44.6,
+      // `_DropdownButtonFormFieldState.didUpdateWidget`
+      // (`dropdown.dart:2002-2007`) calls
+      // `setValue(widget.initialValue)` when `initialValue` changes, so
+      // the field already re-reads it. Deleting this key leaves all
+      // 23 tests in `test/ui/quiz_screen_test.dart` green — measured,
+      // not assumed. (23, not the 21 an earlier version of this comment
+      // claimed: the file has grown since.)
+      //
+      // It is kept because the behaviour it leans on is an
+      // implementation detail of one Flutter version rather than
+      // documented contract, and because the failure it guards against
+      // is a silent one: a field showing the previous pack while the
+      // quiz draws from the next. If a future Flutter drops that
+      // `didUpdateWidget` branch, this is what keeps the screen
+      // correct. `test/ui/quiz_screen_test.dart` →
+      // *the picker reports the pack the user chooses* proves the
+      // *end behaviour*, not this mechanism.
+      key: ValueKey<String>('quiz-pack-${widget.packKey}'),
+      isExpanded: true,
+      initialValue: packs.any((pack) => pack.packKey == widget.packKey)
+          ? widget.packKey
+          : packs.first.packKey,
+      decoration: const InputDecoration(labelText: _choosePack),
+      items: <DropdownMenuItem<String>>[
+        for (final pack in packs)
+          DropdownMenuItem<String>(
+            value: pack.packKey,
+            // **The name and nothing else.** The number beside it was
+            // the user's complaint: «ازل الرقم من جانب اسم الحزمة» —
+            // remove the number from beside the pack's name. The size
+            // is still on the screen, in the line under the length
+            // field, where it is the *cap* rather than a stray number
+            // on a name.
+            child: Text(pack.title, overflow: TextOverflow.ellipsis),
+          ),
+      ],
+      onChanged: (value) {
+        if (value != null && value != widget.packKey) {
+          widget.onPackSelected(value);
+        }
+      },
     );
   }
 }

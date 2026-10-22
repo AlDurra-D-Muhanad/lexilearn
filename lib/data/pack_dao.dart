@@ -68,6 +68,9 @@ class PackDao {
   /// Replaces the pack and all of its entries atomically. Progress rows are
   /// keyed on deterministic entry ids and are intentionally left untouched.
   ///
+  /// **The pack's own row is written by [_writePackRow], never by a replace.**
+  /// See that method for why a replace here is data loss.
+  ///
   /// [executor] joins a caller's transaction; see [_atomic].
   Future<void> insertPack(
     VocabPack pack, {
@@ -76,20 +79,30 @@ class PackDao {
     DatabaseExecutor? executor,
   }) async {
     await _atomic(executor, (txn) async {
-      await txn.insert(
-        'packs',
-        <String, Object?>{
-          'pack_key': pack.packId,
-          'title': pack.title,
-          'source_language': pack.sourceLanguage,
-          'target_language': pack.targetLanguage,
-          'schema_version': pack.schemaVersion,
-          'entry_count': pack.entryCount,
-          'is_bundled': isBundled ? 1 : 0,
-          'imported_at': importedAt.toUtc().toIso8601String(),
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await _writePackRow(txn, <String, Object?>{
+        'pack_key': pack.packId,
+        'title': pack.title,
+        'source_language': pack.sourceLanguage,
+        'target_language': pack.targetLanguage,
+        'schema_version': pack.schemaVersion,
+        'entry_count': pack.entryCount,
+        'is_bundled': isBundled ? 1 : 0,
+        'imported_at': importedAt.toUtc().toIso8601String(),
+      });
+      // **The pack's old entries are removed here, and not by a cascade.**
+      //
+      // They used to be removed because the pack's row was *deleted* and
+      // `entries.pack_key` cascades from `packs`. That delete also took the
+      // pack's **favourites** with it, which is the fatal defect
+      // `[_writePackRow]` exists to prevent — so the removal has to be
+      // explicit now, or a re-import would leave the pack's old words in the
+      // table and the pack would hold words it no longer has.
+      //
+      // `word_progress` and `favorites` have **no** foreign key onto `entries`
+      // (`lib/data/database.dart` says so on purpose), so this delete touches
+      // neither of them.
+      await txn.delete('entries',
+          where: 'pack_key = ?', whereArgs: <Object?>[pack.packId]);
       final batch = txn.batch();
       for (var index = 0; index < pack.entries.length; index++) {
         final entry = pack.entries[index];
@@ -109,11 +122,71 @@ class PackDao {
             'examples': jsonEncode(entry.examples),
             'sort_index': index,
           },
+          // **Safe here, and the reason is the direction of the foreign key.**
+          // `entries.pack_key` cascades *from* `packs`, so a replace of an
+          // entry row cannot fire it — a cascade only runs when a **parent**
+          // row is deleted, and this one is a child. And nothing cascades
+          // *from* `entries`: `word_progress` and `favorites` carry no
+          // foreign key onto it at all (`lib/data/database.dart` records both
+          // decisions on purpose). So replacing an entry row destroys that one
+          // row and nothing else, which is what this insert means.
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
       }
       await batch.commit(noResult: true);
     });
+  }
+
+  /// Writes the pack's own row **without ever deleting it**.
+  ///
+  /// ## Why this is not `ConflictAlgorithm.replace`
+  ///
+  /// **`INSERT OR REPLACE` is a DELETE followed by an INSERT**, and the DELETE
+  /// fires `favorites.pack_key`'s `ON DELETE CASCADE`. Every favourite filed
+  /// under this pack key therefore disappeared the moment the pack's row was
+  /// rewritten — and the pack's row **is** rewritten on every launch:
+  /// `VocabRepository.ensureDictionaryPack` writes the dictionary's row through
+  /// this method, and `main()` calls it on every start. So every time the user
+  /// left the app and came back, the favourites were gone.
+  ///
+  /// That is the user's own report: «كلما اخرج من التطبيق تمسح حزمة المفضلة
+  /// كليا» — every time I leave the app, the favourites pack is wiped entirely.
+  ///
+  /// ## What this does instead
+  ///
+  /// **An insert that is ignored when the row is already there, then an
+  /// update.** `INSERT OR IGNORE` (`ConflictAlgorithm.ignore`) leaves an
+  /// existing row exactly as it is — it does not delete it and it does not
+  /// cascade — and reports `0` changed rows, which is the signal that the row
+  /// is already there. The update then rewrites the row's columns **in place**,
+  /// which no cascade can see.
+  ///
+  /// **Why not `INSERT ... ON CONFLICT DO UPDATE`.** It is the tidier
+  /// statement, but UPSERT needs SQLite 3.24 (2018) and sqflite runs against
+  /// the **system** SQLite on Android, which is older than that on Android 8
+  /// and 9. The insert-then-update pair runs on every SQLite there is.
+  ///
+  /// **And not "update, and insert when the update changed no row."** That
+  /// turns on whether SQLite counts a row whose columns already hold the values
+  /// being written, which is a detail of the engine rather than of the schema.
+  /// This pair does not depend on it: `INSERT OR IGNORE` distinguishes "the row
+  /// is there" from "it is not" on its own.
+  Future<void> _writePackRow(
+    DatabaseExecutor executor,
+    Map<String, Object?> row,
+  ) async {
+    final inserted = await executor.insert(
+      'packs',
+      row,
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+    if (inserted != 0) return;
+    await executor.update(
+      'packs',
+      row,
+      where: 'pack_key = ?',
+      whereArgs: <Object?>[row['pack_key']],
+    );
   }
 
   /// Inserts or replaces the pack's own row, with **no entries**.
@@ -126,12 +199,22 @@ class PackDao {
   ///
   /// The row carries the dictionary's **real** size, so the pack list can say
   /// how many words there are without reading them.
+  ///
+  /// **The row is written by [_writePackRow], and that is the whole point of
+  /// this method.** It is called on **every launch** — `main()` calls
+  /// `VocabRepository.ensureDictionaryPack`, which calls this — so whatever it
+  /// does to the row happens every time the user opens the app. Writing it
+  /// with `ConflictAlgorithm.replace` deleted it, and the delete took the
+  /// dictionary's **favourites** with it through `favorites.pack_key`'s
+  /// `ON DELETE CASCADE`: the user's own saved words, wiped on every start.
+  /// The user's report, verbatim: «كلما اخرج من التطبيق تمسح حزمة المفضلة
+  /// كليا».
   Future<void> insertPackRow(
     PackSummary summary, {
     DatabaseExecutor? executor,
   }) async {
-    await (executor ?? _db).insert(
-      'packs',
+    await _writePackRow(
+      executor ?? _db,
       <String, Object?>{
         'pack_key': summary.packKey,
         'title': summary.title,
@@ -142,7 +225,6 @@ class PackDao {
         'is_bundled': summary.isBundled ? 1 : 0,
         'imported_at': summary.importedAt.toUtc().toIso8601String(),
       },
-      conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 

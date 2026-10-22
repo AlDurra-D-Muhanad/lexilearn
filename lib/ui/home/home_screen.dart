@@ -736,7 +736,16 @@ class _Header extends StatelessWidget {
           // so nothing above or below the fold moves. Pinned by
           // `test/ui/home_shell_test.dart` → *every destination carries the
           // overflow menu*.
-          const AppOverflowMenu(),
+          //
+          // **`edgeInset: 0`, and the reason is this row's own padding.** The
+          // header row already carries the page's 16 px margin, so the button
+          // is 16 px from the screen's edge already — the same place the three
+          // `AppBar` destinations put it once they are given the margin the
+          // bar's `actions` slot does not have. The user's own words: «زر
+          // الثلاث نقاط قريب جدا من حافة الشاشة اجعله كما في الشاشة
+          // الرئيسية» — the three-dot button is far too close to the edge of
+          // the screen; make it as it is on the home screen.
+          const AppOverflowMenu(edgeInset: 0),
         ],
       ),
     );

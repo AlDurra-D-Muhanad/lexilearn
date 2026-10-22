@@ -69,10 +69,24 @@ const String _next = 'التالي';
 const String _finish = 'إنهاء';
 const String _correctBanner = 'إجابة صحيحة';
 const String _wrongBanner = 'إجابة خاطئة';
-const String _advanceToSetup = 'العودة إلى الإعداد';
+const String _advanceToSetup = 'العودة إلى الإعدادات';
 const String _startQuiz = 'ابدأ الاختبار';
 const String _lengthError = 'أدخل رقمًا صحيحًا، مثل 10';
 const String _lengthCap = 'الحد الأقصى 200 سؤال في الجلسة';
+
+/// The results screen's subtitle, as `quiz_result_screen.dart` spells it.
+const String _resultSubtitle = 'أحسنت! لقد أتممت جلسة التعلم بنجاح';
+
+/// The pack chooser's cap line, for the four-word fixture pack.
+///
+/// **Built from the pack's own size**, because the cap *is* the pack's size:
+/// the fixture pack holds four words, so four questions is the most it can
+/// carry.
+String _packCap(int questions) => 'الحد الأقصى $questions سؤال في هذه الحزمة';
+
+/// The line that says the request was cut down to the pack's size.
+String _cappedToPack(int questions) =>
+    'تم تقليص عدد الأسئلة إلى $questions، وهو عدد كلمات الحزمة';
 
 void main() {
   late TestHarness harness;
@@ -135,6 +149,23 @@ void main() {
 
   Finder optionText(QuizQuestion question, int index) =>
       find.text(question.options[index].text);
+
+  /// **The text the pack picker is showing, and only that.**
+  ///
+  /// **Scoped to the picker**, because the screen names the pack in two
+  /// places: the pill above the picker and the picker's own field. The user
+  /// asked for the number beside the pack's name to go — «ازل الرقم من جانب
+  /// اسم الحزمة» — so the name now stands alone in the picker, and this is
+  /// the finder that says so.
+  ///
+  /// **The picker's own subtree, so it is the *closed* field that is being
+  /// looked at.** An open dropdown draws its items in an overlay, outside the
+  /// field, so this finder answers about what the field is showing rather
+  /// than about what is on the screen.
+  Finder inPicker(String text) => find.descendant(
+        of: find.byType(DropdownButtonFormField<String>),
+        matching: find.text(text),
+      );
 
   /// The decoration the option row at [index] is actually painting.
   ///
@@ -575,6 +606,138 @@ void main() {
     expect(find.textContaining('100%'), findsNothing);
   });
 
+  testWidgets('the setup screen caps the session at the pack\'s size, and says '
+      'so', (tester) async {
+    // **The user's own words: «لا تسمح بعمل اختبار بأكثر من الكلمات الموجودة
+    // بحزمة المفضلة» — do not allow a quiz with more questions than the words
+    // in the favourites pack.** With one saved word and a hundred questions
+    // asked for, the same word was asked a hundred times.
+    //
+    // **The fixture pack holds four words**, so four is the most a session over
+    // it can be — and the cap is on the screen *before* the user asks for
+    // anything, because a cap that is applied without being shown is a cap
+    // the user cannot see.
+    await _openSetup(tester, harness.repository);
+
+    expect(find.text(_packCap(_packEntries)), findsOneWidget,
+        reason: 'the cap is the pack\'s own size, and it is on the screen');
+
+    // **And a request over the cap says what will happen to it**, while the
+    // user is still typing, rather than being cut behind their back.
+    await tester.enterText(find.byType(TextField), '100');
+    await tester.pump();
+    expect(find.text(_cappedToPack(_packEntries)), findsOneWidget,
+        reason: 'the screen says the number will be cut down, and to what');
+
+    // **And the session that runs is the capped one.**
+    await _tap(tester, find.widgetWithText(FilledButton, _startQuiz));
+    final pushed = controllerOf(tester);
+    expect(pushed.questionCount, _packEntries,
+        reason: 'a hundred questions over a four-word pack is four questions');
+  });
+
+  testWidgets('the result screen is the reference: the disc, the gold score, '
+      'the accuracy card, the star and the gold pill', (tester) async {
+    // **The user's own instruction: «عدل شاشة النتائج الى مثل new result
+    // window.png» — adjust the results screen to be like the reference
+    // image.** What this asserts is the reference's *structure*, measured
+    // rather than described.
+    await _openSetup(tester, harness.repository);
+    await tester.enterText(find.byType(TextField), '2');
+    await _tap(tester, find.widgetWithText(FilledButton, _startQuiz));
+
+    final pushed = controllerOf(tester);
+    var question = pushed.question!;
+    await _tap(tester, optionText(question, question.correctIndex));
+    await _tap(tester, find.widgetWithText(FilledButton, _next));
+    question = pushed.question!;
+    await _tap(tester, optionText(question, _firstWrongIndex(question)));
+    await _tap(tester, find.widgetWithText(FilledButton, _finish));
+    expect(find.byType(QuizResultScreen), findsOneWidget);
+
+    // 1. **The subtitle**, which the reference puts under the title.
+    expect(find.text(_resultSubtitle), findsOneWidget);
+
+    // 2. **The book disc, on the card's top edge.**
+    //
+    // The disc is a circle with a gold ring, and its **centre** is on the
+    // card's top edge — that is what notches the card's border, and it is
+    // what the reference draws: the ring runs from y 344 to y 501 and the
+    // card's top edge is at y 425.
+    final disc = find.byWidgetPredicate(
+      (widget) =>
+          widget is Container &&
+          widget.decoration is BoxDecoration &&
+          (widget.decoration! as BoxDecoration).shape == BoxShape.circle &&
+          (widget.decoration! as BoxDecoration).border != null &&
+          ((widget.decoration! as BoxDecoration).border!
+              as Border)
+              .top
+              .color ==
+              AppColors.gold,
+    );
+    expect(disc, findsOneWidget, reason: 'the gold-ringed disc is on screen');
+    expect(tester.getSize(disc), const Size(68, 68),
+        reason: 'the disc is 68 logical px across, as the reference measures it');
+    // **The card's own border is drawn as an `AppSurface`, and the outer one
+    // is the big card.**
+    final card = find.byType(AppSurface).first;
+    expect(
+      tester.getCenter(disc).dy,
+      closeTo(tester.getTopLeft(card).dy, 0.5),
+      reason: 'the disc is centred on the card\'s top edge, so it notches the '
+          'card\'s border',
+    );
+    // **And the book is in it** — the app's own book glyph, which is the one
+    // the reference draws.
+    expect(
+      find.descendant(of: disc, matching: find.byIcon(Icons.menu_book_rounded)),
+      findsOneWidget,
+    );
+
+    // 3. **The score: the correct count in gold, the total in white.**
+    final score = tester.widget<Text>(find.text('1 / 2'));
+    final spans = (score.textSpan! as TextSpan).children!;
+    expect(spans.first.style!.color, AppColors.gold,
+        reason: 'the correct count is the brand gold');
+    expect(spans.first.style!.fontWeight, FontWeight.w700,
+        reason: 'the reference draws the gold count bold');
+    expect(spans.last.style?.color, isNot(AppColors.gold),
+        reason: 'the total is not gold: the reference draws it in the ink');
+
+    // 4. **The accuracy card: the target icon and the gold percentage.**
+    expect(find.byIcon(Icons.gps_fixed), findsOneWidget,
+        reason: 'the reference draws a target beside «نسبة الدقة»');
+    final percent = tester.widget<Text>(find.text('50%'));
+    expect(percent.style!.color, AppColors.gold,
+        reason: 'the percentage is the brand gold');
+
+    // 5. **The gold star** beside «استمر في الممارسة».
+    final star = tester.widget<Icon>(find.byIcon(Icons.star));
+    expect(star.color, AppColors.gold);
+
+    // 6. **The gold pill**, with the arrow and the app's darkest ink on it.
+    final pill = find.widgetWithText(FilledButton, _advanceToSetup);
+    expect(pill, findsOneWidget);
+    // **The colour the button is actually painting**, and not the style it
+    // declares: the fill comes from the theme's primary, which is the brand
+    // gold, and a test that read the style would read a null.
+    final material = tester.widget<Material>(
+      find.descendant(of: pill, matching: find.byType(Material)).first,
+    );
+    expect(material.color, AppColors.gold,
+        reason: 'the pill is a solid gold fill');
+    expect(
+      tester.widget<Text>(find.text(_advanceToSetup)).style!.color,
+      AppColors.onGold,
+      reason: 'the ink on a gold fill is the app\'s darkest navy',
+    );
+    expect(
+      find.descendant(of: pill, matching: find.byIcon(Icons.arrow_back)),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('the quiz screen draws no bare Card', (tester) async {
     await pumpQuiz(tester);
 
@@ -823,21 +986,36 @@ void main() {
     await settleDatabase(tester);
 
     // The field opens on the pack it was handed, named.
-    expect(find.text('$_packTitle ($_packEntries)'), findsOneWidget);
+    //
+    // **The name and nothing else.** The picker used to draw the pack's
+    // size beside its name — 'P (4)' — and the user asked for that number to
+    // go: «ازل الرقم من جانب اسم الحزمة» — remove the number from beside the
+    // pack's name. The size is still on the screen, in the line under the
+    // length field, where it is the **cap** rather than a stray number on a
+    // name.
+    expect(inPicker('$_packTitle ($_packEntries)'), findsNothing,
+        reason: 'the number beside the pack name is gone');
+    expect(inPicker(_packTitle), findsOneWidget);
     // **The pill names the pack by its title, not by its key.** It used to
     // show the key — `p` — and a pack key is an identifier: the shell reads
     // the pack list and hands the *name* down.
-    expect(find.text(_packTitle), findsOneWidget);
+    expect(find.text(_packTitle), findsNWidgets(2),
+        reason: 'the pill above the picker and the picker itself both name '
+            'the pack, and the number that used to tell them apart is gone');
     expect(find.text('p'), findsNothing,
         reason: 'a pack key is an identifier and must not reach the user');
 
     await _tap(tester, find.byType(DropdownButton<String>));
-    await _tap(tester, find.text('$_secondTitle ($_secondEntries)').last);
+    // **Every pack's label is the name alone**, not only the one the field
+    // happens to be showing: the open list is where the user reads the names.
+    expect(find.text('$_secondTitle ($_secondEntries)'), findsNothing,
+        reason: 'the number beside the pack name is gone');
+    await _tap(tester, find.text(_secondTitle).last);
 
     // 1. `onChanged` fired, carrying the key the screen was handed…
     expect(selected, <String>['q']);
     // 2. …the host rebuilt, so the field shows the pack that was chosen…
-    expect(find.text('$_secondTitle ($_secondEntries)'), findsOneWidget);
+    expect(inPicker(_secondTitle), findsOneWidget);
     // …and so does the pill, which is drawn from the same key the quiz would
     // draw from, so the screen cannot show one pack and quiz another.
     //
@@ -852,16 +1030,17 @@ void main() {
     // **The pill names the pack by its title.** It used to name it by its key
     // — `q` — and a pack key is an identifier; the shell reads the pack list
     // and hands the *name* down.
-    expect(find.text(_secondTitle), findsOneWidget);
+    expect(find.text(_secondTitle), findsNWidgets(2),
+        reason: 'the pill and the picker both name the chosen pack');
     expect(find.text('q'), findsNothing,
         reason: 'a pack key is an identifier and must not reach the user');
-    expect(find.text(_packTitle), findsNothing);
+    expect(inPicker(_packTitle), findsNothing);
 
     // 3. Re-choosing the pack that is already active must not report it again:
     //    the guard is what stops a no-op tap from resetting the whole app's
     //    pack behind the user's back.
     await _tap(tester, find.byType(DropdownButton<String>));
-    await _tap(tester, find.text('$_secondTitle ($_secondEntries)').last);
+    await _tap(tester, find.text(_secondTitle).last);
 
     expect(selected, <String>['q'],
         reason: 're-picking the active pack reported a pack switch');

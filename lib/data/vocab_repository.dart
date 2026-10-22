@@ -101,12 +101,40 @@ class VocabRepository {
   /// **And it is in the list only when it has at least one entry.** A pack with
   /// nothing in it is not a pack: an empty «مفضلتي» in the list would be a
   /// promise of words the user has not saved.
+  ///
+  /// **The dictionary is in the list exactly once, and that is the second
+  /// half of the user's report: «حزمة القاموس الشامل معروضة مرتين» — the
+  /// Comprehensive Dictionary pack is shown twice.**
+  ///
+  /// The cause is not the row and not the title. It is that the dictionary is
+  /// in the list **twice over**: once as [_dictionarySummary], which is built
+  /// from the dictionary's own row when there is one, and once more as that
+  /// same row, carried through [_withStarterTitle] with everything else. Both
+  /// carry the same `pack_key`, so both rows were marked as the active pack
+  /// and both showed the same size — which is exactly what the user's
+  /// screenshot shows.
+  ///
+  /// The earlier round's fix removed a **pill** that named the active pack
+  /// above the list. That pill was a real duplicate of the *name*, and removing
+  /// it was right, but the *row* was never the thing that was duplicated in the
+  /// user's mind — and it still was.
+  ///
+  /// **The rule: the dictionary's row is the dictionary's summary.** When the
+  /// engine is attached the summary stands for the row and the row is not
+  /// carried again; when it is not attached there is no summary and the row is
+  /// the only thing there is, so it is carried.
   Future<List<PackSummary>> packs() async {
     final installed = await _packs.listPacks();
     final dictionary = _dictionary;
+    // The dictionary's row, when the summary below is going to stand for it.
+    final stored = dictionary == null
+        ? installed
+        : installed
+            .where((summary) => summary.packKey != dictionaryPackKey)
+            .toList();
     final summaries = <PackSummary>[
       if (dictionary != null) _dictionarySummary(installed),
-      ..._withStarterTitle(installed),
+      ..._withStarterTitle(stored),
     ];
     final favourites = await myFavourites();
     if (favourites.isNotEmpty) {

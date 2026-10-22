@@ -59,6 +59,15 @@ const String _activePack = 'الحزمة الحالية';
 const String _startQuiz = 'ابدأ الاختبار';
 const String _emptyDeck = 'لا توجد بطاقات بعد';
 
+/// How many words the quiz-chooser test saves, and therefore how big the
+/// derived pack is.
+///
+/// **Named because the number used to be drawn beside the pack's name** — the
+/// picker said «مفضلتي (2)» — and the user asked for it to go. The number is
+/// still a fact about the pack, so it is still in the test: it is the pack's
+/// **cap** on the session now, not a decoration on a name.
+const int _derivedEntries = 2;
+
 /// Saves the words with these ids, from the fixture pack.
 ///
 /// `tester.runAsync`, because a `testWidgets` body runs in a fake-async zone
@@ -199,16 +208,25 @@ void main() {
     await settleDatabase(tester);
     expect(find.byType(QuizSetupScreen), findsOneWidget);
 
-    // **The chooser lists it, with the number of saved words.**
+    // **The chooser lists it, under its name and nothing else.** The picker
+    // used to draw the pack's size beside the name — «مفضلتي (2)» — and the
+    // user asked for that number to go: «ازل الرقم من جانب اسم الحزمة» —
+    // remove the number from beside the pack's name. The size is still on the
+    // screen, in the line under the length field, where it is the **cap** on
+    // the session rather than a stray number on a name.
     await tester.tap(find.byType(DropdownButton<String>));
     await tester.pumpAndSettle();
-    expect(find.text('$_derivedTitle (2)'), findsOneWidget);
-    await tester.tap(find.text('$_derivedTitle (2)'));
+    expect(find.text('$_derivedTitle ($_derivedEntries)'), findsNothing,
+        reason: 'the number beside the pack name is gone');
+    expect(find.text(_derivedTitle), findsOneWidget);
+    await tester.tap(find.text(_derivedTitle));
     await tester.pumpAndSettle();
     await settleDatabase(tester);
 
     // **The pill above the picker names it.**
-    expect(find.text(_derivedTitle), findsOneWidget);
+    expect(find.text(_derivedTitle), findsNWidgets(2),
+        reason: 'the pill and the picker both name the derived pack, and the '
+            'number that used to tell them apart is gone');
 
     // **And the quiz draws from the favourites.**
     await tester.enterText(find.byType(TextField), '1');

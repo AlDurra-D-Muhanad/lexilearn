@@ -113,7 +113,35 @@ enum _MenuAction { appInfo, attribution, theme }
 /// accent-coloured icons are the brand's, and everything else is the obvious
 /// thing to do with those.
 class AppOverflowMenu extends StatefulWidget {
-  const AppOverflowMenu({super.key});
+  const AppOverflowMenu({super.key, this.edgeInset = AppSpacing.m});
+
+  /// **The gap between the screen's outer edge and the button's own box.**
+  ///
+  /// **Why this is a parameter and not a constant.** The button is at the
+  /// outer edge of the screen on all four destinations, but the two layouts
+  /// that put it there give it a different amount of room:
+  ///
+  /// * the three destinations with an `AppBar` put it in the bar's `actions`
+  ///   slot, which is **flush against the screen's edge** — the bar's own
+  ///   margin is the title's, not the actions';
+  /// * Home has no `AppBar` at all and puts it at the end of the header row,
+  ///   whose own padding is the page's **16 px** margin.
+  ///
+  /// **So the AppBar screens had the glyph 16 px further out than Home's** —
+  /// measured off the committed reference images, the glyph's centre sits at
+  /// **28 logical px** from the screen's edge on Home and at **11.8** on the
+  /// More screen. The user named it: «زر الثلاث نقاط قريب جدا من حافة الشاشة
+  /// اجعله كما في الشاشة الرئيسية» — the three-dot button is far too close to
+  /// the edge of the screen; make it as it is on the home screen.
+  ///
+  /// **The default is the AppBar's case**, because three of the four
+  /// destinations are AppBar screens and a new one should be right by
+  /// default. **Home passes zero**, because its row already carries the page's
+  /// margin and adding this one on top of it would double it.
+  ///
+  /// `test/ui/app_settings_test.dart` → *the button is the same distance from
+  /// the edge on every destination* is what holds the two together.
+  final double edgeInset;
 
   @override
   State<AppOverflowMenu> createState() => _AppOverflowMenuState();
@@ -147,7 +175,14 @@ class _AppOverflowMenuState extends State<AppOverflowMenu> {
           settings: settings,
           onDismiss: _portal.hide,
         ),
-        child: _MenuButton(onTap: _toggle),
+        child: Padding(
+          // **The end side, and the end is the screen's outer edge.** The
+          // button sits at the end of the row in both directions, so the gap
+          // belongs on the end side in both — and in this Arabic app the end
+          // is the physical left.
+          padding: EdgeInsetsDirectional.only(end: widget.edgeInset),
+          child: _MenuButton(onTap: _toggle),
+        ),
       ),
     );
   }
@@ -300,8 +335,25 @@ class _MenuPanel extends StatelessWidget {
                     // that licence obliges an application shipping it to name
                     // the licence and its sources. The screen reads them out of
                     // the dictionary's own `meta` table and invents nothing.
+                    //
+                    // **The icon is a library of books, and the reason is what
+                    // the row is.** The user's own words: «تعديل اخير: ايقونة
+                    // الميزان بجانب كلمة المصادر غير مناسبة ابدلها» — the
+                    // balance icon beside «المصادر» is not suitable; change
+                    // it. A pair of scales reads as *justice*, *weighing* and
+                    // *balance*, and the row it sits beside is about where the
+                    // words came from and who wrote them — a licence, three
+                    // upstream projects and their credits.
+                    //
+                    // **A library is what that is.** `library_books_outlined` is
+                    // a shelf of books: the collection the app's words are read
+                    // out of, which is exactly what the screen it opens lists.
+                    // It is in the Material set, it is in the same *book* family
+                    // the identity already uses (the gold book mark on Home,
+                    // the book disc on the results screen), and it says
+                    // "sources" where a pair of scales said "weighing".
                     _MenuRow(
-                      icon: Icons.balance_outlined,
+                      icon: Icons.library_books_outlined,
                       label: _attributionLabel,
                       colour: accent,
                       onTap: () => _run(context, _MenuValue.attribution()),

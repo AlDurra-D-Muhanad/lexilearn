@@ -41,9 +41,25 @@ class QuizController extends ChangeNotifier {
   /// The seed the generator draws from, or `null` for an unseeded run.
   final Random? random;
 
-  /// The number of questions this session will ask. Clamped in the initialiser
-  /// rather than named [questionCount], so it cannot be mutated after the fact.
-  final int _questionCount;
+  /// The number of questions this session will ask.
+  ///
+  /// **Clamped twice, and the second clamp is the one that matters.** The
+  /// initialiser clamps a count below one to one; [start] clamps the count
+  /// down to the number of words the pack actually holds.
+  ///
+  /// **Why.** The user's own words: «لا تسمح بعمل اختبار بأكثر من الكلمات
+  /// الموجودة بحزمة المفضلة» — do not allow a quiz with more questions than
+  /// the words in the favourites pack. With one saved word and a hundred
+  /// questions asked for, the same word was asked a hundred times.
+  ///
+  /// **The quiz setup screen says so before the quiz starts** — it quotes the
+  /// cap under the length field, and cuts the number down to it — so this clamp
+  /// is the last line of defence rather than the only one. It is here because
+  /// a guarantee that lives only in a screen is a guarantee a screen can lose.
+  ///
+  /// **Not final, because the pack's size is not known until the read
+  /// answers.** It is read once, in [start], and it is not mutated after that.
+  int _questionCount;
 
   /// Stamps the session's `startedAt`. Injected rather than read from the wall
   /// clock so a test can pin it; the repository already owns a `Clock` for every
@@ -155,6 +171,18 @@ class QuizController extends ChangeNotifier {
   Future<void> start() async {
     _startedAt = _clock();
     final entries = await repository.entries(packKey);
+    // **A session is never longer than the pack it is drawn from.** The
+    // generator cycles a short pack rather than running out, so a hundred
+    // questions over one word is a hundred questions about the same word —
+    // which is what the user reported: «سيتم اعادة و تكرار نفس الكلمه
+    // بالاختبار».
+    //
+    // **An empty pack keeps a count of one**, because the count is the
+    // denominator of [progress] and a session over an empty pack ends before
+    // it asks anything.
+    if (entries.length < _questionCount) {
+      _questionCount = entries.isEmpty ? 1 : entries.length;
+    }
     final generator = QuizGenerator(entries: entries, random: random);
     _generator = generator;
     _started = true;

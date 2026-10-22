@@ -17,6 +17,7 @@ import '../helpers/test_env.dart';
 /// The copy the overflow menu and the about screen draw, as
 /// `lib/ui/settings/` spells it.
 const _appInfoLabel = 'معلومات التطبيق';
+const _attributionLabel = 'المصادر';
 const _themeSystem = 'حسب النظام';
 const _themeLight = 'فاتح';
 const _themeDark = 'داكن';
@@ -115,6 +116,88 @@ void main() {
       );
       expect(inAppBar, findsOneWidget,
           reason: 'a screen with an AppBar puts the menu in it');
+    });
+
+    testWidgets('the sources row carries a library of books, not a pair of scales',
+        (tester) async {
+      // **The user's own words: «تعديل اخير: ايقونة الميزان بجانب كلمة المصادر
+      // غير مناسبة ابدلها» — the balance icon beside «المصادر» is not
+      // suitable; change it.**
+      //
+      // A pair of scales reads as *justice*, *weighing* and *balance*, and the
+      // row it sits beside is about where the words came from and who wrote
+      // them. **A library of books is what that is**: the collection the app's
+      // words are read out of, which is exactly what the screen the row opens
+      // lists — the dictionary's licence and its three upstream projects.
+      await openOverflowMenu(tester);
+
+      expect(find.byIcon(Icons.balance_outlined), findsNothing,
+          reason: 'the scales are what the user rejected');
+      expect(find.byIcon(Icons.library_books_outlined), findsOneWidget,
+          reason: 'the sources row carries a library of books');
+
+      // **And the icon is beside the label**, not somewhere else on the panel.
+      final row = find
+          .ancestor(
+            of: find.text(_attributionLabel),
+            matching: find.byType(Row),
+          )
+          .first;
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.byIcon(Icons.library_books_outlined),
+        ),
+        findsOneWidget,
+        reason: 'the books icon is the one on the sources row',
+      );
+    });
+
+    testWidgets('the button is the same distance from the edge on every '
+        'destination', (tester) async {
+      // **The user's own words: «زر الثلاث نقاط قريب جدا من حافة الشاشة اجعله
+      // كما في الشاشة الرئيسية» — the three-dot button is far too close to the
+      // edge of the screen; make it as it is on the home screen.**
+      //
+      // **Measured, not asserted as a word.** The three destinations with an
+      // `AppBar` put the menu in the bar's `actions` slot, which is flush
+      // against the screen's edge; Home has no `AppBar` and puts it at the end
+      // of the header row, whose own padding is the page's 16 px margin. The
+      // glyph therefore sat **16 logical px** further out on the three `AppBar`
+      // screens than on Home — measured off the committed reference images,
+      // the glyph's centre is at 28 logical px from the edge on Home and at
+      // 11.8 on the More screen.
+      //
+      // **The measurement is of the glyph's own box**, so it is the same
+      // measurement on every screen and it cannot be satisfied by a button
+      // that moved and a glyph that did not.
+      //
+      // **On the phone, not on the test surface.** The complaint is about a
+      // phone, and the app's own reference phone is 360 × 780 logical — the
+      // size `useAPhone` sets. On a wider surface the home screen's header
+      // row has slack in it, and the button sits at the end of that slack, so
+      // the two are not comparable there.
+      useAPhone(tester);
+      await pumpShell(tester, harness.repository);
+
+      final onHome = tester.getTopLeft(find.byIcon(Icons.more_vert)).dx;
+
+      for (final icon in <IconData>[
+        Icons.style_outlined,
+        Icons.check_box_outlined,
+        Icons.apps,
+      ]) {
+        await tester.tap(barDestinationIcon(icon));
+        await tester.pumpAndSettle();
+        await settleDatabase(tester);
+
+        expect(
+          tester.getTopLeft(find.byIcon(Icons.more_vert)).dx,
+          closeTo(onHome, 0.5),
+          reason: 'the destination reached by $icon puts the button where Home '
+              'puts it',
+        );
+      }
     });
 
     testWidgets('معلومات التطبيق opens the about screen', (tester) async {

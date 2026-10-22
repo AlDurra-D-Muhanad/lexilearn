@@ -132,6 +132,22 @@ Future<void> _onCreate(Database db, int version) async {
   // that no favourite would be found either. Measured, that is backwards: with
   // the pragma off the row survives the delete and `favoritesIn('p')` still
   // returns `{a}`, so the test **fails** — which is what makes it load-bearing.
+  //
+  // **And the cascade has a second, much quieter way of firing.**
+  //
+  // `ON DELETE CASCADE` runs on a **DELETE**, and `INSERT OR REPLACE` is a
+  // delete followed by an insert. So a pack row written with
+  // `ConflictAlgorithm.replace` deletes itself on the way in — and takes every
+  // favourite filed under it with it. The dictionary's row is rewritten on
+  // **every launch** (`main()` → `ensureDictionaryPack` → `insertPackRow`), so
+  // that was enough to wipe the user's saved words every time they opened the
+  // app: «كلما اخرج من التطبيق تمسح حزمة المفضلة كليا».
+  //
+  // **The rule that follows: a row anybody cascades from is never written with
+  // a replace.** `PackDao._writePackRow` is the only writer of `packs`, and it
+  // writes the row in place. Pinned by
+  // `test/data/favorites_survive_a_restart_test.dart` → *a favourite survives
+  // the app being closed and opened again*.
   batch.execute('''
     CREATE TABLE favorites (
       pack_key  TEXT NOT NULL,
