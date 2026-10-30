@@ -2,16 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/design/design_tokens.dart';
+import 'package:lexilearn/domain/custom_dictionary.dart';
 import 'package:lexilearn/domain/dictionary_pack.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
 import 'package:lexilearn/domain/word_of_the_day.dart';
+import 'package:lexilearn/ui/custom_dictionary/custom_dictionary_screen.dart';
 import 'package:lexilearn/ui/dictionary/dictionary_controller.dart';
 import 'package:lexilearn/ui/favorites/favorites_screen.dart';
 import 'package:lexilearn/ui/flashcards/flashcards_screen.dart';
 import 'package:lexilearn/ui/home/home_screen.dart';
 import 'package:lexilearn/ui/more/more_screen.dart';
-import 'package:lexilearn/ui/quiz/quiz_setup_screen.dart';
 import 'package:lexilearn/ui/stats/stats_screen.dart';
 import 'package:lexilearn/ui/theme/app_surface.dart';
 import 'package:lexilearn/ui/theme/app_theme.dart';
@@ -36,19 +37,24 @@ const _noResults = 'لا توجد نتائج. جرّب جزءاً من الكل�
 
 /// The 2×2 quick-launch grid, in reading order: title, then the grey subtitle
 /// the artwork prints under it.
+///
+/// **The custom dictionary took the quiz's place**, because the quiz is still
+/// one tap away in the bottom bar. The order here is the order the grid builds
+/// its children in, which is also reading order: the first child is top-right
+/// in this app's RTL layout.
 const _tiles = <List<String>>[
+  <String>[customDictionaryTitle, 'أنشئ قاموسك الخاص'],
   <String>['بطاقات التعلم', 'ابدأ الآن'],
-  <String>['الاختبارات', 'اختبر نفسك'],
-  <String>['المفضلة', 'كلماتك المفضلة'],
   <String>['إحصائياتك', 'تقدمك وإنجازك'],
+  <String>['المفضلة', 'كلماتك المفضلة'],
 ];
 
 /// Everything inside the Home screen and nothing outside it.
 ///
-/// `الرئيسية` and `الاختبارات` are drawn twice on the mounted app — once on a
-/// grid tile and once in the bottom bar — so every grid assertion is scoped
-/// here. Unscoped, `find.text` matches both and `tap` throws instead of
-/// navigating.
+/// The bottom bar is mounted alongside Home, so every grid assertion is scoped
+/// here. Unscoped, a string the bar also draws matches twice and `tap` throws
+/// instead of navigating — and the bar's own «الاختبارات» must never satisfy an
+/// assertion about the grid.
 Finder inHome(String text) =>
     find.descendant(of: find.byType(HomeScreen), matching: find.text(text));
 
@@ -911,27 +917,86 @@ void main() {
     testWidgets('بطاقات التعلم switches the bar to the deck', (tester) async {
       _useAPhone(tester);
       await _pumpApp(tester, harness.repository);
-      await tester.tap(inHome(_tiles[0][0]));
+      await tester.tap(inHome(_tiles[1][0]));
       await tester.pumpAndSettle();
       // The tile switched the bar rather than pushing, so the destination
       // mounted for the first time and its own read is now in flight. A body that
       // ends here leaves that read running - found by the slow-database sweep,
       // which turned this into `A Timer is still pending even after the widget
-      // tree was disposed` in all three of the tiles below.
+      // tree was disposed` in every tile below that mounts a read.
       await settleDatabase(tester);
 
       expectSwitchedTo(tester, 1, FlashcardsScreen);
     });
 
-    testWidgets('الاختبارات switches the bar to the quiz setup', (tester) async {
+    testWidgets('قاموسك الخاص pushes the user\'s dictionary, and the quiz tile '
+        'is gone', (tester) async {
+      // **The artwork's replacement, and why it loses nothing.** The Home grid
+      // used to carry an «الاختبارات» tile; the artwork replaces it with the
+      // user's own dictionary, and the quiz is still one tap away in the bottom
+      // bar. Both halves are asserted: the grid no longer offers the quiz, and
+      // the bar still does.
       _useAPhone(tester);
       await _pumpApp(tester, harness.repository);
-      await tester.tap(inHome(_tiles[1][0]));
+
+      expect(inHome(customDictionaryTitle), findsOneWidget);
+      expect(inHome('الاختبارات'), findsNothing,
+          reason: 'the quiz tile was replaced by the custom dictionary tile');
+      expect(
+        find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text('الاختبارات'),
+        ),
+        findsOneWidget,
+        reason: 'the quiz is still reachable from the bottom bar',
+      );
+
+      await tester.tap(inHome(customDictionaryTitle));
       await tester.pumpAndSettle();
-      // As above: the destination's own read, drained before the body ends.
+      // The landing screen may issue its own read from `initState`; drained
+      // before the body ends. Its inner text is another task's contract, so
+      // this test asserts only that the right screen was pushed.
       await settleDatabase(tester);
 
-      expectSwitchedTo(tester, 2, QuizSetupScreen);
+      expect(find.byType(CustomDictionaryScreen), findsOneWidget);
+      expect(find.byType(HomeScreen, skipOffstage: false), findsOneWidget,
+          reason: 'the tile pushed a route; Home is still underneath it');
+      expect(
+        tester
+            .widget<NavigationBar>(
+                find.byType(NavigationBar, skipOffstage: false))
+            .selectedIndex,
+        0,
+        reason: 'the custom dictionary is not one of the bar\'s four '
+            'destinations',
+      );
+    });
+
+    testWidgets('the grid reads custom, flashcards, statistics, favourites',
+        (tester) async {
+      // **Reading order, measured from the laid-out tree.** The app reads right
+      // to left, so the first child is the top-right tile, the second is
+      // top-left, and the next row starts beneath them. This is the artwork's
+      // order once its left-to-right mock is mirrored into this app.
+      _useAPhone(tester);
+      await _pumpApp(tester, harness.repository);
+
+      Rect tile(String title) => tester.getRect(inHome(title));
+      final custom = tile(customDictionaryTitle);
+      final flashcards = tile('بطاقات التعلم');
+      final statistics = tile('إحصائياتك');
+      final favourites = tile('المفضلة');
+
+      expect(custom.top, closeTo(flashcards.top, 1),
+          reason: 'the first two tiles share the top row');
+      expect(custom.left, greaterThan(flashcards.left),
+          reason: 'the custom dictionary is first, at the right of the top row');
+      expect(statistics.top, closeTo(favourites.top, 1),
+          reason: 'the last two tiles share the second row');
+      expect(statistics.left, greaterThan(favourites.left),
+          reason: 'statistics is third, at the right of the second row');
+      expect(custom.bottom, lessThanOrEqualTo(statistics.top),
+          reason: 'the custom dictionary is above statistics');
     });
 
     testWidgets('إحصائياتك pushes statistics and leaves the bar where it was',
@@ -957,7 +1022,7 @@ void main() {
       // `HomeScreen` out of the tree and moves the bar.
       _useAPhone(tester);
       await _pumpApp(tester, harness.repository);
-      await tester.tap(inHome(_tiles[3][0]));
+      await tester.tap(inHome(_tiles[2][0]));
       await tester.pumpAndSettle();
       // The pushed screen issues its own read from `initState`, and
       // `pumpShell`'s two turns happened before it existed.
@@ -982,10 +1047,10 @@ void main() {
         (tester) async {
       _useAPhone(tester);
       await _pumpApp(tester, harness.repository);
-      await tester.tap(inHome(_tiles[0][0]));
+      await tester.tap(inHome(_tiles[1][0]));
       await tester.pumpAndSettle();
       // **Task 15, and a timing assumption this test made implicitly.**
-      // `_tiles[0][0]` is `بطاقات التعلم`, the one grid tile that is a **bar
+      // `_tiles[1][0]` is `بطاقات التعلم`, the one grid tile that is a **bar
       // destination**, and as of Task 15 it is the one that mounts a database
       // read of its own: `FlashcardsScreen` reads the pack to learn how many
       // cards the deck has. `pumpAndSettle` does not drive the real event loop —
@@ -1025,7 +1090,7 @@ void main() {
       // push: there is no tab for it to switch to.
       _useAPhone(tester);
       await _pumpApp(tester, harness.repository);
-      await tester.tap(inHome(_tiles[2][0]));
+      await tester.tap(inHome(_tiles[3][0]));
       await tester.pumpAndSettle();
       // `FavoritesScreen` reads the saved words in its `initState`, and it
       // mounted on this tap. Drained before the body ends, for the reason the
@@ -1061,8 +1126,8 @@ void main() {
           (widget) =>
               widget is Semantics &&
               widget.properties.button == true &&
-              widget.properties.label?.contains(_tiles[2][0]) == true,
-          description: 'a semantics node flagged as a button for "${_tiles[2][0]}"',
+              widget.properties.label?.contains(_tiles[3][0]) == true,
+          description: 'a semantics node flagged as a button for "${_tiles[3][0]}"',
         ),
         findsOneWidget,
       );

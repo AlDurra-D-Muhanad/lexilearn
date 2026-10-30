@@ -5,6 +5,7 @@ import 'package:lexilearn/data/dictionary/dictionary_models.dart';
 import 'package:lexilearn/domain/dictionary_pack.dart';
 import 'package:lexilearn/domain/backup_codec.dart';
 import 'package:lexilearn/domain/backup_document.dart';
+import 'package:lexilearn/domain/custom_dictionary.dart';
 import 'package:lexilearn/domain/my_favourites_pack.dart';
 import 'package:lexilearn/domain/pack_codec.dart';
 import 'package:lexilearn/domain/quiz_session_result.dart';
@@ -140,6 +141,15 @@ class VocabRepository {
     if (favourites.isNotEmpty) {
       summaries.add(_favouritesSummary(favourites.length));
     }
+    // **An empty custom dictionary is not a pack.** A row exists so its words
+    // can have a parent, and it stays when the last word is deleted so the
+    // quiz sessions played in it are not wiped with it — but a pack list is a
+    // list of things to study, and a pack with no words in it has nothing to
+    // offer. The same reasoning as the empty «مفضلتي» above.
+    summaries.removeWhere(
+      (summary) =>
+          summary.packKey == customDictionaryPackKey && summary.entryCount == 0,
+    );
     return summaries;
   }
 
@@ -193,12 +203,28 @@ class VocabRepository {
   /// **The label is the only thing that changes.** The pack's entries, its
   /// id and its key are untouched, so a favourite saved against it under the
   /// old title is still there.
+  ///
+  /// **The user's own dictionary is relabelled the same way**, and for a
+  /// second reason: a backup restored from another device carries whatever
+  /// title that device stored, and the custom dictionary is the one pack the
+  /// app itself has a name for. The name the user learned on the Home tile is
+  /// the name they must find in the pack list.
   List<PackSummary> _withStarterTitle(List<PackSummary> installed) => <PackSummary>[
         for (final summary in installed)
           if (summary.packKey == starterPackKey)
             PackSummary(
               packKey: summary.packKey,
               title: starterPackTitle,
+              sourceLanguage: summary.sourceLanguage,
+              targetLanguage: summary.targetLanguage,
+              entryCount: summary.entryCount,
+              isBundled: summary.isBundled,
+              importedAt: summary.importedAt,
+            )
+          else if (summary.packKey == customDictionaryPackKey)
+            PackSummary(
+              packKey: summary.packKey,
+              title: customDictionaryTitle,
               sourceLanguage: summary.sourceLanguage,
               targetLanguage: summary.targetLanguage,
               entryCount: summary.entryCount,
@@ -230,6 +256,7 @@ class VocabRepository {
     if (packKey == dictionaryPackKey) return dictionaryPackTitle;
     if (packKey == starterPackKey) return starterPackTitle;
     if (packKey == myFavouritesPackKey) return myFavouritesPackTitle;
+    if (packKey == customDictionaryPackKey) return customDictionaryTitle;
     final row = await _packs.packRow(packKey);
     return row?.title ?? '';
   }
@@ -262,6 +289,149 @@ class VocabRepository {
       return <VocabEntry>[for (final head in heads) _toVocabEntry(head)];
     }
     return _packs.entriesOf(packKey);
+  }
+
+  /// The pool the word-of-the-day card draws from.
+  ///
+  /// **The dictionary's card used to draw from every studyable headword**, and
+  /// the user's ruling after seeing it on the phone was that it must draw from
+  /// the curated set. The entry it produced was «creating by removal» — a
+  /// phrase, and a gloss rather than a word.
+  ///
+  /// The curated set is therefore narrower than the study surface:
+  ///
+  /// * a **single token**, so a phrase cannot be the word of the day;
+  /// * **letters only at the start and no digits**, so `44th`, `1` and `7 Up`
+  ///   are not words of the day;
+  /// * **lowercase at the start**, which is what removes the names that
+  ///   survived the proper-noun rule (`Aaron`, `Abadan`, `Italian`) — the
+  ///   dictionary marks most names, and not all of them;
+  /// * **an Arabic sense**, because the card's button opens a meaning and a
+  ///   word with no meaning would open an empty screen;
+  /// * no affix and no proper noun — [StudyFilter]'s own rules.
+  ///
+  /// **The other packs are not filtered.** A starter pack and the user's own
+  /// dictionary are curated by construction, and a user who typed «my
+  /// pleasure» as a word means it. The rule above is about the 31,600-entry
+  /// dataset, not about the words a person chose.
+  ///
+  /// **A separate read from [entries]**, and not a filter over it. The
+  /// dictionary's study pool is a hash-ordered sample of 400; filtering that
+  /// sample in Dart would leave a different-sized pool every day and would
+  /// eventually deal the same word twice in a week. The store answers the
+  /// question in SQL, over the whole file.
+  Future<List<VocabEntry>> wordOfTheDayPool(String packKey) async {
+    if (packKey != dictionaryPackKey) return entries(packKey);
+    final engine = _dictionary;
+    if (engine == null) return const <VocabEntry>[];
+    final heads = await engine.wordOfTheDayEntries(
+      limit: dictionaryStudyPoolSize,
+      salt: _studySalt(),
+    );
+    return <VocabEntry>[for (final head in heads) _toVocabEntry(head)];
+  }
+
+  /// Every word the user has typed, in the order they typed them.
+  Future<List<VocabEntry>> customWords() =>
+      _packs.entriesOf(customDictionaryPackKey);
+
+  /// Adds one word to the user's own dictionary.
+  ///
+  /// **Both fields are required, and an empty one is refused here as well as
+  /// on the screen.** The screen disables nothing and validates on save, so
+  /// this is the layer that makes the rule true even if a caller forgets it;
+  /// the user's brief is explicit: *«عندنا يضيف المستخدم كلمة كلمة دون معنى او
+  /// معنى دون كلمة يرفض الحفظ»*.
+  ///
+  /// **A duplicate is refused rather than merged.** The same English word with
+  /// two meanings would be two entries the quiz asks as one word twice, and
+  /// this dictionary is for the meaning the user's curriculum wants — one word,
+  /// one meaning. The comparison is [normaliseCustomTerm], so `Serendipity`
+  /// and `serendipity` are the same word.
+  ///
+  /// The whole write is one transaction: the pack row, the entry, and the
+  /// count. A failure part-way leaves the dictionary exactly as it was.
+  Future<VocabEntry> addCustomWord({
+    required String term,
+    required String meaning,
+  }) async {
+    final word = cleanCustomTerm(term);
+    final definition = meaning.trim();
+    if (word.isEmpty) {
+      throw const CustomDictionaryException('اكتب الكلمة أولاً.');
+    }
+    if (definition.isEmpty) {
+      throw const CustomDictionaryException('اكتب معنى الكلمة أولاً.');
+    }
+    if (word.length > customWordMaxLength) {
+      throw const CustomDictionaryException(
+          'الكلمة أطول من الحد المسموح به.');
+    }
+    if (definition.length > customMeaningMaxLength) {
+      throw const CustomDictionaryException(
+          'المعنى أطول من 500 حرف.');
+    }
+    final key = normaliseCustomTerm(word);
+    final entry = customEntry(term: word, meaning: definition);
+    await _db.transaction((txn) async {
+      final existing =
+          await _packs.entriesOf(customDictionaryPackKey, executor: txn);
+      if (existing.any((row) => normaliseCustomTerm(row.term) == key)) {
+        throw const CustomDictionaryException(
+            'هذه الكلمة موجودة في قاموسك بالفعل.');
+      }
+      await _packs.insertPackRow(
+        PackSummary(
+          packKey: customDictionaryPackKey,
+          title: customDictionaryTitle,
+          sourceLanguage: 'en',
+          targetLanguage: 'ar',
+          entryCount: existing.length + 1,
+          // **Not bundled**, and that flag is what the backup uses to decide a
+          // pack is the user's data. The pack list hides its delete control by
+          // key, not by this flag; see `more_screen.dart`.
+          isBundled: false,
+          importedAt: _clock(),
+        ),
+        executor: txn,
+      );
+      await _packs.insertEntry(
+        customDictionaryPackKey,
+        entry,
+        sortIndex: await _packs.nextSortIndex(customDictionaryPackKey,
+            executor: txn),
+        executor: txn,
+      );
+      await _packs.refreshEntryCount(customDictionaryPackKey, executor: txn);
+    });
+    return entry;
+  }
+
+  /// Removes one word from the user's own dictionary.
+  ///
+  /// **The word's favourite and its progress go with it.** Neither table has a
+  /// foreign key onto `entries` (on purpose — see `database.dart`), so nothing
+  /// removes them automatically. A favourite row left behind would be a row
+  /// «مفضلتي» can never resolve and would silently drop; a progress row left
+  /// behind would be history for a word that no longer exists. Progress for a
+  /// custom word that is deleted and typed again returns, because the id is
+  /// stable — which is the one case where keeping a row would have been
+  /// defensible, and it is not: the user deleted the word.
+  Future<void> deleteCustomWord(String entryId) async {
+    await _db.transaction((txn) async {
+      await txn.delete(
+        'favorites',
+        where: 'pack_key = ? AND entry_id = ?',
+        whereArgs: <Object?>[customDictionaryPackKey, entryId],
+      );
+      await txn.delete(
+        'word_progress',
+        where: 'pack_key = ? AND entry_id = ?',
+        whereArgs: <Object?>[customDictionaryPackKey, entryId],
+      );
+      await _packs.deleteEntry(customDictionaryPackKey, entryId, executor: txn);
+      await _packs.refreshEntryCount(customDictionaryPackKey, executor: txn);
+    });
   }
 
   /// The salt that makes the dictionary's pool stable within a day.
@@ -516,7 +686,7 @@ class VocabRepository {
     return pack;
   }
 
-  /// Refuses a stored pack that claims the derived pack's key.
+  /// Refuses a stored pack that claims a reserved key.
   ///
   /// **The key is reserved, and a reservation that can be claimed is not a
   /// reservation.** The derived pack has no row of its own, so an imported
@@ -524,13 +694,28 @@ class VocabRepository {
   /// the user's own favourites and once as somebody's dataset — and the two
   /// would be told apart by nothing at all.
   ///
+  /// **The user's own dictionary is reserved against pack files and allowed in
+  /// backups**, and the distinction is the whole reason [fromBackup] exists. A
+  /// `.json` pack claiming `my_dictionary` would install somebody else's
+  /// dataset under the name of the user's own words. A backup is a snapshot of
+  /// a device — the custom dictionary is part of that snapshot, and refusing it
+  /// would make the one pack the user created by hand the one pack a restore
+  /// cannot bring back.
+  ///
   /// **Checked before anything is written**, so a refused import leaves the
   /// device exactly as it was.
-  void _refuseReservedKey(String packId) {
-    if (packId != myFavouritesPackKey) return;
-    throw const PackDecodeException(
-        'This file claims the reserved pack id "my_favourites", which belongs '
-        'to "My favourites" and cannot be imported.');
+  void _refuseReservedKey(String packId, {bool fromBackup = false}) {
+    if (packId == myFavouritesPackKey) {
+      throw const PackDecodeException(
+          'This file claims the reserved pack id "my_favourites", which belongs '
+          'to "My favourites" and cannot be imported.');
+    }
+    if (!fromBackup && packId == customDictionaryPackKey) {
+      throw const PackDecodeException(
+          'This file claims the reserved pack id "my_dictionary", which belongs '
+          'to the dictionary you wrote yourself and cannot be imported as a '
+          'pack.');
+    }
   }
 
   Future<String> exportPackJson(String packKey) async {
@@ -1028,7 +1213,7 @@ class VocabRepository {
     // stored pack under the derived pack's key would put two packs with the
     // same key in the pack list — one of them the user's own favourites.
     for (final pack in backup.packs) {
-      _refuseReservedKey(pack.packId);
+      _refuseReservedKey(pack.packId, fromBackup: true);
     }
     await _db.transaction((txn) async {
       // **A LANDMINE, and this comment is the only thing standing in front of

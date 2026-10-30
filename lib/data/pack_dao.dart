@@ -108,20 +108,7 @@ class PackDao {
         final entry = pack.entries[index];
         batch.insert(
           'entries',
-          <String, Object?>{
-            'entry_id': entry.id,
-            'pack_key': pack.packId,
-            'term': entry.term,
-            'translations': jsonEncode(entry.translations),
-            'note': entry.note,
-            'phonetic': entry.phonetic,
-            'part_of_speech': entry.partOfSpeech,
-            // jsonEncode of an empty list is "[]", so these columns are never
-            // null and the read side never has to special-case a missing list.
-            'synonyms': jsonEncode(entry.synonyms),
-            'examples': jsonEncode(entry.examples),
-            'sort_index': index,
-          },
+          _entryRow(pack.packId, entry, index),
           // **Safe here, and the reason is the direction of the foreign key.**
           // `entries.pack_key` cascades *from* `packs`, so a replace of an
           // entry row cannot fire it — a cascade only runs when a **parent**
@@ -136,6 +123,105 @@ class PackDao {
       await batch.commit(noResult: true);
     });
   }
+
+  /// Appends one entry to a stored pack, leaving every other row alone.
+  ///
+  /// **A single-row write, unlike [insertPack].** The user's own dictionary
+  /// grows one word at a time; rebuilding the whole pack's entry table on every
+  /// word would be correct and wasteful, and would rewrite the progress-bearing
+  /// rows of words that did not change. This writes exactly the row it is
+  /// given.
+  ///
+  /// The caller supplies [sortIndex]; [nextSortIndex] is how it gets one.
+  Future<void> insertEntry(
+    String packKey,
+    VocabEntry entry, {
+    required int sortIndex,
+    DatabaseExecutor? executor,
+  }) async {
+    await (executor ?? _db).insert(
+      'entries',
+      _entryRow(packKey, entry, sortIndex),
+      // Safe for the reason `insertPack`'s comment gives: `entries` is a child
+      // of `packs`, and nothing cascades from it.
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Removes one entry from a stored pack.
+  ///
+  /// **The word's favourites and progress are removed by the repository, not
+  /// here.** They carry no foreign key onto `entries` on purpose (see
+  /// `database.dart`), so this delete cannot reach them — and the repository
+  /// is the layer that knows a deleted custom word should not keep a favourite
+  /// row that can never resolve again.
+  Future<void> deleteEntry(
+    String packKey,
+    String entryId, {
+    DatabaseExecutor? executor,
+  }) =>
+      (executor ?? _db).delete(
+        'entries',
+        where: 'pack_key = ? AND entry_id = ?',
+        whereArgs: <Object?>[packKey, entryId],
+      );
+
+  /// The next free `sort_index` in [packKey], or 0 for an empty pack.
+  ///
+  /// `MAX(...) + 1` rather than a count: deleting the last word and adding a
+  /// new one must not reuse the deleted word's position, because the position
+  /// is what orders the list and a re-used one would put the new word in the
+  /// middle.
+  Future<int> nextSortIndex(String packKey, {DatabaseExecutor? executor}) async {
+    final rows = await (executor ?? _db).rawQuery(
+      'SELECT COALESCE(MAX(sort_index), -1) + 1 AS n FROM entries '
+      'WHERE pack_key = ?',
+      <Object?>[packKey],
+    );
+    return (rows.first['n']! as num).toInt();
+  }
+
+  /// Makes `packs.entry_count` agree with the rows in `entries`.
+  ///
+  /// **One statement, so it cannot drift from the table it describes.** The
+  /// pack row's count is what the pack list shows and what the quiz's cap is
+  /// derived from; a count maintained by `+1` arithmetic is a count that is
+  /// wrong after one interrupted write.
+  Future<void> refreshEntryCount(
+    String packKey, {
+    DatabaseExecutor? executor,
+  }) =>
+      (executor ?? _db).rawUpdate(
+        'UPDATE packs SET entry_count = '
+        '(SELECT COUNT(*) FROM entries WHERE pack_key = ?) '
+        'WHERE pack_key = ?',
+        <Object?>[packKey, packKey],
+      );
+
+  /// The columns of one `entries` row.
+  ///
+  /// **Extracted when the user's own dictionary arrived**, because there are
+  /// now two writers of this table — [insertPack]'s batch and [insertEntry]'s
+  /// single row — and two copies of a column list is two places for a new
+  /// column to be forgotten. `jsonEncode` of an empty list is `"[]"`, so the
+  /// read side never special-cases a missing list.
+  Map<String, Object?> _entryRow(
+    String packKey,
+    VocabEntry entry,
+    int sortIndex,
+  ) =>
+      <String, Object?>{
+        'entry_id': entry.id,
+        'pack_key': packKey,
+        'term': entry.term,
+        'translations': jsonEncode(entry.translations),
+        'note': entry.note,
+        'phonetic': entry.phonetic,
+        'part_of_speech': entry.partOfSpeech,
+        'synonyms': jsonEncode(entry.synonyms),
+        'examples': jsonEncode(entry.examples),
+        'sort_index': sortIndex,
+      };
 
   /// Writes the pack's own row **without ever deleting it**.
   ///
@@ -284,20 +370,22 @@ class PackDao {
         .toList();
   }
 
-  /// **An explicit decision, not an oversight.** This departs from the letter of
-  /// `docs/engineering-standards.md` §3, which asks that *every* DAO reachable
-  /// from a transaction take an executor. The departure is recorded here so a
-  /// reviewer reads "chosen" rather than "missed", and so the next caller who
-  /// needs them inside a transaction knows to add them then.
+  /// **An explicit decision, not an oversight** — and it has changed once,
+  /// because the caller changed. These three are single-statement reads, and
+  /// for a long time no caller reached them from inside a transaction:
+  /// `exportBackupJson` walks them *before* it opens one, and nothing else in
+  /// `lib/` passed a `Transaction` to this DAO — checked by reading every call
+  /// site, not by assuming.
   ///
-  /// The reason is narrow: these three are single-statement reads, and **no
-  /// caller reaches them from inside a transaction.** `exportBackupJson` walks
-  /// them *before* it opens one, and nothing else in `lib/` passes a
-  /// `Transaction` to this DAO — checked by reading every call site, not by
-  /// assuming. Adding an unused parameter would be untested surface pretending
-  /// to be a guarantee, and a guarantee nobody exercises is the thing §3 is
-  /// about. If a future caller needs them inside a transaction, that caller is
-  /// the moment to add it.
+  /// **`entriesOf` now takes an executor, and the caller is the user's own
+  /// dictionary.** Adding a word has to read the pack's words to refuse a
+  /// duplicate and to find the next position, and it has to do that inside the
+  /// same transaction that writes the word: a read outside it is a read of a
+  /// state the write is about to change. So the parameter is not unused surface
+  /// any more; it is exercised by `test/data/custom_dictionary_test.dart`.
+  ///
+  /// `getPack` and `countEntries` still take none. If a future caller needs
+  /// them inside a transaction, that caller is the moment to add it.
   Future<VocabPack?> getPack(String packKey) async {
     final rows = await _db.query('packs',
         where: 'pack_key = ?', whereArgs: <Object?>[packKey], limit: 1);
@@ -314,9 +402,14 @@ class PackDao {
     );
   }
 
-  Future<List<VocabEntry>> entriesOf(String packKey) async {
-    final rows = await _db.query('entries',
-        where: 'pack_key = ?', whereArgs: <Object?>[packKey], orderBy: 'sort_index ASC');
+  Future<List<VocabEntry>> entriesOf(
+    String packKey, {
+    DatabaseExecutor? executor,
+  }) async {
+    final rows = await (executor ?? _db).query('entries',
+        where: 'pack_key = ?',
+        whereArgs: <Object?>[packKey],
+        orderBy: 'sort_index ASC');
     return rows
         .map((row) => VocabEntry(
               id: row['entry_id']! as String,

@@ -261,6 +261,18 @@ final class DictionaryEngine {
   }) =>
       _store.studyableEntries(limit: limit, salt: salt);
 
+  /// The headwords the word-of-the-day card may draw from.
+  ///
+  /// **The curated set, not the study set.** See
+  /// [DictionaryStore.wordOfTheDayEntries] for the rule and the reasoning; the
+  /// user's ruling is that the card must not show a phrase like «creating by
+  /// removal» as a word.
+  Future<List<DictionaryEntry>> wordOfTheDayEntries({
+    int limit = 0,
+    int salt = 0,
+  }) =>
+      _store.wordOfTheDayEntries(limit: limit, salt: salt);
+
   /// The headwords at [norms], with their senses — **one query for the whole
   /// batch**, not one per word.
   ///

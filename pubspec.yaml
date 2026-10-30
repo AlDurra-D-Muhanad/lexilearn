@@ -23,7 +23,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # `tool/build.dart` fills in from *this* line, so the screen cannot drift
 # from the manifest. `test/design/app_version_test.dart` fails if the two
 # disagree.
-version: 2.0.0+1
+version: 2.0.2+2
 
 environment:
   sdk: ^3.12.2

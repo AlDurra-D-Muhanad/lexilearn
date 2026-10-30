@@ -303,6 +303,36 @@ class AppColors {
   static const Color errorDark = Color(0xFFF87171);
 
   // ---------------------------------------------------------------------------
+  // The saturated confirmation fills — yes and no in the delete dialog.
+  // ---------------------------------------------------------------------------
+
+  /// **The yes button's fill: `#15803D`, the same in both modes.**
+  ///
+  /// **Not the quiz's green.** The quiz draws a pale tonal container with dark
+  /// ink; the user's delete confirmation is the opposite — a saturated box with
+  /// a light label, so it cannot be mistaken for an answered option.
+  ///
+  /// **Measured:** the white [onSolidFill] on it is **5.02 : 1** (WCAG 2.1
+  /// relative luminance, `#FFFFFF` against `#15803D`). The 4.5 threshold is
+  /// cleared with room, which is why this is a token with a number rather than
+  /// a shade picked by eye.
+  static const Color successFill = Color(0xFF15803D);
+
+  /// **The no button's fill: `#B91C1C`, the same in both modes.**
+  ///
+  /// **Measured:** the white [onSolidFill] on it is **6.47 : 1**. Like
+  /// [successFill], this is a saturated fill and not the quiz's pale
+  /// `wrongFill`; the label is light and the box is the colour.
+  static const Color errorFill = Color(0xFFB91C1C);
+
+  /// **The label and glyph on [successFill] and [errorFill]: `#FFFFFF`.**
+  ///
+  /// One ink for both fills, because both are dark enough to carry it in either
+  /// brightness. Measured against each fill in their own doc comments above:
+  /// **5.02 : 1** and **6.47 : 1**.
+  static const Color onSolidFill = Color(0xFFFFFFFF);
+
+  // ---------------------------------------------------------------------------
   // The ink on a photograph.
   // ---------------------------------------------------------------------------
 
@@ -359,6 +389,31 @@ class AppGradients {
             ? const <Color>[
                 AppColors.iconBadgeDarkTop,
                 AppColors.iconBadgeDarkBottom,
+              ]
+            : const <Color>[
+                AppColors.surfaceLight,
+                AppColors.backgroundLight,
+              ],
+      );
+
+  /// **The fill of a card the artwork draws with a ramp in it.**
+  ///
+  /// The custom dictionary's landing cards are drawn as a surface that is
+  /// lighter at the top than at the foot — the same "lit from above" direction
+  /// the tile badges and the bottom bar have. The two ends are the app's own
+  /// surface tokens rather than new colours: [AppColors.surfaceDark] down to
+  /// [AppColors.surfaceDarkAlt] in dark mode, and [AppColors.surfaceLight] down
+  /// to [AppColors.backgroundLight] in light mode.
+  ///
+  /// A card is still an `AppSurface`; this ramp is painted *inside* one so the
+  /// brand hairline and radius stay the surface's job, not a second container's.
+  static LinearGradient card(bool isDark) => LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: isDark
+            ? const <Color>[
+                AppColors.surfaceDark,
+                AppColors.surfaceDarkAlt,
               ]
             : const <Color>[
                 AppColors.surfaceLight,

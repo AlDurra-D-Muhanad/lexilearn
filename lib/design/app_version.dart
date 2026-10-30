@@ -12,7 +12,7 @@
 /// `pubspec.yaml` off disk and fails if the two disagree — which is what
 /// stops somebody bumping the manifest and forgetting the constant.
 ///
-/// The version *name* only: `pubspec.yaml` carries `2.0.0+1`, where `+1` is
+/// The version *name* only: `pubspec.yaml` carries `2.0.2+2`, where `+2` is
 /// the build number Android uses as `versionCode` and the store, not the
 /// version a user reads.
 library;
@@ -34,11 +34,11 @@ class AppVersion {
   /// `pubspec.yaml`'s version name.
   static const String version = String.fromEnvironment(
     define,
-    defaultValue: '2.0.0',
+    defaultValue: '2.0.2',
   );
 
   /// The version this source tree falls back to.
   ///
   /// Named so the test can read it rather than write the string again.
-  static const String defaultVersion = '2.0.0';
+  static const String defaultVersion = '2.0.2';
 }

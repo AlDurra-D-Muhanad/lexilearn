@@ -542,10 +542,52 @@ class DictionaryStore {
   Future<List<DictionaryEntry>> studyableEntries({
     int limit = 0,
     int salt = 0,
+  }) =>
+      _headsWhere(_studyablePredicate('e'), limit: limit, salt: salt);
+
+  /// The headwords the word-of-the-day card may draw from.
+  ///
+  /// **The user's ruling, after seeing the card on a real phone**: «كلمة اليوم»
+  /// must come from the curated set, because drawing from all 31,600 entries
+  /// produced «creating by removal» — a phrase, and a gloss rather than a word.
+  ///
+  /// **The curated set is narrower than the study set, and this is the whole
+  /// rule:**
+  ///
+  /// * a single token — no spaces, so no phrases;
+  /// * at least two characters, and **no digits** — `44th`, `1` and `7 Up` are
+  ///   not words of the day;
+  /// * **every letter lowercase** — this is what removes the names that slip
+  ///   past the proper-noun rule (`Aaron`, `Abadan`, `Italian`); the dictionary
+  ///   marks most names and not all of them. Brands (`eBay`, `iPhone`) go too,
+  ///   which is the right answer for a vocabulary card;
+  /// * **an Arabic sense** (`has_ar = 1`) — the card's button opens the word's
+  ///   meaning, and a word with no meaning would open an empty screen;
+  /// * no affix and no proper noun — [StudyFilter]'s rules, reused through
+  ///   [_studyablePredicate].
+  ///
+  /// **Measured over the shipped file: 18,913 headwords.** The count is
+  /// asserted in `test/data/dictionary/word_of_the_day_curation_test.dart` so
+  /// a change to the rule is a red test rather than a card that starts showing
+  /// phrases again.
+  Future<List<DictionaryEntry>> wordOfTheDayEntries({
+    int limit = 0,
+    int salt = 0,
+  }) =>
+      _headsWhere(_wordOfTheDayPredicate('e'), limit: limit, salt: salt);
+
+  /// The one query behind [studyableEntries] and [wordOfTheDayEntries].
+  ///
+  /// **Extracted so the two cannot drift apart in their ordering or in the way
+  /// senses are loaded.** The only difference between them is the predicate.
+  Future<List<DictionaryEntry>> _headsWhere(
+    String predicate, {
+    int limit = 0,
+    int salt = 0,
   }) async {
     final rows = await query(
       'SELECT e.id, e.word, e.norm, e.ipa, e.has_ar FROM entries e '
-      'WHERE ${_studyablePredicate('e')} '
+      'WHERE $predicate '
       'ORDER BY (((e.id + $salt) * 2654435761) % 1000003) ASC '
       '${limit > 0 ? 'LIMIT $limit' : ''}',
     );
@@ -594,6 +636,28 @@ class DictionaryStore {
       'SELECT entry_id FROM senses GROUP BY entry_id '
       "HAVING SUM(CASE WHEN pos IS NULL OR pos <> 'prop. n' "
       'THEN 1 ELSE 0 END) > 0))';
+
+  /// The SQL half of the word-of-the-day rule.
+  ///
+  /// Written out rather than layered in Dart for the reason the study filter
+  /// gives: 31,600 rows read to discard 12,700 of them in memory would make the
+  /// card wait for the whole file.
+  ///
+  /// **`NOT GLOB '*[A-Z]*'` is the case rule, and it is deliberately blunt.**
+  /// A headword is stored as the dictionary spells it, so a word that begins
+  /// with a capital is a name or a brand, not a common noun. The cost is that a
+  /// rare lowercase word with an internal capital would be dropped too; there
+  /// is no such headword in the shipped file outside brand names, and a missed
+  /// card word on some future dataset is cheaper than «Aaron» as the word of
+  /// the day.
+  static String _wordOfTheDayPredicate(String alias) =>
+      '${_studyablePredicate(alias)} '
+      'AND $alias.has_ar = 1 '
+      "AND $alias.word NOT LIKE '% %' "
+      'AND length($alias.word) >= 2 '
+      "AND $alias.word NOT GLOB '*[0-9]*' "
+      "AND $alias.word NOT GLOB '*[A-Z]*' "
+      "AND $alias.word GLOB '[a-z]*'";
 
   /// The senses whose Arabic list holds [key], however it is spelled inside
   /// the list.

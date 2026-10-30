@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/design/design_tokens.dart';
+import 'package:lexilearn/domain/custom_dictionary.dart';
 import 'package:lexilearn/domain/pack_codec.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
@@ -28,6 +29,7 @@ const _exportBackup = 'تصدير نسخة احتياطية';
 const _restoreBackup = 'استعادة نسخة احتياطية';
 const _delete = 'حذف';
 const _deleteTitle = 'حذف الحزمة؟';
+const _activePack = 'الحزمة الحالية';
 const _cancel = 'إلغاء';
 const _reset = 'مسح التقدم';
 const _resetTitle = 'مسح التقدم؟';
@@ -170,6 +172,7 @@ Future<void> _pumpMore(
   PickJsonFile? pickJsonFile,
   Brightness brightness = Brightness.light,
   PacksController? controller,
+  ValueChanged<String>? onPackSelected,
 }) async {
   final packs = controller ??
       PacksController(
@@ -183,18 +186,20 @@ Future<void> _pumpMore(
       packKey: packKey,
       brightness: brightness,
       settings: createAppSettings(repository),
+      onPackSelected: onPackSelected,
     ),
   );
   await settleDatabase(tester);
 }
 
-class _MoreApp extends StatelessWidget {
+class _MoreApp extends StatefulWidget {
   const _MoreApp({
     required this.repository,
     required this.packs,
     required this.packKey,
     required this.brightness,
     required this.settings,
+    this.onPackSelected,
   });
 
   final VocabRepository repository;
@@ -208,24 +213,46 @@ class _MoreApp extends StatelessWidget {
   /// supply them itself — see `appSeamProviders` in `test/helpers/test_env.dart`.
   final AppSettingsController settings;
 
+  /// Optional observer for a row tap, beside the stand-in's own active-pack
+  /// update. The real `HomeShell` does both: it records the choice and hands
+  /// the new key down, which is what draws the row's «الحزمة الحالية» marker.
+  final ValueChanged<String>? onPackSelected;
+
+  @override
+  State<_MoreApp> createState() => _MoreAppState();
+}
+
+class _MoreAppState extends State<_MoreApp> {
+  late String _packKey = widget.packKey;
+
+  @override
+  void didUpdateWidget(_MoreApp oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.packKey != widget.packKey) _packKey = widget.packKey;
+  }
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: <SingleChildWidget>[
-        Provider<VocabRepository>.value(value: repository),
-        ChangeNotifierProvider<PacksController>.value(value: packs),
-        ...appSeamProviders(settings: settings),
+        Provider<VocabRepository>.value(value: widget.repository),
+        ChangeNotifierProvider<PacksController>.value(value: widget.packs),
+        ...appSeamProviders(settings: widget.settings),
       ],
       child: MaterialApp(
         theme: AppTheme.light(),
         darkTheme: AppTheme.dark(),
-        themeMode:
-            brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
+        themeMode: widget.brightness == Brightness.dark
+            ? ThemeMode.dark
+            : ThemeMode.light,
         builder: (context, child) =>
             Directionality(textDirection: TextDirection.rtl, child: child!),
         home: MoreScreen(
-          packKey: packKey,
-          onPackSelected: (_) {},
+          packKey: _packKey,
+          onPackSelected: (key) {
+            setState(() => _packKey = key);
+            widget.onPackSelected?.call(key);
+          },
         ),
       ),
     );
@@ -590,6 +617,78 @@ void main() {
         tester.widget<Text>(latin.first).textDirection,
         TextDirection.ltr,
         reason: 'the pack\'s own row',
+      );
+    });
+
+    testWidgets('the user\'s own dictionary is marked «كلماتك» and has no '
+        'delete, while an imported pack still does', (tester) async {
+      // **Seeded through the repository, because that is what puts the pack on
+      // the device.** `packs()` hides the custom dictionary while it is empty,
+      // so a fixture that never called `addCustomWord` would assert nothing.
+      await _seed(
+        tester,
+        () => harness.repository.addCustomWord(
+          term: 'serendipity',
+          meaning: 'حظ سعيد',
+        ),
+      );
+      await installImportedPack(tester);
+
+      String? chosen;
+      await _pumpMore(
+        tester,
+        harness.repository,
+        onPackSelected: (key) => chosen = key,
+      );
+
+      // The row is the stored pack the user's words live in, named with the
+      // same string as the Home tile and the landing screen.
+      expect(inMore(customDictionaryTitle), findsOneWidget);
+      final customRow = find.ancestor(
+        of: inMore(customDictionaryTitle),
+        matching: find.byType(AppSurface),
+      );
+      expect(customRow, findsOneWidget);
+      expect(
+        find.descendant(of: customRow, matching: find.byType(Chip)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+            of: customRow, matching: find.text(customDictionaryChip)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+            of: customRow, matching: find.byIcon(Icons.delete_outline)),
+        findsNothing,
+        reason: 'the user\'s words are deleted one by one, not as a pack',
+      );
+
+      // The imported pack in the same list still offers its delete control, so
+      // this is a rule about the custom key rather than a control that has
+      // disappeared from the screen.
+      final importedRow = find.ancestor(
+        of: inMore('حزمة مستوردة'),
+        matching: find.byType(AppSurface),
+      );
+      expect(importedRow, findsOneWidget);
+      expect(
+        find.descendant(
+            of: importedRow, matching: find.byIcon(Icons.delete_outline)),
+        findsOneWidget,
+      );
+      expect(find.byIcon(Icons.delete_outline), findsOneWidget,
+          reason: 'only the imported pack may be deleted from this screen');
+
+      // Selecting it is what makes it the active pack. The stand-in mirrors
+      // `HomeShell`: it records the key and hands it back down, which is what
+      // moves the «الحزمة الحالية» marker into this row.
+      await _tap(tester, inMore(customDictionaryTitle));
+      expect(chosen, customDictionaryPackKey);
+      expect(
+        find.descendant(of: customRow, matching: find.text(_activePack)),
+        findsOneWidget,
       );
     });
 

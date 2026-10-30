@@ -7,9 +7,13 @@ import 'package:lexilearn/app.dart';
 import 'package:lexilearn/data/dictionary/dictionary_models.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/design/design_tokens.dart';
+import 'package:lexilearn/domain/custom_dictionary.dart';
 import 'package:lexilearn/domain/quiz_question.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/domain/vocab_pack.dart';
+import 'package:lexilearn/ui/custom_dictionary/add_custom_word_screen.dart';
+import 'package:lexilearn/ui/custom_dictionary/custom_dictionary_screen.dart';
+import 'package:lexilearn/ui/custom_dictionary/custom_words_screen.dart';
 import 'package:lexilearn/ui/dictionary/attribution_screen.dart';
 import 'package:lexilearn/ui/dictionary/dictionary_controller.dart';
 import 'package:lexilearn/ui/dictionary/dictionary_word_screen.dart';
@@ -47,6 +51,18 @@ const _statsTile = 'إحصائياتك';
 /// the shots are compared as pixels — and an unused import is an analyzer warning.
 /// `test/ui/favorites_screen_test.dart` is where that screen is pinned.
 const _favoritesTile = 'المفضلة';
+
+/// The Home tile the artwork added in place of the quiz tile, and the two doors
+/// inside the screen it pushes.
+///
+/// **Named here rather than inlined twice.** The title is the product's own —
+/// `customDictionaryTitle` in `lib/domain/custom_dictionary.dart` — but this
+/// file asserts against the string the user reads, so a rename that only moved
+/// the constant would fail here instead of silently rewriting the reference
+/// image's caption. The two door labels are the drawing's.
+const _customDictionaryTile = 'قاموسك الخاص';
+const _addWordCard = 'إضافة كلمة';
+const _customWordsCard = 'الكلمات المضافة';
 
 /// The query that drives the search field, so the reference image shows a
 /// **named** word rather than whichever one the calendar picked.
@@ -434,6 +450,59 @@ void main() {
       await expectLater(
         find.byType(MaterialApp),
         matchesGoldenFile('goldens/more_screen_favourites_user_shot_$mode.png'),
+        skip: _goldenSkipReason,
+        );
+    });
+
+    testWidgets('custom dictionary screen user shot, $mode', (tester) async {
+      // The landing screen of the user's own dictionary: the two doors and the
+      // book, reached the way a user reaches it — the Home tile.
+      useAPhone(tester);
+      await _setMode(tester, brightness);
+      await _openCustomDictionary(tester, harness.repository);
+      expect(find.byType(CustomDictionaryScreen), findsOneWidget);
+
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/custom_dictionary_screen_user_shot_$mode.png'),
+        skip: _goldenSkipReason,
+        );
+    });
+
+    testWidgets('add custom word screen user shot, $mode', (tester) async {
+      useAPhone(tester);
+      await _setMode(tester, brightness);
+      await _openCustomDictionary(tester, harness.repository);
+      await tester.tap(find.text(_addWordCard));
+      await tester.pumpAndSettle();
+      await settleDatabase(tester);
+      expect(find.byType(AddCustomWordScreen), findsOneWidget);
+
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/add_custom_word_screen_user_shot_$mode.png'),
+        skip: _goldenSkipReason,
+        );
+    });
+
+    testWidgets('custom words screen user shot, $mode', (tester) async {
+      // **The list with words in it**, not the empty state: the screen's job is
+      // to draw the user's words and this image has to show the row, the gold
+      // heart (one word is favourited) and the red bin together.
+      useAPhone(tester);
+      await _setMode(tester, brightness);
+      await _seedCustomWords(tester, harness.repository);
+      await _openCustomDictionary(tester, harness.repository);
+      await tester.tap(find.text(_customWordsCard));
+      await tester.pumpAndSettle();
+      await settleDatabase(tester);
+      await settleDatabase(tester);
+      expect(find.byType(CustomWordsScreen), findsOneWidget);
+      expect(find.text('3 كلمات'), findsOneWidget);
+
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/custom_words_screen_user_shot_$mode.png'),
         skip: _goldenSkipReason,
         );
     });
@@ -1049,6 +1118,54 @@ Future<void> _seedFavorites(
       await repository.setFavorite(
           packKey: 'en_ar', entryId: 'ambition-1', isFavorite: true);
     });
+
+/// Three of the user's own words, one of them favourited, so the words screen
+/// is photographed as a list with a gold heart on it rather than as its empty
+/// state.
+///
+/// `tester.runAsync` for the same reason as [_seedFavourites]: a real sqflite
+/// future never answers in a `testWidgets` body's fake-async zone. The words
+/// are the artwork's own — `serendipity` is the one the dictionary mock draws —
+/// and they are seeded through the public API rather than straight into the
+/// tables, so the pack row and the entry count are the repository's own.
+Future<void> _seedCustomWords(
+  WidgetTester tester,
+  VocabRepository repository,
+) =>
+    tester.runAsync(() async {
+      final serendipity = await repository.addCustomWord(
+        term: 'serendipity',
+        meaning: 'صدفة سعيدة',
+      );
+      await repository.addCustomWord(term: 'resilience', meaning: 'مرونة');
+      await repository.addCustomWord(term: 'clarity', meaning: 'وضوح');
+      await repository.setFavorite(
+        packKey: customDictionaryPackKey,
+        entryId: serendipity.id,
+        isFavorite: true,
+      );
+    });
+
+/// Taps the `قاموسك الخاص` tile and lets the screen it pushes finish reading.
+///
+/// `useAPhone` first, from the caller, for the same reason as `_openStats`: on
+/// the default 800×600 the tile is in the grid's second row and `tap` throws.
+Future<void> _openCustomDictionary(
+  WidgetTester tester,
+  VocabRepository repository,
+) async {
+  await pumpShell(tester, repository);
+  await tester.tap(
+    find.descendant(
+      of: find.byType(HomeScreen),
+      matching: find.text(_customDictionaryTile),
+    ),
+  );
+  await tester.pumpAndSettle();
+  // The landing screen has no read of its own — it is two doors and a title —
+  // but the shell behind it may still be finishing one.
+  await settleDatabase(tester);
+}
 
 /// Taps the `المفضلة` tile and lets the screen it pushes finish reading.
 ///

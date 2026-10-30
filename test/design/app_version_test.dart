@@ -26,7 +26,7 @@ void main() {
   /// itself and prove nothing.
   final String pubspec = File('pubspec.yaml').readAsStringSync();
 
-  /// The version *name* out of the manifest: `2.0.0` out of `2.0.0+1`.
+  /// The version *name* out of the manifest: `2.0.2` out of `2.0.2+2`.
   ///
   /// The `+1` is Android's `versionCode` and the store's build number, not the
   /// version a person reads on the about screen, so it is not part of the
@@ -57,11 +57,11 @@ void main() {
     expect(AppVersion.defaultVersion, manifest!.group(1));
   });
 
-  test('the version is 2.0.0', () {
-    // **The user's own figure.** The app is 2.0.0, and this says so in a
+  test('the version is 2.0.2', () {
+    // **The user's own figure.** The app is 2.0.2, and this says so in a
     // place that goes red if it is ever changed by accident.
-    expect(AppVersion.version, '2.0.0');
-    expect(manifest!.group(1), '2.0.0');
+    expect(AppVersion.version, '2.0.2');
+    expect(manifest!.group(1), '2.0.2');
   });
 
   test('the build script reads the same manifest, and the same version', () {

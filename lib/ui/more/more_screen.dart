@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:lexilearn/data/pack_dao.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/design/design_tokens.dart';
+import 'package:lexilearn/domain/custom_dictionary.dart';
 import 'package:lexilearn/domain/my_favourites_pack.dart';
 import 'package:lexilearn/ui/packs/packs_controller.dart';
 import 'package:lexilearn/ui/home_shell.dart';
@@ -711,8 +712,19 @@ class _PackRow extends StatelessWidget {
             // ملؤها و تفريغها من قبل المستخدم». The key is checked rather
             // than a flag, because the flag means "re-seeded on the next
             // launch" and that is not what is true of this one.
+            //
+            // **The user's own dictionary is hidden by key as well, and for
+            // the opposite reason to the bundled pack.** Its row is
+            // `isBundled: false` because it is the user's data and a backup
+            // must carry it — so `isBundled` cannot be what decides. It still
+            // must not be deletable from here: its words are the user's own,
+            // and the way to empty it is to delete the words themselves, one
+            // confirmed deletion at a time. A pack-level delete would throw
+            // away a whole vocabulary in one tap.
             if (pack.packKey == myFavouritesPackKey)
               const _FavouritesChip()
+            else if (pack.packKey == customDictionaryPackKey)
+              const _CustomChip()
             else if (pack.isBundled)
               const _BundledChip()
             else
@@ -775,6 +787,28 @@ class _FavouritesChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Chip(
         label: const Text(myFavouritesPackChip),
+        elevation: 0,
+        visualDensity: VisualDensity.compact,
+      );
+}
+
+/// The chip on the user's own dictionary's row.
+///
+/// **Its own chip, and not «مدمجة».** The pack does not ship with the app; it
+/// is written by the user, stored like any imported pack, and carried in the
+/// backup. Calling it bundled would say it is a dataset the app installs, which
+/// is the opposite of what it is. «كلماتك» says whose words they are, and —
+/// together with the missing delete control — says how to empty it: delete the
+/// words themselves.
+///
+/// `elevation: 0` for the same reason as [_BundledChip], and the theme pins it
+/// app-wide anyway.
+class _CustomChip extends StatelessWidget {
+  const _CustomChip();
+
+  @override
+  Widget build(BuildContext context) => Chip(
+        label: const Text(customDictionaryChip),
         elevation: 0,
         visualDensity: VisualDensity.compact,
       );

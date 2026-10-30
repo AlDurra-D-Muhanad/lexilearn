@@ -9,8 +9,10 @@ import 'package:lexilearn/data/dictionary/dictionary_models.dart';
 import 'package:lexilearn/domain/dictionary_pack.dart';
 import 'package:lexilearn/data/vocab_repository.dart';
 import 'package:lexilearn/design/design_tokens.dart';
+import 'package:lexilearn/domain/custom_dictionary.dart';
 import 'package:lexilearn/domain/vocab_entry.dart';
 import 'package:lexilearn/domain/word_of_the_day.dart';
+import 'package:lexilearn/ui/custom_dictionary/custom_dictionary_screen.dart';
 import 'package:lexilearn/ui/dictionary/dictionary_controller.dart';
 import 'package:lexilearn/ui/dictionary/dictionary_search_controller.dart';
 import 'package:lexilearn/ui/dictionary/dictionary_word_screen.dart';
@@ -365,7 +367,13 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       entries = packKey.isEmpty
           ? const <VocabEntry>[]
-          : await repository.entries(packKey);
+          // **The curated pool, not the pack's whole contents.** The card is
+          // the only reader here, and the user's ruling is that the dictionary's
+          // card must draw from the curated set rather than from all 31,600
+          // entries; the repository answers the dictionary's pool in SQL and
+          // every other pack's with its own entries. See
+          // `VocabRepository.wordOfTheDayPool`.
+          : await repository.wordOfTheDayPool(packKey);
     } catch (_) {
       return;
     }
@@ -1215,15 +1223,21 @@ const double _labelRuleHeight = 2;
 /// the brand reference names the tiles in. Recorded in
 /// `docs/design/style-direction.md` → Amendments.
 ///
-/// **Two of the four tiles switch the bottom bar; `المفضلة` and `إحصائياتك`
-/// push.** Pushing a route for a destination the bar can already show leaves the
-/// bar highlighting `الرئيسية` under a screen the user did not choose, and makes
-/// Back return to Home instead of to the bar. `المفضلة` and `إحصائياتك` are
-/// genuinely not tabs — the artwork reaches both from the grid and neither from
+/// **One of the four tiles switches the bottom bar; the other three push.**
+/// `بطاقات التعلم` is the bar's `البطاقات`. Pushing a route for a destination
+/// the bar can already show leaves the bar highlighting `الرئيسية` under a
+/// screen the user did not choose, and makes Back return to Home instead of to
+/// the bar. `المفضلة`, `إحصائياتك` and the user's own dictionary are genuinely
+/// not tabs — the artwork reaches all three from the grid and none from
 /// anywhere else, and its bar has only the four items above — so they have
 /// nothing to switch to and are pushed. The bar's index and its handler come
 /// from `ShellTabScope`, which `HomeShell` publishes because this screen's
 /// constructor cannot take a callback.
+///
+/// **The custom dictionary replaces the quiz tile, and the quiz is not lost.**
+/// The user's artwork draws the grid this way and the brief says why: the quiz
+/// is still one tap away in the bottom bar, so the quiz's old place is worth
+/// more as a door to the words the user typed themselves.
 class _QuickLaunchGrid extends StatelessWidget {
   const _QuickLaunchGrid({
     required this.packKey,
@@ -1258,6 +1272,21 @@ class _QuickLaunchGrid extends StatelessWidget {
       childAspectRatio: 1.15,
       children: <Widget>[
         _QuickLaunchTile(
+          // **The artwork's own glyph for this tile is a gold plus** — the
+          // action is "add to your own dictionary", not "read the dictionary".
+          // The book belongs to the landing screen and to the bar's dictionary
+          // chip; copying it here would make two doors look like one.
+          icon: Icons.add_rounded,
+          iconColor: AppColors.accentInk(
+            Theme.of(context).brightness == Brightness.dark,
+          ),
+          title: customDictionaryTitle,
+          subtitle: 'أنشئ قاموسك الخاص',
+          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => const CustomDictionaryScreen(),
+          )),
+        ),
+        _QuickLaunchTile(
           // **The reference's own glyph for this tile**: a tilted card, drawn in
           // outline — the same glyph the reference's bottom bar uses for
           // `البطاقات`, which is the app's `Icons.style_outlined` too. The old
@@ -1270,40 +1299,6 @@ class _QuickLaunchGrid extends StatelessWidget {
           title: 'بطاقات التعلم',
           subtitle: 'ابدأ الآن',
           onTap: () => _goToTab(context, 1),
-
-        ),
-        _QuickLaunchTile(
-          // **The reference draws a clipboard with a tick in it**, in gold and in
-          // outline. The old `check_box_rounded` was a filled white tick box —
-          // the wrong shape, the wrong weight, and the wrong colour.
-          icon: Icons.assignment_turned_in_outlined,
-          iconColor: AppColors.accentInk(
-            Theme.of(context).brightness == Brightness.dark,
-          ),
-          title: 'الاختبارات',
-          subtitle: 'اختبر نفسك',
-          onTap: () => _goToTab(context, 2),
-        ),
-        _QuickLaunchTile(
-          // **The reference draws an outlined heart**, not a filled one.
-          icon: Icons.favorite_outlined,
-          iconColor: AppColors.accentInk(
-            Theme.of(context).brightness == Brightness.dark,
-          ),
-          title: 'المفضلة',
-          subtitle: 'كلماتك المفضلة',
-          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-            builder: (_) => FavoritesScreen(
-              packKey: packKey,
-              // The shell's handler, not a no-op. Task 14's fix round: this line
-              // was `onOpenWord: (_) {}`, so tapping a saved word did **nothing** -
-              // and this tile is the only place in the app that builds a
-              // `FavoritesScreen`. Pinned by
-              // `test/ui/favorites_screen_test.dart` -> *tapping a row from Home
-              // opens the word detail*.
-              onOpenWord: onOpenWord,
-            ),
-          )),
         ),
         _QuickLaunchTile(
           // **The reference draws three solid bars**, not a line with sparkles.
@@ -1326,6 +1321,27 @@ class _QuickLaunchGrid extends StatelessWidget {
           onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
                 builder: (_) => StatsScreen(packKey: packKey),
               )),
+        ),
+        _QuickLaunchTile(
+          // **The reference draws an outlined heart**, not a filled one.
+          icon: Icons.favorite_outlined,
+          iconColor: AppColors.accentInk(
+            Theme.of(context).brightness == Brightness.dark,
+          ),
+          title: 'المفضلة',
+          subtitle: 'كلماتك المفضلة',
+          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => FavoritesScreen(
+              packKey: packKey,
+              // The shell's handler, not a no-op. Task 14's fix round: this line
+              // was `onOpenWord: (_) {}`, so tapping a saved word did **nothing** -
+              // and this tile is the only place in the app that builds a
+              // `FavoritesScreen`. Pinned by
+              // `test/ui/favorites_screen_test.dart` -> *tapping a row from Home
+              // opens the word detail*.
+              onOpenWord: onOpenWord,
+            ),
+          )),
         ),
       ],
     );

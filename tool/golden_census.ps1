@@ -241,7 +241,19 @@ param(
     'test/goldens/goldens/dictionary_word_user_shot_light.png',
     'test/goldens/goldens/dictionary_word_user_shot_dark.png',
     'test/goldens/goldens/attribution_screen_user_shot_light.png',
-    'test/goldens/goldens/attribution_screen_user_shot_dark.png'
+    'test/goldens/goldens/attribution_screen_user_shot_dark.png',
+    # The user's own dictionary: the landing screen, the add form and the word
+    # list. **The first user-authored content in the app**, and the first screens
+    # whose rows the user creates, so their colours are not a recolor of any
+    # screen above - the success and error fills in the delete dialog are their
+    # own tokens, and the landing cards are the app's only full-card gradients
+    # outside Home. A screen this tool does not read is a screen nothing checks.
+    'test/goldens/goldens/custom_dictionary_screen_user_shot_light.png',
+    'test/goldens/goldens/custom_dictionary_screen_user_shot_dark.png',
+    'test/goldens/goldens/add_custom_word_screen_user_shot_light.png',
+    'test/goldens/goldens/add_custom_word_screen_user_shot_dark.png',
+    'test/goldens/goldens/custom_words_screen_user_shot_light.png',
+    'test/goldens/goldens/custom_words_screen_user_shot_dark.png'
   )
 )
 
@@ -287,6 +299,12 @@ $ExpectedColourCount = [ordered]@{
   'test/goldens/goldens/app_info_screen_user_shot_light.png'                = 170
   'test/goldens/goldens/attribution_screen_user_shot_dark.png'              = 214
   'test/goldens/goldens/attribution_screen_user_shot_light.png'             = 192
+  'test/goldens/goldens/custom_dictionary_screen_user_shot_dark.png'        = 874
+  'test/goldens/goldens/custom_dictionary_screen_user_shot_light.png'       = 418
+  'test/goldens/goldens/add_custom_word_screen_user_shot_dark.png'          = 798
+  'test/goldens/goldens/add_custom_word_screen_user_shot_light.png'         = 479
+  'test/goldens/goldens/custom_words_screen_user_shot_dark.png'             = 762
+  'test/goldens/goldens/custom_words_screen_user_shot_light.png'            = 488
   'test/goldens/goldens/dictionary_search_user_shot_dark.png'         = 1434
   'test/goldens/goldens/dictionary_search_user_shot_light.png'        = 856
   'test/goldens/goldens/dictionary_word_user_shot_dark.png'                 = 216
@@ -295,9 +313,9 @@ $ExpectedColourCount = [ordered]@{
   'test/goldens/goldens/favorites_screen_user_shot_light.png'               = 161
   'test/goldens/goldens/flashcards_screen_user_shot_dark.png'         = 71697
   'test/goldens/goldens/flashcards_screen_user_shot_light.png'        = 70324
-  'test/goldens/goldens/home_screen_user_shot_dark.png'               = 39994
-  'test/goldens/goldens/home_screen_user_shot_light.png'              = 16110
-  'test/goldens/goldens/home_shell_user_shot.png'                     = 2861
+  'test/goldens/goldens/home_screen_user_shot_dark.png'               = 39942
+  'test/goldens/goldens/home_screen_user_shot_light.png'              = 16012
+  'test/goldens/goldens/home_shell_user_shot.png'                     = 2824
   'test/goldens/goldens/more_screen_favourites_user_shot_dark.png'    = 1036
   'test/goldens/goldens/more_screen_favourites_user_shot_light.png'   = 755
   'test/goldens/goldens/more_screen_user_shot_dark.png'               = 921
@@ -353,6 +371,12 @@ $ExpectedDominantCount = [ordered]@{
   'test/goldens/goldens/app_info_screen_user_shot_light.png'                = 1360339
   'test/goldens/goldens/attribution_screen_user_shot_dark.png'              = 1611891
   'test/goldens/goldens/attribution_screen_user_shot_light.png'             = 1611901
+  'test/goldens/goldens/custom_dictionary_screen_user_shot_dark.png'        = 1729786
+  'test/goldens/goldens/custom_dictionary_screen_user_shot_light.png'       = 1754188
+  'test/goldens/goldens/add_custom_word_screen_user_shot_dark.png'          = 1300619
+  'test/goldens/goldens/add_custom_word_screen_user_shot_light.png'         = 1286945
+  'test/goldens/goldens/custom_words_screen_user_shot_dark.png'             = 1646236
+  'test/goldens/goldens/custom_words_screen_user_shot_light.png'            = 1643071
   'test/goldens/goldens/dictionary_search_user_shot_dark.png'         = 2048760
   'test/goldens/goldens/dictionary_search_user_shot_light.png'        = 2056115
   'test/goldens/goldens/dictionary_word_user_shot_dark.png'                 = 1766339
@@ -361,9 +385,9 @@ $ExpectedDominantCount = [ordered]@{
   'test/goldens/goldens/favorites_screen_user_shot_light.png'               = 1889635
   'test/goldens/goldens/flashcards_screen_user_shot_dark.png'         = 946442
   'test/goldens/goldens/flashcards_screen_user_shot_light.png'        = 922213
-  'test/goldens/goldens/home_screen_user_shot_dark.png'               = 803314
-  'test/goldens/goldens/home_screen_user_shot_light.png'              = 1019443
-  'test/goldens/goldens/home_shell_user_shot.png'                     = 1019443
+  'test/goldens/goldens/home_screen_user_shot_dark.png'               = 801109
+  'test/goldens/goldens/home_screen_user_shot_light.png'              = 1015572
+  'test/goldens/goldens/home_shell_user_shot.png'                     = 1015572
   'test/goldens/goldens/more_screen_favourites_user_shot_dark.png'    = 1508174
   'test/goldens/goldens/more_screen_favourites_user_shot_light.png'   = 1483036
   'test/goldens/goldens/more_screen_user_shot_dark.png'               = 1798575

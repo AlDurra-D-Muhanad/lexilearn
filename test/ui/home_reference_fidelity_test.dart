@@ -37,22 +37,26 @@ const String _tanween = '\u064B';
 
 /// The four tiles, with the reference's own glyph for each.
 ///
+/// **`الواجهة الرئيسية الجديدة.png` replaced the quiz tile with the user's own
+/// dictionary** — the quiz is still reachable from the bottom bar — so the set
+/// of four is the new artwork's, not `new theme.png`'s.
+///
 /// | tile | the reference's glyph | the app's glyph |
 /// |---|---|---|
+/// | قاموسك الخاص | a gold plus | `Icons.add_rounded` |
 /// | بطاقات التعلم | a tilted card, outlined | `Icons.style_outlined` |
-/// | الاختبارات | a clipboard with a tick, outlined | `Icons.assignment_turned_in_outlined` |
-/// | المفضلة | an outlined heart | `Icons.favorite_outlined` |
 /// | إحصائياتك | three solid bars | `Icons.bar_chart_rounded` |
+/// | المفضلة | an outlined heart | `Icons.favorite_outlined` |
 ///
-/// **The first one is the reference's own bottom-bar glyph.** The reference
-/// draws the same tilted card for `البطاقات` in its bottom bar and for
+/// **The card is the reference's own bottom-bar glyph.** The reference draws
+/// the same tilted card for `البطاقات` in its bottom bar and for
 /// `بطاقات التعلم` in its grid, and the app's bottom bar already uses
 /// `Icons.style_outlined` for it.
 const List<(String, IconData)> _tiles = <(String, IconData)>[
+  ('قاموسك الخاص', Icons.add_rounded),
   ('بطاقات التعلم', Icons.style_outlined),
-  ('الاختبارات', Icons.assignment_turned_in_outlined),
-  ('المفضلة', Icons.favorite_outlined),
   ('إحصائياتك', Icons.bar_chart_rounded),
+  ('المفضلة', Icons.favorite_outlined),
 ];
 
 void main() {
@@ -168,6 +172,9 @@ void main() {
         Icons.check_box_rounded,
         Icons.favorite_rounded,
         Icons.insights_rounded,
+        // The quiz tile's glyph. The tile is gone, so its clipboard must not
+        // survive somewhere else in the grid.
+        Icons.assignment_turned_in_outlined,
       ]) {
         expect(
           find.descendant(of: find.byType(HomeScreen), matching: find.byIcon(stale)),

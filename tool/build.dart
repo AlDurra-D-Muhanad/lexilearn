@@ -16,7 +16,7 @@
 //
 // **No dependency.** `pubspec.yaml` is read with a regular expression rather
 // than with a YAML parser, because the line this script needs is a plain
-// `version: 2.0.0+1` at the top of the file and a YAML package would be a
+// `version: 2.0.2+2` at the top of the file and a YAML package would be a
 // dependency the app does not otherwise need. The pattern is anchored to the
 // start of a line so a `version:` inside a comment or under another key
 // cannot be mistaken for it, and the script **fails loudly** when it cannot
@@ -39,7 +39,7 @@ const String defineName = 'APP_VERSION';
 
 /// The version name out of `pubspec.yaml`, without the build number.
 ///
-/// `2.0.0+1` becomes `2.0.0`: the `+1` is Android's `versionCode` and the
+/// `2.0.2+2` becomes `2.0.2`: the `+2` is Android's `versionCode` and the
 /// store's build number, not the version a person reads on the app-info
 /// screen.
 String versionNameOf(String pubspec) {

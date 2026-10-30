@@ -18,7 +18,7 @@
 
   **The sweep is a full one, not a sampled grid**, because the defects these
   numbers date are thin ones — a 1px keyline — and a grid walks straight past
-  them. The pixel loop is **compiled C#** rather than PowerShell: 33 images of
+  them. The pixel loop is **compiled C#** rather than PowerShell: 39 images of
   1080x2340 is 83 million `GetPixel` calls, and at PowerShell's per-call cost
   that is measured in tens of minutes. The compiled loop does the same work in
   seconds, so the measurement is cheap enough to be run whenever a golden
